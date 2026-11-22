@@ -1,0 +1,212 @@
+'use client';
+
+import { useId } from 'react';
+import { useBusyIds } from '@/hooks/use-busy-id';
+import { useRouter } from 'next/navigation';
+import {
+  Dialog,
+  DialogContent,
+  DialogBody,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useBanner } from '@/components/ui/banner';
+import { Button } from '@/components/ui/button';
+import { useClosedTimePeriods } from '@/components/zeiterfassung/use-closed-time-periods';
+import { useTimeApprovalHolder } from '@/components/zeiterfassung/use-time-approval-holder';
+import { SHARED_FAILURE_MESSAGES } from '@/lib/action-messages';
+import type { WorkSession } from '@/lib/time-tracking/types';
+import type { OrgRole } from '@/lib/roles';
+import {
+  deleteEntryDetailsBlock,
+  reviewEntryDetailsEntries,
+  type EntryDetailsActionId,
+  type EntryDetailsCommandContext,
+} from './entry-details-commands';
+import { EntryDetailsContent } from './entry-details-content';
+import { EntryDetailsManageActions, EntryDetailsReviewActions } from './entry-details-footer-actions';
+import { getEntryDetailsDescription } from './entry-details-labels';
+import { getEntryDetailsPermissions } from './entry-details-permissions';
+import { saveEntryDetailsEdit } from './entry-details-save';
+import { useEntryDetailsDisplayedBreaks } from './use-entry-details-displayed-breaks';
+import { useEntryDetailsDraft } from './use-entry-details-draft';
+import { useEntryDetailsResolvedJob } from './use-entry-details-resolved-job';
+import { useEntryDetailsSession } from './use-entry-details-session';
+
+interface EntryDetailsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  session: WorkSession;
+  currentUserRole: OrgRole;
+  currentUserId?: string | undefined;
+  onRefresh: () => void;
+  startInEditMode?: boolean | undefined;
+  jobName?: string | null | undefined;
+  entryUserRole?: OrgRole | undefined;
+}
+
+/** The dialog's reads, permissions and draft, and the commands its buttons run. */
+function useEntryDetailsDialog({
+  open,
+  onOpenChange,
+  session,
+  currentUserRole,
+  currentUserId,
+  onRefresh,
+  startInEditMode = false,
+  jobName,
+  entryUserRole,
+}: EntryDetailsDialogProps) {
+  // One flow per action id so the clicked button carries the spinner while
+  // the other footer buttons only lock (feedback canon: edit from a dialog).
+  const { run: runAction, isBusy, anyBusy: isPending } = useBusyIds<EntryDetailsActionId>();
+  const { showBanner } = useBanner();
+  const router = useRouter();
+  const snapshot = useEntryDetailsSession(session);
+  const { resolvedJob, jobDetailUrl } = useEntryDetailsResolvedJob({ open, session, jobName });
+  const editFormId = useId();
+  const closedPeriods = useClosedTimePeriods(snapshot.entryOrganizationId, open);
+  const approvalHolder = useTimeApprovalHolder(snapshot.entryOrganizationId, open);
+  const { canEdit, canApprove, pendingEntries, hasPendingEntry, inClosedPeriod } = getEntryDetailsPermissions(
+    {
+      snapshot,
+      currentUserRole,
+      currentUserId,
+      entryUserRole,
+      closedPeriods,
+      approvalHolder,
+    },
+  );
+  const draft = useEntryDetailsDraft({ open, startInEditMode: startInEditMode && canEdit, snapshot });
+  const breaks = useEntryDetailsDisplayedBreaks(snapshot, draft);
+
+  const commandContext: EntryDetailsCommandContext = {
+    runAction,
+    showBanner,
+    setError: draft.setError,
+    onOpenChange,
+    onRefresh,
+  };
+  const handleSaveEdit = () =>
+    saveEntryDetailsEdit({
+      context: commandContext,
+      session,
+      snapshot,
+      draft,
+      displayedBreaks: breaks.displayedBreaks,
+      closedPeriods,
+    });
+  const handleDelete = () => deleteEntryDetailsBlock(commandContext, snapshot);
+  const handleReview = (decision: 'approved' | 'rejected') =>
+    reviewEntryDetailsEntries(commandContext, pendingEntries, decision);
+  const handleNavigate = (url: string) => {
+    onOpenChange(false);
+    router.push(url);
+  };
+
+  return {
+    isBusy,
+    isPending,
+    snapshot,
+    editFormId,
+    canEdit,
+    canApprove,
+    hasPendingEntry,
+    inClosedPeriod,
+    draft,
+    handleSaveEdit,
+    handleDelete,
+    handleReview,
+    contentProps: {
+      snapshot,
+      draft,
+      breaks,
+      resolvedJob,
+      jobDetailUrl,
+      canEdit,
+      onNavigate: handleNavigate,
+    },
+  };
+}
+
+export function EntryDetailsDialog(props: EntryDetailsDialogProps) {
+  const { open, onOpenChange, session } = props;
+  const details = useEntryDetailsDialog(props);
+  const { isBusy, isPending, snapshot, editFormId, canEdit, canApprove, draft, handleSaveEdit } = details;
+  const { isEditing, handleStartEdit, handleCancelEdit } = draft;
+
+  const entryContent = <EntryDetailsContent session={session} {...details.contentProps} />;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} pending={isPending}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Eintrag Details</DialogTitle>
+          <DialogDescription>{getEntryDetailsDescription(session, snapshot.isOrphan)}</DialogDescription>
+        </DialogHeader>
+
+        <DialogBody className="space-y-4">
+          {details.inClosedPeriod && (
+            <p className="text-sm text-muted-foreground">{SHARED_FAILURE_MESSAGES.period_closed}</p>
+          )}
+          {isEditing ? (
+            <form
+              id={editFormId}
+              onSubmit={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (isPending || !isEditing) return;
+                handleSaveEdit();
+              }}
+              noValidate
+              className="space-y-4"
+            >
+              {entryContent}
+            </form>
+          ) : (
+            entryContent
+          )}
+        </DialogBody>
+
+        <DialogFooter className="flex-col gap-2 sm:flex-row">
+          {canApprove && !isEditing && (
+            <EntryDetailsReviewActions
+              isPending={isPending}
+              isBusy={isBusy}
+              onReview={details.handleReview}
+            />
+          )}
+
+          {canEdit && !isEditing && (
+            <EntryDetailsManageActions
+              isPending={isPending}
+              isBusy={isBusy}
+              hasPendingEntry={details.hasPendingEntry}
+              onStartEdit={handleStartEdit}
+              onDelete={details.handleDelete}
+            />
+          )}
+
+          {isEditing && (
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEdit}
+                disabled={isPending}
+              >
+                Abbrechen
+              </Button>
+              <Button pending={isBusy('save')} type="submit" form={editFormId} size="sm" disabled={isPending}>
+                Speichern
+              </Button>
+            </div>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

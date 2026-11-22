@@ -1,0 +1,249 @@
+'use client';
+
+import { PlainButton } from '@/components/ui/plain-button';
+import { memo, useMemo } from 'react';
+import { cn } from '@/lib/utils';
+import {
+  boardDayKey,
+  dispatchStateFor,
+  isStartedOccurrence,
+  type CalendarBoardDay,
+  type CalendarBoardRow,
+} from '@/lib/calendar/board';
+import {
+  packLanes,
+  type BoardColumn,
+  type BoardLaneItem,
+  type BoardSpanItem,
+} from '@/lib/calendar/board-layout';
+import {
+  absenceItems,
+  occurrenceSpan,
+  type BoardAbsenceItem,
+  type BoardRowModel,
+  type SchoolCalendarEntry,
+} from '@/lib/calendar/board-model';
+import { BOARD_ROW_CONTENT_CHECKS } from '@/lib/calendar/board-row-memo';
+import type { CalendarJob } from '@/lib/jobs/types';
+import type { SicknessCalendarEntry } from '@/lib/sickness/actions';
+import type { VacationCalendarEntry } from '@/lib/vacation/calendar-actions';
+import type { DispatchRecipientDerivedState } from '@/lib/dispatch/types';
+import { unavailabilityOn } from '@/lib/planning/availability';
+import { getRoleLabel } from '@/lib/roles';
+import { memoPropsEqual } from '@/lib/ui/memo-equality';
+import { BarSegment } from '../surface/bar-segment';
+import { CALENDAR_LAYER_CLASS } from '../surface/layers';
+import type { DragSession } from '../drag-engine/drag-engine';
+import { BoardCell } from './board-cell';
+import { BoardRowCard, boardLaneStyle } from './board-row-card';
+import {
+  BOARD_COLUMN_MIN_PX,
+  BOARD_LANE_HEIGHT,
+  BOARD_NAME_COLUMN_PX,
+  type CalendarSurfaceActions,
+} from './types';
+
+type LaneEntry = BoardSpanItem &
+  (
+    | { kind: 'job'; job: CalendarJob }
+    | { kind: 'absence'; label: string; pending: boolean; absenceKind: BoardAbsenceItem['kind'] }
+  );
+
+export type BoardRowProps = {
+  model: BoardRowModel;
+  rowIndex: number;
+  columns: BoardColumn[];
+  jobs: CalendarJob[];
+  vacation: readonly VacationCalendarEntry[];
+  sickness: readonly SicknessCalendarEntry[];
+  school: readonly SchoolCalendarEntry[];
+  days: ReadonlyMap<string, CalendarBoardDay>;
+  planned: ReadonlyMap<string, number>;
+  /** The person-days scheduled work covers, from every visit, filtered or not. */
+  workDays: ReadonlySet<string>;
+  actual: ReadonlyMap<string, { minutes: number; pending: boolean }> | null;
+  dispatch: ReadonlyMap<string, DispatchRecipientDerivedState>;
+  materialDemandJobIds: ReadonlySet<string>;
+  compact: boolean;
+  scrollable: boolean;
+  /** The wall clock for the started-occurrence lock; a minute tick from the board. */
+  nowMs: number;
+  actions: CalendarSurfaceActions;
+  startDrag: (event: React.PointerEvent, session: DragSession) => void;
+  hoveredOccurrenceId: string | null;
+  onHoverLink: (occurrenceId: string | null) => void;
+  isolate: (employeeRecordId: string) => void;
+};
+
+/** The row's visits and, for a person, the absences, packed into lanes. */
+function boardRowLanes(
+  {
+    jobs,
+    vacation,
+    sickness,
+    school,
+    columns,
+  }: Pick<BoardRowProps, 'jobs' | 'vacation' | 'sickness' | 'school' | 'columns'>,
+  row: CalendarBoardRow | null,
+) {
+  const items: LaneEntry[] = [];
+  for (const job of jobs) {
+    const span = occurrenceSpan(job);
+    if (span) items.push({ ...span, kind: 'job', job });
+  }
+  if (row) {
+    for (const absence of absenceItems({
+      vacation,
+      sickness,
+      school,
+      employeeRecordId: row.employeeRecordId,
+    })) {
+      items.push({
+        ...absence,
+        kind: 'absence',
+        label: absence.label,
+        pending: absence.pending,
+        absenceKind: absence.kind,
+      });
+    }
+  }
+  return packLanes(items, columns);
+}
+
+/** The sticky name cell: the name isolates the person's row, the role sits below it. */
+function boardRowHeader(
+  row: CalendarBoardRow | null,
+  compact: boolean,
+  isolate: BoardRowProps['isolate'],
+): React.JSX.Element {
+  return (
+    <div
+      role="rowheader"
+      className={cn(
+        'sticky left-0 flex min-w-0 flex-col justify-center border-b border-r border-calendar-grid-strong bg-calendar-gutter px-3 py-1',
+        CALENDAR_LAYER_CLASS.sticky,
+      )}
+      style={{ gridColumn: 1, gridRow: '1 / -1' }}
+    >
+      {row ? (
+        <PlainButton
+          type="button"
+          className="min-w-0 truncate text-left text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          title="Nur diese Zeile anzeigen"
+          onClick={() => isolate(row.employeeRecordId)}
+        >
+          {row.displayName}
+        </PlainButton>
+      ) : (
+        <span className="truncate text-sm font-medium">Ohne Zuweisung</span>
+      )}
+      {row && !compact && (
+        <span className="truncate text-xs text-muted-foreground">
+          {row.role ? getRoleLabel(row.role) : 'Ohne App-Zugang'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** One day column of the row, with the day's capacity, planned and actual minutes. */
+function boardRowCell(
+  { rowIndex, days, planned, workDays, actual, compact, actions }: BoardRowProps,
+  row: CalendarBoardRow | null,
+  column: BoardColumn,
+  columnIndex: number,
+): React.JSX.Element {
+  const key = row ? boardDayKey(row.employeeRecordId, column.date) : '';
+  return (
+    <BoardCell
+      key={column.date}
+      column={column}
+      columnIndex={columnIndex}
+      rowIndex={rowIndex}
+      row={row}
+      day={row ? days.get(key) : undefined}
+      plannedMinutes={row ? (planned.get(key) ?? 0) : 0}
+      actual={row?.userId && actual ? actual.get(`${row.userId}:${column.date}`) : undefined}
+      compact={compact}
+      actions={actions}
+      hasPlannedWork={row ? workDays.has(key) : false}
+      unavailability={row ? unavailabilityOn(row, column.date) : null}
+    />
+  );
+}
+
+/** One lane item of the row: an absence bar or a visit's card. */
+function boardRowLane(
+  props: BoardRowProps,
+  row: CalendarBoardRow | null,
+  { item, ...placement }: BoardLaneItem<LaneEntry>,
+): React.JSX.Element {
+  const { dispatch, materialDemandJobIds, compact, nowMs, actions, startDrag } = props;
+  const { hoveredOccurrenceId, onHoverLink } = props;
+  if (item.kind === 'absence') {
+    // Positioned like a card: the day cells are `relative`, so a static bar would paint beneath them.
+    return (
+      <div key={item.key} className="relative min-w-0 p-0.5" style={boardLaneStyle(placement)}>
+        <BarSegment
+          tone={item.pending ? 'absence-pending' : 'absence'}
+          edge="single"
+          label={item.label}
+          startDate={item.startDate}
+          className="h-full min-h-5"
+        />
+      </div>
+    );
+  }
+  return (
+    <BoardRowCard
+      key={item.key}
+      job={item.job}
+      startDate={item.startDate}
+      {...placement}
+      row={row}
+      dispatchState={dispatchStateFor(dispatch, item.job.occurrenceId, row?.employeeRecordId ?? null)}
+      materialDemand={materialDemandJobIds.has(item.job.jobId ?? '')}
+      compact={compact}
+      locked={isStartedOccurrence(item.job, nowMs)}
+      actions={actions}
+      startDrag={startDrag}
+      hovered={hoveredOccurrenceId !== null && hoveredOccurrenceId === item.job.occurrenceId}
+      onHoverLink={onHoverLink}
+    />
+  );
+}
+
+/**
+ * One person (or the „Ohne Zuweisung" row) as one CSS grid: the name cell
+ * sticky on the left, one background cell per column, and every card or bar
+ * placed by the lane packer with a column span, so the row grows with its
+ * content and a multi-day occurrence is one element.
+ */
+export const BoardRow = memo(function BoardRow(props: BoardRowProps) {
+  const { model, columns, jobs, vacation, sickness, school, compact, scrollable, isolate } = props;
+  const row = model.kind === 'person' ? model.row : null;
+  const laneHeight = compact ? BOARD_LANE_HEIGHT.compact : BOARD_LANE_HEIGHT.comfortable;
+
+  const { lanes, laneCount } = useMemo(
+    () => boardRowLanes({ jobs, vacation, sickness, school, columns }, row),
+    [columns, jobs, row, school, sickness, vacation],
+  );
+
+  const rowLabel = row ? row.displayName : 'Ohne Zuweisung';
+  return (
+    <div
+      role="row"
+      data-board-row={model.key}
+      aria-label={rowLabel}
+      className="grid"
+      style={{
+        gridTemplateColumns: `${BOARD_NAME_COLUMN_PX}px repeat(${columns.length}, minmax(${scrollable ? BOARD_COLUMN_MIN_PX : 0}px, 1fr))`,
+        gridTemplateRows: `repeat(${Math.max(1, laneCount)}, minmax(${laneHeight}px, auto))${row ? ' 20px' : ''}`,
+      }}
+    >
+      {boardRowHeader(row, compact, isolate)}
+      {columns.map((column, columnIndex) => boardRowCell(props, row, column, columnIndex))}
+      {lanes.map((lane) => boardRowLane(props, row, lane))}
+    </div>
+  );
+}, memoPropsEqual<BoardRowProps>(BOARD_ROW_CONTENT_CHECKS));

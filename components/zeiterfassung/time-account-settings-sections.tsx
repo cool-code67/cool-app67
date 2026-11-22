@@ -1,0 +1,328 @@
+'use client';
+
+import type { ReactNode } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorText } from '@/components/ui/error-text';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { TimeAccountDateField } from '@/components/zeiterfassung/time-account-date-field';
+import {
+  PersonRow,
+  PersonTable,
+  type PersonLayout,
+} from '@/components/zeiterfassung/time-account-person-table';
+import { TimeAccountSubmitButton } from '@/components/zeiterfassung/time-account-submit-button';
+import { useTimeAccountForm } from '@/components/zeiterfassung/use-time-account-form';
+import { assignEmployeeTimePolicy } from '@/lib/time-accounts/actions';
+import {
+  decideTimeAccountAdjustment,
+  withdrawTimeAccountAdjustment,
+} from '@/lib/time-accounts/decision-actions';
+import type { TimeAccountSettingsData } from '@/lib/time-accounts/queries';
+import { formatMinutes } from '@/lib/time-accounts/presentation';
+import { formatGermanDate } from '@/lib/utils';
+
+type SettingsEmployee = TimeAccountSettingsData['employees'][number];
+type PersonCells = Parameters<typeof PersonRow>[0]['cells'];
+
+/** The non-default policies: a click on one assigns it. */
+function PolicyChoiceButtons({
+  formId,
+  employee,
+  policies,
+  isPending,
+  pendingValue,
+}: {
+  formId: string;
+  employee: SettingsEmployee;
+  policies: TimeAccountSettingsData['policies'];
+  isPending: boolean;
+  pendingValue: string | null;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={`Regel für ${employee.employeeName}`}>
+      {policies
+        .filter((policy) => !policy.isDefault)
+        .map((policy) => (
+          <TimeAccountSubmitButton
+            key={policy.id}
+            form={formId}
+            name="policyId"
+            value={policy.id}
+            variant={employee.assignedPolicyId === policy.id ? 'secondary' : 'outline'}
+            size="sm"
+            isPending={isPending}
+            pendingValue={pendingValue}
+            pendingLabel="Regel wird zugewiesen"
+          >
+            {policy.name} · V{policy.version}
+          </TimeAccountSubmitButton>
+        ))}
+    </div>
+  );
+}
+
+/** The table row takes the bare controls; a card labels each one and puts the rules last. */
+function policyAssignmentCells(
+  layout: PersonLayout,
+  { choices, validFrom, reason }: { choices: ReactNode; validFrom: ReactNode; reason: ReactNode },
+): PersonCells {
+  return layout === 'row'
+    ? [
+        { key: 'policy', content: choices },
+        { key: 'validFrom', content: validFrom },
+        { key: 'reason', content: reason },
+      ]
+    : [
+        {
+          key: 'validFrom',
+          content: (
+            <Field label="Gültig ab" required>
+              {validFrom}
+            </Field>
+          ),
+        },
+        {
+          key: 'reason',
+          content: (
+            <Field label="Grund" required>
+              {reason}
+            </Field>
+          ),
+        },
+        { key: 'policy', content: choices },
+      ];
+}
+
+function EmployeeTimePolicyAssignment({
+  employee,
+  policies,
+  today,
+  layout,
+}: {
+  employee: SettingsEmployee;
+  policies: TimeAccountSettingsData['policies'];
+  today: string;
+  layout: PersonLayout;
+}) {
+  const { handleSubmit, handleKeyDown, isPending, pendingValue, error } = useTimeAccountForm({
+    action: 'assignPolicy',
+    serverAction: assignEmployeeTimePolicy,
+    fallback: 'assignment_failed',
+    successMessage: () => 'Die Regel ist zugewiesen.',
+  });
+  const formId = `policy-assignment-${layout}-${employee.employeeRecordId}`;
+  const choices = (
+    <PolicyChoiceButtons
+      formId={formId}
+      employee={employee}
+      policies={policies}
+      isPending={isPending}
+      pendingValue={pendingValue}
+    />
+  );
+  const validFrom = (
+    <TimeAccountDateField
+      form={formId}
+      name="validFrom"
+      initialValue={today}
+      ariaLabel={`Regel gültig ab für ${employee.employeeName}`}
+    />
+  );
+  // Enter in the text field must not submit through the first rule button.
+  const reason = (
+    <Input
+      form={formId}
+      name="reason"
+      defaultValue="Individuelle Arbeitszeitregel"
+      aria-label={`Grund der Regel für ${employee.employeeName}`}
+      onKeyDown={handleKeyDown}
+      required
+    />
+  );
+  return (
+    <PersonRow
+      layout={layout}
+      name={employee.employeeName}
+      form={
+        <form id={formId} onSubmit={handleSubmit} className="contents">
+          <input type="hidden" name="employeeRecordId" value={employee.employeeRecordId} />
+        </form>
+      }
+      cells={policyAssignmentCells(layout, { choices, validFrom, reason })}
+      error={error}
+    />
+  );
+}
+
+export function EmployeeTimePolicyAssignmentCard({
+  settings,
+  today,
+}: {
+  settings: TimeAccountSettingsData;
+  today: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Individuelle Regeln</CardTitle>
+        <CardDescription>
+          Standardmäßig gilt die Organisationsregel. Bei Bedarf kann für einzelne Mitarbeitende eine
+          datumswirksame Ausnahme festgelegt werden. Ein Klick auf eine Regel weist sie zu.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {settings.policies.length < 2 ? (
+          <p className="text-sm text-muted-foreground">
+            Lege zuerst einen weiteren Regelsatz an, um eine individuelle Ausnahme zuzuweisen.
+          </p>
+        ) : (
+          <PersonTable
+            heads={[
+              { label: 'Mitarbeiter' },
+              { label: 'Regel' },
+              { label: 'Gültig ab', className: 'w-48' },
+              { label: 'Grund' },
+            ]}
+            renderPeople={(layout) =>
+              settings.employees.map((employee) => (
+                <EmployeeTimePolicyAssignment
+                  key={employee.employeeRecordId}
+                  employee={employee}
+                  policies={settings.policies}
+                  today={today}
+                  layout={layout}
+                />
+              ))
+            }
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const AWAITING_OTHER_PERSON = 'Wartet auf die Freigabe durch eine andere Person.';
+
+/** The proposer's own open request: another person decides it, the proposer may withdraw it. */
+function OwnPendingTimeAccountAdjustment({
+  request,
+}: {
+  request: TimeAccountSettingsData['pendingAdjustments'][number];
+}) {
+  const { handleSubmit, isPending, pendingValue, error } = useTimeAccountForm({
+    action: 'withdrawAdjustment',
+    serverAction: withdrawTimeAccountAdjustment,
+    fallback: 'withdraw_failed',
+    successMessage: () => 'Der Antrag ist zurückgezogen.',
+  });
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-2"
+      aria-label={`Eigener Antrag für ${request.employeeName}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="hidden" name="requestId" value={request.id} />
+        <input type="hidden" name="expectedVersion" value={request.version} />
+        <p className="text-sm text-muted-foreground">{AWAITING_OTHER_PERSON}</p>
+        <TimeAccountSubmitButton
+          variant="outline"
+          isPending={isPending}
+          pendingValue={pendingValue}
+          pendingLabel="Antrag wird zurückgezogen"
+        >
+          Zurückziehen
+        </TimeAccountSubmitButton>
+      </div>
+      <ErrorText>{error}</ErrorText>
+    </form>
+  );
+}
+
+function PendingTimeAccountAdjustment({
+  request,
+  canApprove,
+}: {
+  request: TimeAccountSettingsData['pendingAdjustments'][number];
+  /** The reader asked the approval scope and whether the caller proposed it. */
+  canApprove: boolean;
+}) {
+  const { handleSubmit, handleKeyDown, isPending, pendingValue, error } = useTimeAccountForm({
+    action: 'decideAdjustment',
+    serverAction: decideTimeAccountAdjustment,
+    fallback: 'decision_failed',
+    successMessage: (formData) =>
+      formData.get('decision') === 'approved' ? 'Der Antrag ist freigegeben.' : 'Der Antrag ist abgelehnt.',
+  });
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3 last:border-b-0">
+      <div className="min-w-0 text-sm wrap-anywhere">
+        <p className="font-medium">
+          {request.employeeName} · {formatMinutes(request.minutes)}
+        </p>
+        <p className="text-muted-foreground">
+          {formatGermanDate(request.effectiveDate)} · {request.reason}
+        </p>
+      </div>
+      {canApprove ? (
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-2"
+          aria-label={`Entscheidung für ${request.employeeName}`}
+        >
+          <div className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="requestId" value={request.id} />
+            <input type="hidden" name="expectedVersion" value={request.version} />
+            <Input
+              name="reason"
+              aria-label={`Entscheidungsgrund für ${request.employeeName}`}
+              placeholder="Entscheidungsgrund"
+              onKeyDown={handleKeyDown}
+              required
+            />
+            <TimeAccountSubmitButton
+              name="decision"
+              value="rejected"
+              variant="outline"
+              isPending={isPending}
+              pendingValue={pendingValue}
+              pendingLabel="Antrag wird abgelehnt"
+            >
+              Ablehnen
+            </TimeAccountSubmitButton>
+            <TimeAccountSubmitButton
+              name="decision"
+              value="approved"
+              isPending={isPending}
+              pendingValue={pendingValue}
+              pendingLabel="Antrag wird freigegeben"
+            >
+              Freigeben
+            </TimeAccountSubmitButton>
+          </div>
+          <ErrorText>{error}</ErrorText>
+        </form>
+      ) : request.ownProposal ? (
+        <OwnPendingTimeAccountAdjustment request={request} />
+      ) : (
+        <p className="text-sm text-muted-foreground">{AWAITING_OTHER_PERSON}</p>
+      )}
+    </div>
+  );
+}
+
+export function PendingTimeAccountAdjustments({
+  pendingAdjustments,
+}: {
+  pendingAdjustments: TimeAccountSettingsData['pendingAdjustments'];
+}) {
+  return pendingAdjustments.length > 0 ? (
+    <div className="space-y-3 border-t pt-4">
+      <h3 className="text-sm font-semibold">Offene Freigaben</h3>
+      {pendingAdjustments.map((request) => (
+        <PendingTimeAccountAdjustment key={request.id} request={request} canApprove={request.canApprove} />
+      ))}
+    </div>
+  ) : null;
+}

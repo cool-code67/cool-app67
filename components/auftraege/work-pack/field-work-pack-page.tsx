@@ -1,0 +1,170 @@
+import { redirect } from 'next/navigation';
+import type { ReactElement } from 'react';
+
+import { DetailPageHeader } from '@/components/shared/detail-page-header';
+import { PageBody, PageShell } from '@/components/shared/page-shell';
+import { RegionLoadError } from '@/components/shared/region-load-error';
+import { Badge } from '@/components/ui/badge';
+import { UrlFlashBanner } from '@/components/ui/banner';
+import { FormDisclosure } from '@/components/ui/form-disclosure';
+import { FieldWorkPackExecutionSection } from '@/components/auftraege/work-pack/field-work-pack-execution-section';
+import { FieldWorkPackOverview } from '@/components/auftraege/work-pack/field-work-pack-overview';
+import { dispatchErrorMessage } from '@/lib/dispatch/types';
+import { getJobByNumber } from '@/lib/jobs/actions';
+import { WORK_EXECUTION_LABELS } from '@/lib/work-lifecycle/types';
+import { WORK_EXECUTION_CLASSES } from '../status-classes';
+import { FieldWorkPackContextSources, FieldWorkPackEquipmentSource } from './field-work-pack-context-sources';
+import { loadFieldWorkPackData, type FieldWorkPackData } from './field-work-pack-data';
+import type { FieldWorkPackJob } from '@/lib/jobs/field-work-pack';
+import { jobDetailHref } from '@/lib/jobs/routes';
+import { fieldSiteAccess } from '@/lib/site-access-proposals/types';
+import { fieldSiteAccessSlots } from './field-site-access';
+import { FieldWorkPackRecordSources, FieldWorkPackTimeAndMaterials } from './field-work-pack-record-sources';
+
+export async function FieldWorkPackPage({
+  jobNumber,
+  expectedProjectNumber,
+  currentUserId,
+}: {
+  jobNumber: string;
+  expectedProjectNumber?: string;
+  currentUserId: string;
+}): Promise<ReactElement> {
+  const jobResult = await getJobByNumber(decodeURIComponent(jobNumber));
+  // A missing or foreign job leaves the page; a failed read must not look like one.
+  if (!jobResult.success && (jobResult.error === 'fetch_failed' || jobResult.error === 'unexpected_error')) {
+    return (
+      <RegionLoadError title="Der Auftrag konnte nicht geladen werden">
+        Der Auftrag ist gerade nicht erreichbar. Versuche es in einem Moment erneut.
+      </RegionLoadError>
+    );
+  }
+  if (!jobResult.success) redirect('/auftraege');
+
+  const job = jobResult.job;
+  const currentUserAssignment = job.assignments.find((assignment) => assignment.userId === currentUserId);
+  if (!currentUserAssignment) redirect('/auftraege');
+
+  if (expectedProjectNumber) {
+    if (job.project?.projectNumber !== decodeURIComponent(expectedProjectNumber)) {
+      redirect('/auftraege');
+    }
+  } else if (job.project?.projectNumber) {
+    redirect(jobDetailHref(job, job.project));
+  }
+
+  const data = await loadFieldWorkPackData(job, currentUserId, currentUserAssignment);
+  const { fieldJob, lifecycleResult, dispatchResult, dispatchCards, readOnly } = data;
+
+  return (
+    <PageShell className="bg-muted/20">
+      <UrlFlashBanner paramKey="field_transition" messageTemplate="Arbeitsstand wurde aktualisiert." />
+      <FieldWorkPackPageHeader fieldJob={fieldJob} lifecycleResult={lifecycleResult} />
+
+      <PageBody maxWidth="wide">
+        {/* The test id scopes the pack's body content; the specs never reach the header through it. */}
+        <div data-testid="field-work-pack" className="space-y-4 sm:space-y-6">
+          {/* A job without an Einsatzort passes no access prop at all: the job page's payload is measured. */}
+          <FieldWorkPackOverview
+            job={fieldJob}
+            {...(job.siteId
+              ? {
+                  siteAccess: fieldSiteAccessSlots(
+                    job.id,
+                    fieldSiteAccess(job.siteId, data.siteAccessProposalRead),
+                  ),
+                }
+              : {})}
+          />
+          <FieldWorkPackContextSources job={job} data={data} />
+          <FieldWorkPackExecutionSection
+            key={job.id}
+            jobId={job.id}
+            jobTitle={job.title}
+            initialDispatchCards={dispatchCards}
+            initialDispatchError={dispatchResult.success ? null : dispatchErrorMessage(dispatchResult.error)}
+            lifecycleSnapshot={lifecycleResult.success ? lifecycleResult.snapshot : null}
+            readOnly={readOnly}
+          />
+
+          <FieldWorkPackRecordSources job={job} currentUserId={currentUserId} data={data} />
+
+          <FieldWorkPackEquipmentSource job={job} data={data} />
+
+          <FieldWorkPackTimeAndMaterials job={job} currentUserId={currentUserId} data={data} />
+
+          <FieldWorkPackReferenceSection fieldJob={fieldJob} />
+        </div>
+      </PageBody>
+    </PageShell>
+  );
+}
+
+/** Breadcrumbs, title and the job's execution state. */
+function FieldWorkPackPageHeader({
+  fieldJob,
+  lifecycleResult,
+}: {
+  fieldJob: FieldWorkPackJob;
+  lifecycleResult: FieldWorkPackData['lifecycleResult'];
+}): ReactElement {
+  return (
+    <DetailPageHeader
+      breadcrumbs={[
+        { label: 'Aufträge', href: '/auftraege' },
+        ...(fieldJob.project ? [{ label: fieldJob.project.name }] : []),
+        { label: `Auftrag ${fieldJob.jobNumber ?? 'Ohne Nummer'}` },
+      ]}
+      title={fieldJob.title}
+      subtitle={`Auftrag ${fieldJob.jobNumber ?? 'Ohne Nummer'}`}
+      badges={
+        <Badge
+          variant="secondary"
+          className={
+            lifecycleResult.success
+              ? WORK_EXECUTION_CLASSES[lifecycleResult.snapshot.executionState]
+              : undefined
+          }
+        >
+          {lifecycleResult.success
+            ? WORK_EXECUTION_LABELS[lifecycleResult.snapshot.executionState]
+            : 'Arbeitsstand unbekannt'}
+        </Badge>
+      }
+    />
+  );
+}
+
+/** The job's project and the note on separate binding areas, behind a disclosure. */
+function FieldWorkPackReferenceSection({ fieldJob }: { fieldJob: FieldWorkPackJob }): ReactElement {
+  return (
+    <section
+      className="rounded-lg border bg-card p-4 shadow-xs sm:p-5"
+      aria-labelledby="field-reference-heading"
+    >
+      <FormDisclosure label="Weitere Auftragsangaben">
+        <div className="space-y-2 pt-3 text-sm">
+          <h2 id="field-reference-heading" className="sr-only">
+            Weitere Auftragsangaben
+          </h2>
+          {fieldJob.sourceNumber && (
+            <p>
+              <span className="text-muted-foreground">Nummer im Altsystem:</span> {fieldJob.sourceNumber}
+            </p>
+          )}
+          {fieldJob.project ? (
+            <p>
+              <span className="text-muted-foreground">Projekt:</span> {fieldJob.project.name} ·{' '}
+              {fieldJob.project.projectNumber}
+            </p>
+          ) : (
+            <p className="text-muted-foreground">Dieser Auftrag gehört zu keinem Projekt.</p>
+          )}
+          <p className="text-muted-foreground">
+            Planung, Zeiterfassung, Material, Dokumente und Nachweise bleiben getrennte verbindliche Bereiche.
+          </p>
+        </div>
+      </FormDisclosure>
+    </section>
+  );
+}

@@ -1,0 +1,211 @@
+'use client';
+
+import Link from 'next/link';
+import { useState, type ReactElement } from 'react';
+import { ArrowLeft, Pencil } from 'lucide-react';
+
+import { ContextualDocumentsSection } from '@/components/dokumente/contextual-documents-section';
+import { useOrganization } from '@/components/organization/organization-context';
+import { WorkRequestEntriesSection } from '@/components/auftraege/shared/work-request-entries-section';
+import { DetailColumns } from '@/components/shared/detail-columns';
+import { RegionLoadError } from '@/components/shared/region-load-error';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { SectionError } from '@/components/ui/section-error';
+import { InlinePending } from '@/components/ui/inline-pending';
+import { useBusyIds } from '@/hooks/use-busy-id';
+import { useLiveView } from '@/hooks/use-live-view';
+import { readInBackground } from '@/lib/data/background-read-client';
+import { isEventForRow } from '@/lib/realtime/events';
+import type { OrganizationDocument } from '@/lib/documents/types';
+import {
+  SERVICE_CASE_STATUS_LABELS,
+  SERVICE_CASE_URGENCY_LABELS,
+  type ServiceCaseDetailWorkspace,
+} from '@/lib/service-cases/types';
+import { FollowUpDialog, RelationDialog } from './service-case-detail-dialogs';
+import {
+  ServiceCaseDetailSidebar,
+  ServiceCaseHistorySection,
+  ServiceCaseOriginSection,
+  ServiceCaseRelationsSection,
+  ServiceCaseTriageSection,
+} from './service-case-detail-sections';
+import { ServiceCaseEvidenceLink } from './service-case-evidence-link';
+import { ServiceCaseFormDialog } from './service-case-form-dialog';
+import { formatBerlinDateTime } from '@/lib/utils';
+
+type ServiceCaseItem = ServiceCaseDetailWorkspace['serviceCase'];
+
+/** The case's live read over GET, outside the Server Action queue the dialogs' saves use. */
+function useServiceCaseDetailLive(initial: ServiceCaseDetailWorkspace) {
+  const { activeOrgId } = useOrganization();
+  return useLiveView({
+    tables: ['service_cases'],
+    initialData: initial,
+    resetKey: initial.serviceCase.id,
+    eventFilter: (event) => isEventForRow(event, initial.serviceCase.id),
+    read: async ({ signal }) => {
+      if (!activeOrgId) return { ok: false as const };
+      const result = await readInBackground(
+        'service-case-detail',
+        { organizationId: activeOrgId, caseNumber: initial.serviceCase.caseNumber },
+        signal,
+      );
+      return result.success
+        ? { ok: true as const, data: result.workspace }
+        : { ok: false as const, error: result.error };
+    },
+  });
+}
+
+function ServiceCaseDetailHeader({
+  item,
+  busy,
+  isStale,
+  onEdit,
+}: {
+  item: ServiceCaseItem;
+  busy: boolean;
+  isStale: boolean;
+  onEdit: () => void;
+}): ReactElement {
+  return (
+    <div>
+      <Link
+        href="/service/faelle"
+        className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Servicefälle
+      </Link>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm text-muted-foreground">{item.caseNumber}</span>
+            <Badge variant="secondary">{SERVICE_CASE_STATUS_LABELS[item.status]}</Badge>
+            <span className="text-sm text-muted-foreground">{SERVICE_CASE_URGENCY_LABELS[item.urgency]}</span>
+          </div>
+          <h2 className="mt-1 break-words text-xl font-semibold">{item.summary}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {item.intakeType === 'request' ? 'Aus Anfrage übernommen' : 'Direkt erfasst'} · Aktualisiert{' '}
+            {formatBerlinDateTime(item.updatedAt)}
+          </p>
+        </div>
+        <span className="flex items-center gap-2">
+          <InlinePending active={busy} label="Änderungen werden übernommen" />
+          <Button type="button" onClick={onEdit} disabled={isStale}>
+            <Pencil className="size-4" />
+            Bearbeiten
+          </Button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ServiceCaseDocuments({
+  item,
+  documents,
+  documentsLoadFailed,
+}: {
+  item: ServiceCaseItem;
+  documents: OrganizationDocument[];
+  documentsLoadFailed: boolean;
+}): ReactElement {
+  return documentsLoadFailed ? (
+    <RegionLoadError>Dokumente und Bilder konnten nicht geladen werden.</RegionLoadError>
+  ) : (
+    <ContextualDocumentsSection
+      title="Dokumente & Bilder"
+      description="Dokumente werden aus der zentralen Ablage verknüpft. Es entsteht keine Dateikopie."
+      documents={documents}
+      documentTarget={{ kind: 'service_case', serviceCaseId: item.id }}
+      contextLabel={item.caseNumber}
+      canUpload
+      canManage
+      keepUploadedDocumentsVisible
+    />
+  );
+}
+
+export function ServiceCaseDetailContent({
+  initial,
+  documents,
+  documentsLoadFailed,
+}: {
+  initial: ServiceCaseDetailWorkspace;
+  documents: OrganizationDocument[];
+  documentsLoadFailed: boolean;
+}): ReactElement {
+  const [editOpen, setEditOpen] = useState(false);
+  const [relationOpen, setRelationOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const live = useServiceCaseDetailLive(initial);
+  const workspace = live.data ?? initial;
+  const item = workspace.serviceCase;
+  // Section-scoped settle window after a dialog action: the touched section
+  // shows the indicator until the live read lands.
+  const settling = useBusyIds<'case' | 'relations'>();
+  const settleOn = (section: 'case' | 'relations') => () => void settling.run(section, live.refresh);
+  return (
+    <div className="space-y-6">
+      {live.isStale && (
+        <SectionError onRetry={() => void live.refresh()} retryPending={live.isRefreshing}>
+          Der Servicefall konnte nicht aktualisiert werden. Angezeigt wird der letzte bekannte Stand.
+        </SectionError>
+      )}
+      <ServiceCaseDetailHeader
+        item={item}
+        busy={settling.isBusy('case')}
+        isStale={live.isStale}
+        onEdit={() => setEditOpen(true)}
+      />
+      <DetailColumns layout="main-and-aside">
+        <div className="min-w-0 space-y-6">
+          <ServiceCaseOriginSection item={item} />
+          <WorkRequestEntriesSection kind="service_case" id={item.id} />
+          <ServiceCaseTriageSection item={item} />
+          <ServiceCaseDocuments item={item} documents={documents} documentsLoadFailed={documentsLoadFailed} />
+          <ServiceCaseEvidenceLink
+            serviceCase={item}
+            options={workspace.evidenceOptions}
+            isStale={live.isStale}
+            invalidate={live.invalidate}
+            refresh={live.refresh}
+          />
+          <ServiceCaseRelationsSection
+            workspace={workspace}
+            isStale={live.isStale}
+            busy={settling.isBusy('relations')}
+            onLinkClick={() => setRelationOpen(true)}
+          />
+          <ServiceCaseHistorySection item={item} />
+        </div>
+        <ServiceCaseDetailSidebar
+          workspace={workspace}
+          isStale={live.isStale}
+          onFollowUpClick={() => setFollowUpOpen(true)}
+        />
+      </DetailColumns>
+      {editOpen && (
+        <ServiceCaseFormDialog
+          open
+          onOpenChange={setEditOpen}
+          client={workspace.client}
+          initial={item}
+          onSaved={settleOn('case')}
+        />
+      )}
+      {relationOpen && (
+        <RelationDialog
+          open
+          onOpenChange={setRelationOpen}
+          workspace={workspace}
+          onSaved={settleOn('relations')}
+        />
+      )}
+      {followUpOpen && <FollowUpDialog open onOpenChange={setFollowUpOpen} workspace={workspace} />}
+    </div>
+  );
+}

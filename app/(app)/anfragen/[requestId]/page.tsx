@@ -1,0 +1,379 @@
+import { notFound, redirect } from 'next/navigation';
+
+import { createSupabaseAdminClient, type AdminClient } from '@/lib/supabase/admin';
+import { readInBatches } from '@/lib/supabase/query-batches';
+import { resolvePageMembership } from '@/lib/org/page-context';
+import { isManagerRole } from '@/lib/roles';
+import { formatSiteAddress } from '@/lib/clients/types';
+import {
+  isCallbackOverdue,
+  toClientRequest,
+  toClientRequestEvent,
+  WORK_TARGET_KIND_LABELS,
+  requestWorkHref,
+  type ClientRequest,
+  type ClientRequestEvent,
+  type WorkTargetKind,
+} from '@/lib/requests/types';
+import { getRequestDocuments } from '@/lib/documents/actions';
+import { getCallerMatches } from '@/lib/requests/actions';
+import { getWorkBillingParties } from '@/lib/billing-parties/server';
+import {
+  RequestDetailContent,
+  type RequestDetailData,
+  type RequestEventEntry,
+} from '@/components/anfragen/request-detail-content';
+import { RegionLoadError } from '@/components/shared/region-load-error';
+import { formatProfileName, getManagerAssigneeOptions } from '@/lib/members/profile-name';
+
+/** The reads that need a value from the request row, and the event actors. */
+function readLabelWave(admin: AdminClient, activeOrgId: string, request: ClientRequest, actorIds: string[]) {
+  return Promise.all([
+    request.clientId
+      ? admin
+          .from('clients')
+          .select('id, name')
+          .eq('id', request.clientId)
+          .eq('organization_id', activeOrgId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    request.siteId
+      ? admin
+          .from('client_sites')
+          .select('*')
+          .eq('id', request.siteId)
+          .eq('organization_id', activeOrgId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    request.contactId
+      ? admin
+          .from('client_contacts')
+          .select('*')
+          .eq('id', request.contactId)
+          .eq('organization_id', activeOrgId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    request.assignedTo
+      ? admin
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .eq('id', request.assignedTo)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    request.equipmentId
+      ? admin
+          .from('installed_equipment')
+          .select('id, equipment_number, name')
+          .eq('id', request.equipmentId)
+          .eq('organization_id', activeOrgId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    request.convertedJobId
+      ? admin
+          .from('jobs')
+          .select('id, title, job_number')
+          .eq('id', request.convertedJobId)
+          .eq('organization_id', activeOrgId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    request.convertedProjectId
+      ? admin
+          .from('projects')
+          .select('id, name, project_number')
+          .eq('id', request.convertedProjectId)
+          .eq('organization_id', activeOrgId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    // One request has a handful of events, so the actor list is small.
+    readInBatches(actorIds, (batch) =>
+      admin.from('profiles').select('id, first_name, last_name, email').in('id', batch),
+    ),
+  ]);
+}
+
+type LabelWave = Awaited<ReturnType<typeof readLabelWave>>;
+
+/**
+ * A failed label read would show a missing customer, site, contact, assignee,
+ * Anlage or conversion as if there were none, so it fails the page instead.
+ */
+function anyLabelReadFailed(labelWave: LabelWave, convertedServiceCaseResult: object): boolean {
+  const [
+    clientResult,
+    siteResult,
+    contactResult,
+    assigneeResult,
+    equipmentResult,
+    convertedJobResult,
+    convertedProjectResult,
+  ] = labelWave;
+  const results: ReadonlyArray<object> = [
+    clientResult,
+    siteResult,
+    contactResult,
+    assigneeResult,
+    equipmentResult,
+    convertedJobResult,
+    convertedProjectResult,
+    convertedServiceCaseResult,
+  ];
+  return results.some((result) => 'error' in result && Boolean(result.error));
+}
+
+/** Detail routes are keyed by number; without one, show plain text instead of a broken link. */
+function convertedLinkOf(
+  convertedJob: LabelWave[5]['data'],
+  convertedProject: LabelWave[6]['data'],
+  convertedServiceCase: { case_number: string } | null,
+): RequestDetailData['convertedLink'] {
+  return convertedJob
+    ? {
+        label: `Auftrag ${convertedJob.job_number ?? convertedJob.title}`,
+        href: convertedJob.job_number ? `/auftraege/${encodeURIComponent(convertedJob.job_number)}` : null,
+      }
+    : convertedProject
+      ? {
+          label: `Projekt ${convertedProject.project_number ?? convertedProject.name}`,
+          href: convertedProject.project_number
+            ? `/auftraege/projekt/${encodeURIComponent(convertedProject.project_number)}`
+            : null,
+        }
+      : convertedServiceCase
+        ? {
+            label: `Servicefall ${convertedServiceCase.case_number}`,
+            href: `/service/faelle/${encodeURIComponent(convertedServiceCase.case_number)}`,
+          }
+        : null;
+}
+
+type AttachedEntryRow = {
+  job_id: string | null;
+  project_id: string | null;
+  service_case_id: string | null;
+  jobs: { job_number: string | null; title: string } | null;
+  projects: { project_number: string | null; name: string } | null;
+  service_cases: { case_number: string } | null;
+};
+
+/** The work the request was attached to, linked by its number. */
+function attachedLinkOf(entry: AttachedEntryRow | null): RequestDetailData['attachedLink'] {
+  if (!entry) return null;
+  const work: { kind: WorkTargetKind; id: string; number: string | null } | null = entry.job_id
+    ? { kind: 'job', id: entry.job_id, number: entry.jobs?.job_number ?? null }
+    : entry.project_id
+      ? { kind: 'project', id: entry.project_id, number: entry.projects?.project_number ?? null }
+      : entry.service_case_id
+        ? {
+            kind: 'service_case',
+            id: entry.service_case_id,
+            number: entry.service_cases?.case_number ?? null,
+          }
+        : null;
+  if (!work) return null;
+  const name = work.number ?? entry.jobs?.title ?? entry.projects?.name ?? '';
+  return { label: `${WORK_TARGET_KIND_LABELS[work.kind]} ${name}`.trim(), href: requestWorkHref(work) };
+}
+
+/** The page's props from both waves; the events are null when their read or the actor read failed. */
+function requestDetailData({
+  request,
+  events,
+  eventsFailed,
+  assignees,
+  documents,
+  convertedServiceCase,
+  attachedEntry,
+  callerMatches,
+  billingParties,
+  labelWave: [
+    clientResult,
+    siteResult,
+    contactResult,
+    assigneeResult,
+    equipmentResult,
+    convertedJobResult,
+    convertedProjectResult,
+    actorsResult,
+  ],
+}: {
+  request: ClientRequest;
+  events: ClientRequestEvent[];
+  eventsFailed: boolean;
+  assignees: RequestDetailData['assignees'];
+  documents: RequestDetailData['documents'];
+  convertedServiceCase: { case_number: string } | null;
+  attachedEntry: AttachedEntryRow | null;
+  callerMatches: RequestDetailData['callerMatches'];
+  billingParties: RequestDetailData['billingParties'];
+  labelWave: LabelWave;
+}): RequestDetailData {
+  const actorById = new Map((actorsResult.data ?? []).map((profile) => [profile.id, profile]));
+
+  const eventEntries: RequestEventEntry[] = events.map((event) => {
+    const actor = event.createdBy ? actorById.get(event.createdBy) : null;
+    return {
+      id: event.id,
+      eventType: event.eventType,
+      createdAt: event.createdAt,
+      actorName: actor ? formatProfileName(actor) : null,
+    };
+  });
+
+  const site = siteResult.data;
+  const contact = contactResult.data;
+  const equipment = equipmentResult.data;
+  const siteAddress = site
+    ? formatSiteAddress({ street: site.street, postalCode: site.postal_code, city: site.city })
+    : '';
+
+  return {
+    request,
+    clientName: clientResult.data?.name ?? null,
+    siteLabel: site ? [site.name, siteAddress].filter(Boolean).join(' · ') : null,
+    siteAddress: siteAddress || null,
+    contactLabel: contact
+      ? [contact.name, contact.role ? `(${contact.role})` : null].filter(Boolean).join(' ')
+      : null,
+    contactPhone: contact?.phone ?? null,
+    assigneeName: assigneeResult.data ? formatProfileName(assigneeResult.data) : null,
+    callbackOverdue: isCallbackOverdue(request, new Date()),
+    equipment: equipment
+      ? {
+          label: `${equipment.equipment_number} · ${equipment.name}`,
+          equipmentNumber: equipment.equipment_number,
+        }
+      : null,
+    convertedLink: convertedLinkOf(
+      convertedJobResult.data,
+      convertedProjectResult.data,
+      convertedServiceCase,
+    ),
+    attachedLink: attachedLinkOf(attachedEntry),
+    documents,
+    callerMatches,
+    billingParties,
+    events: eventsFailed || actorsResult.error ? null : eventEntries,
+    assignees,
+  };
+}
+
+/** The first wave beside the history: every read keyed by the request id and the authorized organization. */
+function readRequestWave(admin: AdminClient, activeOrgId: string, requestId: string) {
+  return Promise.all([
+    admin
+      .from('client_requests')
+      .select('*')
+      .eq('id', requestId)
+      .eq('organization_id', activeOrgId)
+      .maybeSingle(),
+    getManagerAssigneeOptions(admin, activeOrgId),
+    getRequestDocuments(requestId),
+    admin
+      .from('service_cases')
+      .select('id, case_number, summary')
+      .eq('organization_id', activeOrgId)
+      .eq('source_request_id', requestId)
+      .maybeSingle(),
+    // The work an attach made the request part of; a request has one at most.
+    admin
+      .from('work_request_entries')
+      .select(
+        'job_id, project_id, service_case_id, jobs(job_number, title), projects(project_number, name), service_cases(case_number)',
+      )
+      .eq('organization_id', activeOrgId)
+      .eq('request_id', requestId)
+      .maybeSingle(),
+    // Empty for a matched or finished request.
+    getCallerMatches(requestId),
+    getWorkBillingParties({ kind: 'request', id: requestId }),
+  ]);
+}
+
+export default async function AnfrageDetailPage({ params }: { params: Promise<{ requestId: string }> }) {
+  const { requestId } = await params;
+
+  const { membership } = await resolvePageMembership();
+
+  if (!membership) {
+    redirect('/anfragen');
+  }
+
+  const activeOrgId = membership.orgId;
+  if (!isManagerRole(membership.role)) {
+    redirect('/dashboard');
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  // Two waves instead of three: everything keyed by the request id and the
+  // authorized organization starts with the request row; the reads that need a
+  // value from that row, and the event actors, follow together.
+  const [
+    eventsResult,
+    [
+      { data: requestRow, error: requestError },
+      assignees,
+      documentsResult,
+      convertedServiceCaseResult,
+      attachedEntryResult,
+      callerMatchesResult,
+      billingPartiesResult,
+    ],
+  ] = await Promise.all([
+    admin
+      .from('client_request_events')
+      .select('*')
+      .eq('request_id', requestId)
+      .eq('organization_id', activeOrgId)
+      .order('created_at', { ascending: false }),
+    readRequestWave(admin, activeOrgId, requestId),
+  ]);
+
+  if (requestError) {
+    return (
+      <RegionLoadError title="Die Anfrage konnte nicht geladen werden">
+        Die Anfrage ist gerade nicht erreichbar. Versuche es in einem Moment erneut.
+      </RegionLoadError>
+    );
+  }
+  if (!requestRow) notFound();
+
+  const request = toClientRequest(requestRow);
+  const events = (eventsResult.data ?? []).map(toClientRequestEvent);
+  const actorIds = Array.from(
+    new Set(events.map((event) => event.createdBy).filter((id): id is string => Boolean(id))),
+  );
+
+  const labelWave = await readLabelWave(admin, activeOrgId, request, actorIds);
+  if (
+    !assignees.success ||
+    anyLabelReadFailed(labelWave, convertedServiceCaseResult) ||
+    attachedEntryResult.error
+  ) {
+    return (
+      <RegionLoadError title="Die Anfrage konnte nicht geladen werden">
+        Kunde, Einsatzort, Ansprechpartner, Zuständige, Anlage oder Umwandlung sind gerade nicht erreichbar.
+        Versuche es in einem Moment erneut.
+      </RegionLoadError>
+    );
+  }
+
+  return (
+    <RequestDetailContent
+      data={requestDetailData({
+        request,
+        events,
+        eventsFailed: Boolean(eventsResult.error),
+        assignees: assignees.options,
+        documents: documentsResult.success ? documentsResult.documents : null,
+        convertedServiceCase: convertedServiceCaseResult.data,
+        attachedEntry: attachedEntryResult.data,
+        callerMatches: callerMatchesResult.success
+          ? { matches: callerMatchesResult.matches, moreMatches: callerMatchesResult.moreMatches }
+          : null,
+        billingParties: billingPartiesResult.success ? billingPartiesResult.parties : undefined,
+        labelWave,
+      })}
+    />
+  );
+}

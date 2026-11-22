@@ -1,0 +1,52 @@
+Haustechnik Krämer GmbH
+Organisation erstellen
+Dashboard
+Aufgaben
+3
+3 offene Aufgaben und Benachrichtigungen
+Kalender
+Zeiterfassung
+Qualifikationen
+Anfragen
+Aufträge
+Dokumente
+Inventar
+Angebote
+Rechnungen
+Service
+Arbeitsvorlagen
+Mitarbeiter
+Kunden
+Problem melden
+F2
+MK
+Martin Krämer
+martin.kraemer@haustechnik-kraemer.de
+Zeiterfassung
+Manuelle Eintragung
+Zeiterfassung
+Zeitkonto
+Perioden
+Regeln & Export
+Übersicht
+Anträge
+Verlauf
+08:00:00
+Gesamtzeit
+Du bist nicht eingestempelt.
+Tagesziel:
+8 Std.
+Arbeitszeit
+(0% erreicht)
+Arbeitszeit
+0 Min.
+Pause
+0 Min.
+Überstunden heute
+0 Min.
+Schnellzugriff
+Arbeit starten
+Arbeit an Auftrag …
+Fahrt starten
+Weitere Aktivitäten …
+Nicht eingestempelt

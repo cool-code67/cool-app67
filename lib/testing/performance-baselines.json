@@ -1,0 +1,1336 @@
+{
+  "version": 1,
+  "measurementVersion": 3,
+  "tolerance": {
+    "relative": 0.25,
+    "absoluteMs": 250
+  },
+  "baselines": [
+    {
+      "scenarioId": "customers.list.open",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "05598191ea2c43349993f569fb4fb510637be9089456766d4ce6d7e28bfc4fe7",
+        "protocol": "fixed-workload-jobs-warmed-settled-closed-server-fresh-context-customers-jobs-detail-equipment-tasks-browser-raf-v5",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 995.199951171875,
+      "samples": [
+        853.099853515625,
+        910.900146484375,
+        947,
+        971.10009765625,
+        995.199951171875,
+        1027.800048828125,
+        1091.400146484375,
+        1131.800048828125,
+        1412.60009765625
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-c9297f",
+        "runKeys": [
+          "2026-11-06T063210577Z-c9297f",
+          "2026-11-06T063803492Z-8b401c",
+          "2026-11-06T064427695Z-750e1f"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:47:07.091Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:44.499Z"
+      }
+    },
+    {
+      "scenarioId": "jobs.list.open",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "83f533102717ce2600c974d8f635ab3339405821d53d8ac5b524ff018fc440f9",
+        "protocol": "fixed-workload-jobs-warmed-settled-closed-server-fresh-context-customers-jobs-detail-equipment-tasks-browser-raf-v5",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 737.2001953125,
+      "samples": [
+        686,
+        689,
+        708.599853515625,
+        721.7998046875,
+        737.2001953125,
+        800.099853515625,
+        850.39990234375,
+        1012.300048828125,
+        1206.60009765625
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-c9297f",
+        "runKeys": [
+          "2026-11-06T063210577Z-c9297f",
+          "2026-11-06T063803492Z-8b401c",
+          "2026-11-06T064427695Z-750e1f"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:47:08.404Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:44.499Z"
+      }
+    },
+    {
+      "scenarioId": "jobs.detail.open",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "a873965288a3635aae8a112de429232397dca0da35fc77b8333ed60700a0ff2e",
+        "protocol": "fixed-workload-jobs-warmed-settled-closed-server-fresh-context-customers-jobs-detail-equipment-tasks-browser-raf-v5",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 555.199951171875,
+      "samples": [
+        474.39990234375,
+        526.60009765625,
+        530.5,
+        532.7001953125,
+        555.199951171875,
+        571.7001953125,
+        577.900146484375,
+        698.699951171875,
+        811.699951171875
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-c9297f",
+        "runKeys": [
+          "2026-11-06T063210577Z-c9297f",
+          "2026-11-06T063803492Z-8b401c",
+          "2026-11-06T064427695Z-750e1f"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:47:10.314Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:44.499Z"
+      }
+    },
+    {
+      "scenarioId": "equipment.list.open",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "52ac1b2e1fe805aebeb0b88131be2917803d8cb5bb0deaa94944bb25b422696e",
+        "protocol": "fixed-workload-jobs-warmed-settled-closed-server-fresh-context-customers-jobs-detail-equipment-tasks-browser-raf-v5",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 559.7001953125,
+      "samples": [
+        509.099853515625,
+        532.900146484375,
+        549.699951171875,
+        554.800048828125,
+        559.7001953125,
+        576.500244140625,
+        796.199951171875,
+        1154.500244140625,
+        1470.300048828125
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-c9297f",
+        "runKeys": [
+          "2026-11-06T063210577Z-c9297f",
+          "2026-11-06T063803492Z-8b401c",
+          "2026-11-06T064427695Z-750e1f"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:47:11.122Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:44.499Z"
+      }
+    },
+    {
+      "scenarioId": "tasks.list.open",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "6341573f15e500159d70f8f01f85e68746af6664a09c272e6bcef15c83ec11b4",
+        "protocol": "fixed-workload-jobs-warmed-settled-closed-server-fresh-context-customers-jobs-detail-equipment-tasks-browser-raf-v5",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 876.39990234375,
+      "samples": [
+        775.000244140625,
+        778.39990234375,
+        819.10009765625,
+        823.39990234375,
+        876.39990234375,
+        898.5,
+        1043.900146484375,
+        1048.800048828125,
+        2378.10009765625
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-c9297f",
+        "runKeys": [
+          "2026-11-06T063210577Z-c9297f",
+          "2026-11-06T063803492Z-8b401c",
+          "2026-11-06T064427695Z-750e1f"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:47:12.321Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:44.499Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.board.cold-open",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "4bb343c5da235475950de6c831677754c8a1455fee30696c6427a1be32e14325",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 1447.400146484375,
+      "samples": [
+        1340.699951171875,
+        1351.400146484375,
+        1398.199951171875,
+        1432.60009765625,
+        1447.400146484375,
+        1463.800048828125,
+        1541.400146484375,
+        1568.80029296875,
+        1734.099853515625
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:42.209Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.board.reassign.visible",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "b4331101020f8e2bf3e916f75e607c5a5dca3765338fc561290018b8c38b5046",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 165.400146484375,
+      "samples": [
+        110.900146484375,
+        141.800048828125,
+        149.199951171875,
+        161,
+        165.400146484375,
+        175,
+        180.699951171875,
+        183.900146484375,
+        188.199951171875
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:47.406Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.board.reassign.settled",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "6bd087a37b39bbdefdf075c13b2acdd4d8f2bfeaff16b15f17bbf11fdfee138b",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 366.699951171875,
+      "samples": [
+        355.800048828125,
+        356.800048828125,
+        363.2001953125,
+        366.300048828125,
+        366.699951171875,
+        369.10009765625,
+        370,
+        392.300048828125,
+        397.5
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:49.994Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.board-to-day.covered",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "adff044f6e470e78b946c09d7f96fb683d620a4f0e4b45a6830338fa42a59f7a",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 181,
+      "samples": [
+        141.60009765625,
+        157.699951171875,
+        172,
+        172,
+        181,
+        188.900146484375,
+        191.5,
+        197.699951171875,
+        202.60009765625
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:50.948Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.day.resize.settled",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "7878116154778397f646126b0a84cd1c97fc683f0dca00acc52f7169a45fff6c",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 226.10009765625,
+      "samples": [
+        200.5,
+        205.199951171875,
+        211.800048828125,
+        213.599853515625,
+        226.10009765625,
+        246.400146484375,
+        247.5,
+        255.39990234375,
+        258.199951171875
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:51.786Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.day-to-board.covered",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "5cbf169cc1d63a5d7a1ae2c8432853a810a57dafd99482dd28bfecc6ade85e96",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 288.900146484375,
+      "samples": [
+        164.60009765625,
+        191,
+        191.7001953125,
+        268.400146484375,
+        288.900146484375,
+        293.699951171875,
+        307.699951171875,
+        321.89990234375,
+        362
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:53.952Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.board.six-weeks",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "0b8ac2741de02953f5534a6e82c395c82f668d5308545ce9670b4f872c56059c",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 997.89990234375,
+      "samples": [
+        860.900146484375,
+        883.800048828125,
+        959.300048828125,
+        990.300048828125,
+        997.89990234375,
+        1064.39990234375,
+        1081.89990234375,
+        1088.7001953125,
+        1142.300048828125
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:55.548Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.board-to-month.uncovered",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "7bc6306e46c28f5b7b78bc716410f1a4ac33b43aae398cbca0e31553cb4e7533",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 385.39990234375,
+      "samples": [
+        340.89990234375,
+        346.099853515625,
+        354.199951171875,
+        371,
+        385.39990234375,
+        428.60009765625,
+        450.7998046875,
+        470.39990234375,
+        482.10009765625
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:57.067Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.month.move.visible",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "70441f0c809d269ce7ba72fc8450f9bf527d9b1eed60b188a747682a8f5f6196",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 35.5,
+      "samples": [
+        31.199951171875,
+        34.599853515625,
+        34.800048828125,
+        35,
+        35.5,
+        38.10009765625,
+        38.89990234375,
+        40,
+        43.699951171875
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:57.863Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.month.move.settled",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "02e66b907a66456c5b4ab79e904fc0c6b700ba9dc104da3907728d3c8ee2c9fe",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 213.800048828125,
+      "samples": [
+        168,
+        182.800048828125,
+        191.5,
+        193.39990234375,
+        213.800048828125,
+        227.900146484375,
+        228.5,
+        253.800048828125,
+        267.400146484375
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:59.193Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.month-next.uncovered",
+      "scenarioVersion": 3,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "c2d4093fed2fe039882e0021288f1e0ce2e74c6878261222a3c1fdecbbf8a790",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 281.39990234375,
+      "samples": [
+        242.699951171875,
+        259.400146484375,
+        262.400146484375,
+        278.39990234375,
+        281.39990234375,
+        286.800048828125,
+        287.900146484375,
+        325.900146484375,
+        336.7001953125
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:45:59.974Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.month-to-board.covered",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "73f947a69043c49743e01c857f41a32f687d38712edc5a4e4777f9a90076df9e",
+        "protocol": "fixed-date-jobs-warmed-settled-closed-server-fresh-context-board-reassign-day-resize-board-six-weeks-month-move-next-board-browser-raf-v6",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 103.10009765625,
+      "samples": [
+        86.800048828125,
+        95.5,
+        96.199951171875,
+        98.800048828125,
+        103.10009765625,
+        104.60009765625,
+        104.800048828125,
+        118.099853515625,
+        121.89990234375
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-64de42",
+        "runKeys": [
+          "2026-11-06T063210577Z-64de42",
+          "2026-11-06T063803492Z-afc4c0",
+          "2026-11-06T064427695Z-f9f3c9"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:46:00.230Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:39.230Z"
+      }
+    },
+    {
+      "scenarioId": "planning.occurrence.cross-session",
+      "scenarioVersion": 1,
+      "profile": "golden-world",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "be5c7af57f12159503e84f7449705b758fbde4c54f357b3228bf593470b7e722",
+        "measurementDigest": "f6f54d8502d30f30515d83e4c27e6901ed5f5b56e761e18616966d01d357b987",
+        "protocol": "independent-fixed-month-three-distinct-overlap-confirmations-browser-raf-v3",
+        "role": "buero",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 653.800048828125,
+      "samples": [
+        600.300048828125,
+        605.199951171875,
+        635.2998046875,
+        653,
+        653.800048828125,
+        671,
+        681.2001953125,
+        708.800048828125,
+        802.89990234375
+      ],
+      "source": {
+        "runKey": "2026-11-08T182953762Z-6281fa",
+        "runKeys": [
+          "2026-11-08T182953762Z-6281fa",
+          "2026-11-08T183128426Z-5025e4",
+          "2026-11-08T183252480Z-ac83a4"
+        ],
+        "buildId": "e58f9f41-36f6-4c9e-a14e-86b82016252c",
+        "recordedAt": "2026-11-08T18:33:39.304Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: werk-flow/werkflow-app#285 backdated the benchmark people's entry date, which moved the seeded workload and the three planning digests. Three fresh rounds on one build at 30af13f2, each within budget, on a quiet machine (werk-flow/werkflow-planning#96).",
+        "reviewedAt": "2026-11-08T18:34:15.523Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.month.employee-open-to-event",
+      "scenarioVersion": 1,
+      "profile": "golden-world",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "be5c7af57f12159503e84f7449705b758fbde4c54f357b3228bf593470b7e722",
+        "measurementDigest": "a3560b533ebac440e63ba505830dfa3cf8db99f004190b1611dff489d6166a8a",
+        "protocol": "independent-fixed-month-jobs-warmed-settled-closed-server-fresh-employee-after-three-saves-browser-raf-v5",
+        "role": "employee",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 422.599853515625,
+      "samples": [
+        375.600341796875,
+        402.60009765625,
+        414.7001953125,
+        417.800048828125,
+        422.599853515625,
+        423.800048828125,
+        426.699951171875,
+        436.800048828125,
+        465.89990234375
+      ],
+      "source": {
+        "runKey": "2026-11-08T182953762Z-6281fa",
+        "runKeys": [
+          "2026-11-08T182953762Z-6281fa",
+          "2026-11-08T183128426Z-5025e4",
+          "2026-11-08T183252480Z-ac83a4"
+        ],
+        "buildId": "e58f9f41-36f6-4c9e-a14e-86b82016252c",
+        "recordedAt": "2026-11-08T18:33:49.967Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: werk-flow/werkflow-app#285 backdated the benchmark people's entry date, which moved the seeded workload and the three planning digests. Three fresh rounds on one build at 30af13f2, each within budget, on a quiet machine (werk-flow/werkflow-planning#96).",
+        "reviewedAt": "2026-11-08T18:34:15.523Z"
+      }
+    },
+    {
+      "scenarioId": "calendar.month.admin-open-to-legacy-event",
+      "scenarioVersion": 1,
+      "profile": "golden-world",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "be5c7af57f12159503e84f7449705b758fbde4c54f357b3228bf593470b7e722",
+        "measurementDigest": "2a9e334a010f41c94c953eabed3009c0ca41d03d8b29d11b71fd19c4c7e75c29",
+        "protocol": "independent-fixed-month-fresh-admin-after-legacy-save-browser-raf-v3",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 422.099853515625,
+      "samples": [
+        395.800048828125,
+        411.199951171875,
+        418.5,
+        421.2998046875,
+        422.099853515625,
+        422.300048828125,
+        443.39990234375,
+        456.900146484375,
+        484
+      ],
+      "source": {
+        "runKey": "2026-11-08T182953762Z-6281fa",
+        "runKeys": [
+          "2026-11-08T182953762Z-6281fa",
+          "2026-11-08T183128426Z-5025e4",
+          "2026-11-08T183252480Z-ac83a4"
+        ],
+        "buildId": "e58f9f41-36f6-4c9e-a14e-86b82016252c",
+        "recordedAt": "2026-11-08T18:33:57.331Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: werk-flow/werkflow-app#285 backdated the benchmark people's entry date, which moved the seeded workload and the three planning digests. Three fresh rounds on one build at 30af13f2, each within budget, on a quiet machine (werk-flow/werkflow-planning#96).",
+        "reviewedAt": "2026-11-08T18:34:15.523Z"
+      }
+    },
+    {
+      "scenarioId": "time.clock-in.visible",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "f612d5a05290575deb006ebb70a4bf397436385a70fe8d4a8b2c89a40ccaf303",
+        "protocol": "typical-profile-jobs-warmed-settled-closed-server-fresh-employee-dashboard-clock-in-out-browser-raf-v1",
+        "role": "employee",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 104.5,
+      "samples": [
+        85.800048828125,
+        88.099853515625,
+        99.5,
+        101.699951171875,
+        104.5,
+        106.099853515625,
+        109,
+        140,
+        181
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-d065c3",
+        "runKeys": [
+          "2026-11-06T063210577Z-d065c3",
+          "2026-11-06T063803492Z-5866c6",
+          "2026-11-06T064427695Z-433464"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:49:54.127Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:56.851Z"
+      }
+    },
+    {
+      "scenarioId": "time.clock-out.visible",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "b60aad81d7b68c3d9a99b8ef0910928c7ded576a147649a6fde411a243815f97",
+        "protocol": "typical-profile-jobs-warmed-settled-closed-server-fresh-employee-dashboard-clock-in-out-browser-raf-v1",
+        "role": "employee",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 84.89990234375,
+      "samples": [
+        80.400146484375,
+        81.2998046875,
+        82.5,
+        83.39990234375,
+        84.89990234375,
+        87.800048828125,
+        88.5,
+        94.800048828125,
+        226.7998046875
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-d065c3",
+        "runKeys": [
+          "2026-11-06T063210577Z-d065c3",
+          "2026-11-06T063803492Z-5866c6",
+          "2026-11-06T064427695Z-433464"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:49:54.667Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:56.851Z"
+      }
+    },
+    {
+      "scenarioId": "time.clock-in.settled",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "24bdf2f40428d55dfd61e19d8416ae61aa7bd6b6243eddea18a87d0fe5c3b0f9",
+        "protocol": "typical-profile-jobs-warmed-settled-closed-server-fresh-employee-dashboard-clock-in-out-browser-raf-v1",
+        "role": "employee",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 239.199951171875,
+      "samples": [
+        214.800048828125,
+        218.699951171875,
+        232.7998046875,
+        235.39990234375,
+        239.199951171875,
+        239.400146484375,
+        243.099853515625,
+        269,
+        646.5
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-d065c3",
+        "runKeys": [
+          "2026-11-06T063210577Z-d065c3",
+          "2026-11-06T063803492Z-5866c6",
+          "2026-11-06T064427695Z-433464"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:49:55.288Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:56.851Z"
+      }
+    },
+    {
+      "scenarioId": "time.clock-out.settled",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "cf4402065a992c8bf33400ea3c1f3ad43b10a024a2ed1880994fd472b9f3be19",
+        "protocol": "typical-profile-jobs-warmed-settled-closed-server-fresh-employee-dashboard-clock-in-out-browser-raf-v1",
+        "role": "employee",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 221,
+      "samples": [
+        205.599853515625,
+        206.599853515625,
+        208.699951171875,
+        216.300048828125,
+        221,
+        226.300048828125,
+        232.60009765625,
+        237.2001953125,
+        605.900146484375
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-d065c3",
+        "runKeys": [
+          "2026-11-06T063210577Z-d065c3",
+          "2026-11-06T063803492Z-5866c6",
+          "2026-11-06T064427695Z-433464"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:49:55.734Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:56.851Z"
+      }
+    },
+    {
+      "scenarioId": "time.approval.cross-session",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "6a8f7c231dfc3a12154a8dd3109738094609704b795c90bd7bac82a75b252447",
+        "protocol": "typical-profile-buero-approves-three-own-submissions-employee-history-browser-raf-v1",
+        "role": "buero",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 801.800048828125,
+      "samples": [
+        677.39990234375,
+        733.699951171875,
+        762.800048828125,
+        771.39990234375,
+        801.800048828125,
+        807.400146484375,
+        832.699951171875,
+        882,
+        1073.39990234375
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-d065c3",
+        "runKeys": [
+          "2026-11-06T063210577Z-d065c3",
+          "2026-11-06T063803492Z-5866c6",
+          "2026-11-06T064427695Z-433464"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:50:05.403Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:56.851Z"
+      }
+    },
+    {
+      "scenarioId": "jobs.list.assignment.cross-session",
+      "scenarioVersion": 1,
+      "profile": "typical",
+      "backend": "local",
+      "context": {
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "measurementDigest": "b03c80816efba57da1ddff3f9359a7fc262d8d3d2a130d7c013907683c8ee18f",
+        "protocol": "typical-profile-buero-assigns-three-own-jobs-admin-searched-job-list-browser-raf-v1",
+        "role": "admin",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1,
+        "platform": "linux",
+        "architecture": "x64",
+        "cpuModel": "Intel(R) Core(TM) Ultra 5 135U",
+        "logicalProcessors": 14,
+        "memoryGiB": 16,
+        "providerDigest": "2896002ce2e3a4647ff083b4607e1eef90a22a57f663a254ca0fa38ec9e0dae8"
+      },
+      "referenceMs": 667.60009765625,
+      "samples": [
+        596.39990234375,
+        617.900146484375,
+        628,
+        639.900146484375,
+        667.60009765625,
+        669.800048828125,
+        740.800048828125,
+        749.2001953125,
+        770.39990234375
+      ],
+      "source": {
+        "runKey": "2026-11-06T063210577Z-c9297f",
+        "runKeys": [
+          "2026-11-06T063210577Z-c9297f",
+          "2026-11-06T063803492Z-8b401c",
+          "2026-11-06T064427695Z-750e1f"
+        ],
+        "buildId": "d0b32a36-f9e6-480b-9d4b-b970204e7f92",
+        "recordedAt": "2026-11-06T06:47:31.401Z"
+      },
+      "review": {
+        "reason": "Recalibrated on the Linux PC on mains power: WSL memory went from 12 to 16 GiB on 2026-10-26 and #151 moved the workload digest, so the old references no longer matched. Three fresh rounds on one build at 7637afc1, each within budget (werk-flow/werkflow-planning#220).",
+        "reviewedAt": "2026-11-06T06:50:44.499Z"
+      }
+    }
+  ]
+}

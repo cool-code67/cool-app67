@@ -1,0 +1,121 @@
+'use client';
+
+import { DetailPageHeader } from '@/components/shared/detail-page-header';
+import { DetailColumns } from '@/components/shared/detail-columns';
+import { PageBody, PageShell } from '@/components/shared/page-shell';
+import { PersonalienSection } from '@/components/mitarbeiter/personalien-section';
+import { EmploymentConditionsSection } from '@/components/mitarbeiter/employment-conditions-section';
+import { WorkScheduleSection } from '@/components/mitarbeiter/work-schedule-section';
+import { SicknessReportsSection } from '@/components/mitarbeiter/sickness-reports-section';
+import { SchoolDaysSection } from '@/components/mitarbeiter/school-days-section';
+import { PersonnelHistorySection } from '@/components/mitarbeiter/personnel-history-section';
+import { PersonnelInviteDialog } from '@/components/mitarbeiter/personnel-invite-dialog';
+import { AccessStateBadge, EmploymentStateBadge } from '@/components/mitarbeiter/personnel-state-badges';
+import { useRealtimeRouterRefresh } from '@/hooks/use-realtime-router-refresh';
+import { formatEmployeeRecordName, getAccessState, getEmploymentState } from '@/lib/personnel/types';
+import type { PersonnelDetail } from '@/lib/personnel/actions';
+import {
+  PersonnelQualificationSummary,
+  type PersonnelQualificationSummaryData,
+} from './personnel-qualification-summary';
+import { PersonnelLifecycleSection } from './personnel-lifecycle-section';
+import { RegionLoadError } from '@/components/shared/region-load-error';
+import type { PersonnelLifecycleView } from '@/lib/personnel/lifecycle-actions';
+
+interface PersonnelRecordDetailContentProps {
+  detail: PersonnelDetail;
+  /** Null when the names could not be read: the history says so with a retry. */
+  actorNames: Record<string, string> | null;
+  canEdit: boolean;
+  qualificationSummary: PersonnelQualificationSummaryData | null;
+  /** `null` when the lifecycle failed to load. */
+  lifecycle: PersonnelLifecycleView | null;
+  canAdministerAccess: boolean;
+}
+
+/**
+ * Detail surface for personnel records without an active membership: future
+ * starters, personnel without app access, and exited people. Members with an
+ * active login keep the richer Mitarbeiter detail (clock status, jobs, docs).
+ */
+export function PersonnelRecordDetailContent({
+  detail,
+  actorNames,
+  canEdit,
+  qualificationSummary,
+  lifecycle,
+  canAdministerAccess,
+}: PersonnelRecordDetailContentProps) {
+  const { record, conditions, schedules, events, hasPendingInvite } = detail;
+
+  useRealtimeRouterRefresh({
+    tables: [
+      'employee_records',
+      'employment_conditions',
+      'work_schedules',
+      'organization_invites',
+      'teams',
+      'team_memberships',
+      'organization_capabilities',
+      'employee_capabilities',
+    ],
+  });
+
+  const name = formatEmployeeRecordName(record, detail.profileName);
+  const employmentState = getEmploymentState(record);
+  const accessState = getAccessState(record, hasPendingInvite);
+
+  const breadcrumbs = [{ label: 'Mitarbeiter', href: '/mitarbeiter' }, { label: name }];
+
+  return (
+    <PageShell>
+      <DetailPageHeader
+        breadcrumbs={breadcrumbs}
+        title={name}
+        subtitle={
+          record.employeeNumber
+            ? `Personalnummer ${record.employeeNumber}`
+            : (detail.profileEmail ?? undefined)
+        }
+        badges={
+          <span className="flex flex-wrap items-center gap-1.5">
+            <EmploymentStateBadge state={employmentState} />
+            <AccessStateBadge state={accessState} />
+          </span>
+        }
+        actions={
+          canEdit && accessState === 'ohne_zugang' ? (
+            <PersonnelInviteDialog recordId={record.id} personName={name} />
+          ) : undefined
+        }
+      />
+
+      <PageBody>
+        <DetailColumns layout="cards">
+          <PersonalienSection record={record} canEdit={canEdit} />
+          <EmploymentConditionsSection recordId={record.id} conditions={conditions} canEdit={canEdit} />
+          <WorkScheduleSection
+            recordId={record.id}
+            schedules={schedules}
+            conditions={conditions}
+            canEdit={canEdit}
+          />
+          <SicknessReportsSection recordId={record.id} />
+          <SchoolDaysSection recordId={record.id} conditions={conditions} />
+          <PersonnelQualificationSummary data={qualificationSummary} />
+          {lifecycle ? (
+            <PersonnelLifecycleSection
+              key={lifecycle.employeeRecordId}
+              data={lifecycle}
+              canManage={canEdit}
+              canAdministerAccess={canAdministerAccess}
+            />
+          ) : (
+            <RegionLoadError>Der Personalprozess konnte nicht geladen werden.</RegionLoadError>
+          )}
+          <PersonnelHistorySection events={events} actorNames={actorNames} />
+        </DetailColumns>
+      </PageBody>
+    </PageShell>
+  );
+}

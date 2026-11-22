@@ -1,0 +1,238 @@
+'use client';
+
+import { useCallback, useState, useMemo } from 'react';
+
+import { Table, TableBody, TableHeader } from '@/components/ui/table';
+import { type Job, type Project } from '@/lib/jobs/types';
+import { type UnifiedListEntry, type SortColumn } from '@/lib/jobs/unified-list';
+import { sameRecords } from '@/lib/ui/memo-equality';
+import { resolveVisibleAuftraegeColumns, type AuftraegeColumnId } from '@/lib/jobs/auftraege-table-columns';
+import type { OrgMemberOption } from '../shared/employee-multi-select';
+import { useActiveJobs } from '@/hooks/use-active-jobs';
+import { auftraegeColumns, type AuftraegeTableColumn } from './unified-auftraege-columns';
+import { UnifiedAuftraegeDesktopRows } from './unified-auftraege-desktop-rows';
+import { buildMemberLookup } from './unified-auftraege-display';
+import { UnifiedAuftraegeEmptyState } from './unified-auftraege-empty-state';
+import type { AuftraegeRowFeedback, UnifiedAuftraegeEntryListProps } from './unified-auftraege-entry-list';
+import { UnifiedAuftraegeMobileCards } from './unified-auftraege-mobile-cards';
+import { AuftraegeTableHeaderRow, type AuftraegeSortState } from './unified-auftraege-table-header';
+
+const NO_ROW_FEEDBACK: AuftraegeRowFeedback = {
+  pendingIds: new Set(),
+  settlingIds: new Set(),
+};
+
+interface UnifiedAuftraegeTableProps {
+  /** A search or filter is active, so an empty list means "no match", not "nothing yet". */
+  isFiltered?: boolean | undefined;
+  pagedChildren?: boolean | undefined;
+  projectAssignmentMap?: Record<string, string[]> | undefined;
+  entries: UnifiedListEntry[];
+  clientMap: Record<string, string>;
+  isAdminOrManager: boolean;
+  sortColumn: SortColumn;
+  sortDirection: 'asc' | 'desc';
+  onSort: (column: SortColumn) => void;
+  isArchive?: boolean | undefined;
+  jobAssignmentMap?: Record<string, string[]> | undefined;
+  members?: OrgMemberOption[] | undefined;
+  hideClientColumn?: boolean | undefined;
+  visibleColumns: AuftraegeColumnId[];
+  /** Pending drafts and settling rows from the owner's optimistic overlay. */
+  rowFeedback?: AuftraegeRowFeedback | undefined;
+  onJobUpdated?:
+    | ((payload: { job: Job; selectedEmployeeIds?: string[] }) => void | Promise<void>)
+    | undefined;
+  onJobDeleted?: ((jobId: string) => void | Promise<void>) | undefined;
+  /** Optimistic delete owned by the list; see `JobActionsMenu`. */
+  onJobDeleteRequested?: ((jobId: string) => void) | undefined;
+  onProjectUpdated?:
+    | ((payload: { project: Project; selectedJobIds?: string[] }) => void | Promise<void>)
+    | undefined;
+  onProjectDeleted?: ((projectId: string) => void | Promise<void>) | undefined;
+  onProjectDeleteRequested?: ((projectId: string) => void) | undefined;
+}
+
+type UnifiedAuftraegeTableStateInput = {
+  members: OrgMemberOption[];
+  entries: UnifiedListEntry[];
+  visibleColumns: AuftraegeColumnId[];
+  hideClientColumn: boolean;
+  isAdminOrManager: boolean;
+};
+
+/** The table's expanded projects, stable member list, shown columns and the jobs its project menus offer. */
+function useUnifiedAuftraegeTableState({
+  members,
+  entries,
+  visibleColumns,
+  hideClientColumn,
+  isAdminOrManager,
+}: UnifiedAuftraegeTableStateInput) {
+  const { activeJobIds } = useActiveJobs();
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  // A route render rebuilds equal members; keeping the shown list keeps every row's memo.
+  const [shownMembers, setShownMembers] = useState(members);
+  if (shownMembers !== members && !sameRecords(shownMembers, members)) setShownMembers(members);
+  const memberLookup = useMemo(() => buildMemberLookup(shownMembers), [shownMembers]);
+  const allJobs = useMemo(
+    () => entries.flatMap((item) => (item.type === 'standalone-job' ? [item.job] : item.childJobs)),
+    [entries],
+  );
+  const effectiveVisibleColumns = useMemo(
+    () =>
+      resolveVisibleAuftraegeColumns(visibleColumns, {
+        hideClientColumn,
+      }),
+    [hideClientColumn, visibleColumns],
+  );
+
+  const toggleProject = useCallback((projectId: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  }, []);
+
+  const columns = useMemo(
+    () => auftraegeColumns(effectiveVisibleColumns, isAdminOrManager),
+    [effectiveVisibleColumns, isAdminOrManager],
+  );
+  return {
+    activeJobIds,
+    expandedProjects,
+    toggleProject,
+    shownMembers,
+    memberLookup,
+    allJobs,
+    effectiveVisibleColumns,
+    columns,
+  };
+}
+
+type UnifiedAuftraegeDesktopTableProps = {
+  listProps: UnifiedAuftraegeEntryListProps;
+  sort: AuftraegeSortState;
+  columns: readonly AuftraegeTableColumn[];
+  effectiveVisibleColumns: AuftraegeColumnId[];
+  expandedProjects: Set<string>;
+  toggleProject: (projectId: string) => void;
+};
+
+/** The desktop table: sortable header and the rows of jobs and expandable projects. */
+function UnifiedAuftraegeDesktopTable({
+  listProps,
+  sort,
+  columns,
+  effectiveVisibleColumns,
+  expandedProjects,
+  toggleProject,
+}: UnifiedAuftraegeDesktopTableProps) {
+  return (
+    <div className="hidden md:block">
+      <Table>
+        <TableHeader>
+          <AuftraegeTableHeaderRow columns={columns} sort={sort} />
+        </TableHeader>
+        <TableBody>
+          <UnifiedAuftraegeDesktopRows
+            {...listProps}
+            columns={columns}
+            effectiveVisibleColumns={effectiveVisibleColumns}
+            expandedProjects={expandedProjects}
+            toggleProject={toggleProject}
+          />
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+export function UnifiedAuftraegeTable({
+  isFiltered = false,
+  pagedChildren = false,
+  projectAssignmentMap = {},
+  entries,
+  clientMap,
+  isAdminOrManager,
+  sortColumn,
+  sortDirection,
+  onSort,
+  isArchive = false,
+  jobAssignmentMap = {},
+  members = [],
+  hideClientColumn = false,
+  visibleColumns,
+  rowFeedback = NO_ROW_FEEDBACK,
+  onJobUpdated,
+  onJobDeleted,
+  onJobDeleteRequested,
+  onProjectUpdated,
+  onProjectDeleted,
+  onProjectDeleteRequested,
+}: UnifiedAuftraegeTableProps) {
+  const table = useUnifiedAuftraegeTableState({
+    members,
+    entries,
+    visibleColumns,
+    hideClientColumn,
+    isAdminOrManager,
+  });
+  const sort: AuftraegeSortState = { column: sortColumn, direction: sortDirection, onSort, isArchive };
+
+  // No loading prop on purpose: the table never turns into a skeleton over
+  // data it already has (feedback canon); `AuftraegeTableSkeleton` serves the
+  // loading files.
+  if (entries.length === 0) {
+    return (
+      <UnifiedAuftraegeEmptyState
+        isFiltered={isFiltered}
+        isArchive={isArchive}
+        isAdminOrManager={isAdminOrManager}
+      />
+    );
+  }
+
+  const listProps: UnifiedAuftraegeEntryListProps = {
+    entries,
+    pagedChildren,
+    projectAssignmentMap,
+    clientMap,
+    isAdminOrManager,
+    activeJobIds: table.activeJobIds,
+    rowFeedback,
+    memberLookup: table.memberLookup,
+    jobAssignmentMap,
+    jobMenuProps: {
+      members: table.shownMembers,
+      onJobUpdated,
+      onJobDeleted,
+      onJobDeleteRequested,
+    },
+    projectMenuProps: {
+      jobs: table.allJobs,
+      onProjectUpdated,
+      onProjectDeleted,
+      onProjectDeleteRequested,
+    },
+  };
+
+  return (
+    <>
+      {/* Mobile */}
+      <UnifiedAuftraegeMobileCards {...listProps} />
+
+      {/* Desktop */}
+      <UnifiedAuftraegeDesktopTable
+        listProps={listProps}
+        sort={sort}
+        columns={table.columns}
+        effectiveVisibleColumns={table.effectiveVisibleColumns}
+        expandedProjects={table.expandedProjects}
+        toggleProject={table.toggleProject}
+      />
+    </>
+  );
+}

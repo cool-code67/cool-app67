@@ -1,0 +1,83 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { LAB_SPEC_DIRECTORY } from '../lab-steps';
+
+/**
+ * Wall-clock measurements, captures and sweeps run in release mode, in CI's
+ * full runs and on explicit request only: the wall-clock groups, the visual
+ * references and acceptance captures, and the layout and accessibility sweeps.
+ * A change plan selects one only when its own spec or test support changed.
+ */
+function isReleaseOnlySpec(file: string): boolean {
+  return /^tests\/audit\/(performance|visual|layout)\//.test(file);
+}
+
+/**
+ * What selects a browser group in a change plan (decision 0007, amendments
+ * 2026-10-29 and 2026-11-08, group-selection.ts). Every trigger also selects a
+ * group whose own spec or test support changed.
+ * - `critical`: any product file, migration, dependency or shared test support.
+ * - `product`: the lab groups; what selects `critical`, except shared test support.
+ * - `scope`: a product file under one of its declared scopes, until stage 4 moves its denials below the browser.
+ * - `own-test`: its own spec or test support only; nightly and release runs take the rest.
+ * - `release-only`: like `own-test`, except a wall-clock group never runs in a change plan.
+ */
+export type ChangeTrigger = 'critical' | 'product' | 'scope' | 'own-test' | 'release-only';
+
+/**
+ * The critical journeys a change plan runs whenever product code, a migration
+ * or shared test support changed, with the role each one stands for. The
+ * owner approved this set on 2026-10-29 (werk-flow/werkflow-planning#34). A
+ * change to it needs the owner.
+ */
+export const CRITICAL_JOURNEYS: Readonly<
+  Record<string, { readonly role: 'all' | 'employee' | 'buero' | 'admin'; readonly journey: string }>
+> = {
+  'golden:gg-00': {
+    role: 'all',
+    journey: 'invite and sign-in, assigned-only access, organization boundary, large upload, Realtime',
+  },
+  'golden:p1-21': { role: 'employee', journey: 'clock in on a job, switch activities, clock out' },
+  'golden:p1-17': { role: 'employee', journey: 'execute a dispatched job and hand it over to the office' },
+  'golden:gg-01': { role: 'buero', journey: 'Anfrage from a call to Auftrag' },
+  'golden:p1-12': {
+    role: 'buero',
+    journey: 'dispatch on the Plantafel, acknowledgement, live second session',
+  },
+  'golden:p1-19': { role: 'buero', journey: 'reported fault to dispatched visit with evidence' },
+  'golden:p1-07': { role: 'admin', journey: 'Aufgaben reach the responsible person and the deputy' },
+  'golden:p1-23': { role: 'admin', journey: 'close and export a month, Zeitkonto, reopen with history' },
+  'golden:p1-24': {
+    role: 'admin',
+    journey: 'onboard an employee with protected documents and access',
+  },
+};
+
+/** The account security group: the core table selects it for the auth path and the dependencies. */
+const SECURITY_GROUP = 'audit:security:account';
+
+/** A spec that drives another organization's session tests the organization boundary. */
+const OUTSIDER_SESSION = /\boutsiderPage\b/;
+
+/**
+ * Browser groups outside the critical set that hold a role denial, a
+ * read-only role or a four-eyes rule in the browser, and drive no outsider
+ * session. They keep their scope selection until the named stage-4 issue
+ * proves each listed test below the browser and removes the row. The owner
+ * decided on 2026-10-29 that no permission test loses its trigger
+ * (werk-flow/werkflow-planning#34). Shrink-only.
+ */
+export const ROLE_DENIAL_GROUPS: Readonly<
+  Record<string, { readonly tests: readonly string[]; readonly movesIn: string }>
+> = {};
+
+/** How a change plan selects the browser group `id` with its spec `files`. */
+export function changeTrigger(repositoryRoot: string, id: string, files: readonly string[]): ChangeTrigger {
+  if (files.some(isReleaseOnlySpec)) return 'release-only';
+  if (files.some((file) => file.startsWith(LAB_SPEC_DIRECTORY))) return 'product';
+  if (id in CRITICAL_JOURNEYS) return 'critical';
+  if (id === SECURITY_GROUP || id in ROLE_DENIAL_GROUPS) return 'scope';
+  return files.some((file) => OUTSIDER_SESSION.test(readFileSync(join(repositoryRoot, file), 'utf8')))
+    ? 'scope'
+    : 'own-test';
+}

@@ -1,0 +1,350 @@
+'use client';
+
+import { zodResolver } from '@hookform/resolvers/zod';
+import type { UserAttributes } from '@supabase/supabase-js';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useForm, type UseFormReturn } from 'react-hook-form';
+import { z } from '@/lib/zod';
+
+import { useBanner } from '@/components/ui/banner';
+import { useUserProfile } from '@/components/user/user-profile-context';
+import { untilPageLeaves, usePendingTask } from '@/hooks/use-server-action';
+import { clearEmailChangeChallengeQuietly } from '@/hooks/use-sign-out';
+import { rememberPasswordResetAddress } from '@/lib/auth/actions';
+import { logError } from '@/lib/logging';
+import { clearServiceWorkerCaches } from '@/lib/offline/service-worker-caches';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { endSessionAfterCheck } from '@/components/shared/unsent-work-gate';
+import { clearTodayOnDevice } from '@/lib/field-sync/device/today-wipe';
+import { clearManualEntryBridge } from '@/lib/time-tracking/manual-entry-bridge-storage';
+import {
+  type PasswordWithConfirmationValues,
+  translateSupabasePasswordError,
+} from '@/lib/validation/password';
+import { createSupabaseTransientBrowserClient } from '@/lib/supabase/transient-client';
+
+// GoTrue's PUT /user checks `current_password` before it changes a password.
+// auth-js's UserAttributes does not declare it; updateUser sends every
+// attribute as the request body, so the declared extra key reaches the server.
+type PasswordChangeAttributes = UserAttributes & { current_password: string };
+
+const currentPasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Bitte gib dein aktuelles Passwort ein.'),
+});
+export type CurrentPasswordValues = z.infer<typeof currentPasswordSchema>;
+export type PasswordChangeStep = 'idle' | 'verify_current' | 'set_new';
+
+function isCurrentPasswordError(error: unknown): boolean {
+  const message =
+    typeof error === 'string'
+      ? error
+      : typeof error === 'object' && error && 'message' in error
+        ? String(error.message ?? '')
+        : '';
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('current password') ||
+    normalized.includes('invalid login credentials') ||
+    normalized.includes('invalid credentials') ||
+    normalized.includes('incorrect password') ||
+    normalized.includes('wrong password')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+type PasswordChangeFlow = {
+  step: PasswordChangeStep;
+  formError: string | null;
+  /** The profile e-mail the re-authentication needs could not be read; `retryEmailRead` reads it again. */
+  emailUnavailable: boolean;
+  retryEmailRead: () => void;
+  isCurrentPasswordSubmitting: boolean;
+  isForgotPasswordRedirecting: boolean;
+  isPasswordSubmitting: boolean;
+  currentPasswordForm: UseFormReturn<CurrentPasswordValues>;
+  startFlow: () => void;
+  resetFlow: () => void;
+  backToVerificationStep: () => void;
+  onCurrentPasswordSubmit: (event?: React.BaseSyntheticEvent) => Promise<void>;
+  onPasswordSubmit: (values: PasswordWithConfirmationValues) => Promise<void>;
+  handleForgotPassword: () => Promise<void>;
+};
+
+/** Whether the reset form will find the signed-in address in its cookie. */
+async function rememberResetAddress(): Promise<boolean> {
+  try {
+    return (await rememberPasswordResetAddress()).success;
+  } catch {
+    // best-effort: the address only prefills the reset form, which asks for it when it is missing.
+    return false;
+  }
+}
+
+type PasswordChangeContext = {
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+  verificationClient: ReturnType<typeof createSupabaseTransientBrowserClient>;
+  /** The verified current password, kept in memory between the two steps only. */
+  currentPasswordRef: React.RefObject<string>;
+  currentPasswordForm: UseFormReturn<CurrentPasswordValues>;
+  setStep: (step: PasswordChangeStep) => void;
+  setFormError: (error: string | null) => void;
+  showBanner: ReturnType<typeof useBanner>['showBanner'];
+  returnToVerificationStep: () => void;
+  resetFlow: () => void;
+};
+
+/** The address to re-authenticate with, or null once the form says why there is none. */
+function verificationEmail(
+  profileEmail: string | undefined,
+  isEmailReading: boolean,
+  setFormError: (error: string | null) => void,
+): string | null {
+  const email = profileEmail?.trim();
+  if (email) return email;
+  // A failed read shows its own error with a retry above the form.
+  if (isEmailReading) setFormError('Deine E-Mail-Adresse wird noch geladen. Versuche es gleich erneut.');
+  return null;
+}
+
+/** Step 1: checks the current password on a throwaway client and keeps it for step 2. */
+async function verifyCurrentPassword(
+  {
+    verificationClient,
+    currentPasswordRef,
+    currentPasswordForm,
+    setStep,
+    setFormError,
+  }: PasswordChangeContext,
+  email: string,
+  values: CurrentPasswordValues,
+): Promise<void> {
+  setFormError(null);
+  currentPasswordForm.clearErrors('currentPassword');
+
+  try {
+    const { error } = await verificationClient.auth.signInWithPassword({
+      email,
+      password: values.currentPassword,
+    });
+
+    if (error) {
+      currentPasswordForm.setError('currentPassword', {
+        type: 'manual',
+        message: isCurrentPasswordError(error)
+          ? 'Dein aktuelles Passwort ist nicht korrekt.'
+          : translateSupabasePasswordError(error),
+      });
+      return;
+    }
+
+    // eslint-disable-next-line no-restricted-syntax -- the verification client holds a throwaway session; a failed local sign-out must not block the password change
+    await verificationClient.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    currentPasswordRef.current = values.currentPassword;
+    setStep('set_new');
+  } catch {
+    setFormError('Das aktuelle Passwort konnte nicht geprüft werden. Bitte versuche es erneut.');
+  }
+}
+
+/** Step 2: sets the new password with the kept current one, then signs out the other sessions. */
+async function updatePassword(
+  {
+    supabase,
+    currentPasswordRef,
+    currentPasswordForm,
+    setFormError,
+    showBanner,
+    returnToVerificationStep,
+    resetFlow,
+  }: PasswordChangeContext,
+  values: PasswordWithConfirmationValues,
+): Promise<void> {
+  setFormError(null);
+
+  const currentPassword = currentPasswordRef.current;
+
+  try {
+    if (!currentPassword) {
+      setFormError('Bitte bestätige zuerst erneut dein aktuelles Passwort.');
+      returnToVerificationStep();
+      return;
+    }
+
+    if (values.password === currentPassword) {
+      setFormError('Das neue Passwort muss sich vom alten Passwort unterscheiden.');
+      returnToVerificationStep();
+      return;
+    }
+
+    const attributes: PasswordChangeAttributes = {
+      current_password: currentPassword,
+      password: values.password,
+    };
+    const { error } = await supabase.auth.updateUser(attributes);
+
+    if (error) {
+      if (isCurrentPasswordError(error)) {
+        returnToVerificationStep();
+        currentPasswordForm.setError('currentPassword', {
+          type: 'manual',
+          message: 'Dein aktuelles Passwort ist nicht korrekt.',
+        });
+        setFormError(null);
+        return;
+      }
+
+      returnToVerificationStep();
+      setFormError(translateSupabasePasswordError(error));
+      return;
+    }
+
+    const { error: signOutOthersError } = await supabase.auth.signOut({
+      scope: 'others',
+    });
+
+    resetFlow();
+    showBanner({
+      message: signOutOthersError
+        ? 'Dein Passwort wurde aktualisiert. Andere Sitzungen konnten nicht automatisch abgemeldet werden.'
+        : 'Dein Passwort wurde aktualisiert. Andere Sitzungen wurden abgemeldet.',
+      variant: 'success',
+    });
+  } catch {
+    setFormError('Das Passwort konnte nicht aktualisiert werden. Bitte versuche es erneut.');
+  }
+}
+
+/** Signs out everywhere and leaves for the reset form, which the server prefills when it can. */
+async function redirectToPasswordReset(
+  supabase: ReturnType<typeof createSupabaseBrowserClient>,
+  setFormError: (error: string | null) => void,
+): Promise<void> {
+  let knownAddress: boolean;
+  await endSessionAfterCheck(setFormError, async () => {
+    try {
+      await clearEmailChangeChallengeQuietly();
+      // The address reaches the reset form in a cookie the server sets from the
+      // session, so this must run before the sign-out below.
+      knownAddress = await rememberResetAddress();
+
+      // Global on purpose: a password change ends every existing session.
+      clearManualEntryBridge();
+      await clearServiceWorkerCaches();
+      await clearTodayOnDevice();
+      const { error } = await supabase.auth.signOut({ scope: 'global' });
+      if (error) throw error;
+    } catch (error) {
+      // A returned or thrown sign-out failure shows its error, so the person knows they are still signed in.
+      logError('redirectToPasswordReset: sign-out failed', error);
+      setFormError('Wir konnten dich nicht sicher abmelden. Bitte versuche es erneut.');
+      return;
+    }
+
+    window.location.replace(knownAddress ? '/forgot-password?source=settings' : '/forgot-password');
+    return untilPageLeaves();
+  });
+}
+
+/**
+ * The whole password-change state machine: re-authentication with the current
+ * password, the in-memory copy of it, and the update with sign-out of other sessions.
+ */
+export function usePasswordChangeFlow(): PasswordChangeFlow {
+  const { profile, isLoading: isEmailReading, refreshProfile } = useUserProfile();
+  const emailUnavailable = !isEmailReading && !profile?.email.trim();
+  const { showBanner } = useBanner();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const verificationClient = useMemo(() => createSupabaseTransientBrowserClient(), []);
+  const [step, setStep] = useState<PasswordChangeStep>('idle');
+  const currentPasswordRef = useRef('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const { run: runCurrentPasswordSubmit, isPending: isCurrentPasswordSubmitting } = usePendingTask();
+  const { run: runForgotPasswordRedirect, isPending: isForgotPasswordRedirecting } = usePendingTask();
+  const { run: runPasswordSubmit, isPending: isPasswordSubmitting } = usePendingTask();
+
+  const currentPasswordForm = useForm<CurrentPasswordValues>({
+    resolver: zodResolver(currentPasswordSchema),
+    defaultValues: {
+      currentPassword: '',
+    },
+  });
+
+  const clearCurrentPassword = () => {
+    currentPasswordRef.current = '';
+  };
+  function resetFlow(): void {
+    setStep('idle');
+    clearCurrentPassword();
+    setFormError(null);
+    currentPasswordForm.reset({ currentPassword: '' });
+  }
+
+  useEffect(() => clearCurrentPassword, []);
+
+  function returnToVerificationStep(): void {
+    clearCurrentPassword();
+    currentPasswordForm.reset({ currentPassword: '' });
+    setStep('verify_current');
+  }
+
+  const flowContext: PasswordChangeContext = {
+    supabase,
+    verificationClient,
+    currentPasswordRef,
+    currentPasswordForm,
+    setStep,
+    setFormError,
+    showBanner,
+    returnToVerificationStep,
+    resetFlow,
+  };
+
+  async function submitCurrentPassword(values: CurrentPasswordValues): Promise<void> {
+    const email = verificationEmail(profile?.email, isEmailReading, setFormError);
+    if (!email) return;
+
+    await runCurrentPasswordSubmit(() => verifyCurrentPassword(flowContext, email, values));
+  }
+
+  // Wrapped at submit time, not during render: the handler writes the password ref.
+  const onCurrentPasswordSubmit = (event?: React.BaseSyntheticEvent) =>
+    currentPasswordForm.handleSubmit(submitCurrentPassword)(event);
+
+  async function onPasswordSubmit(values: PasswordWithConfirmationValues): Promise<void> {
+    await runPasswordSubmit(() => updatePassword(flowContext, values));
+  }
+
+  async function handleForgotPassword(): Promise<void> {
+    setFormError(null);
+
+    await runForgotPasswordRedirect(() => redirectToPasswordReset(supabase, setFormError));
+  }
+
+  const startFlow = () => setStep('verify_current');
+
+  function backToVerificationStep(): void {
+    setFormError(null);
+    returnToVerificationStep();
+  }
+
+  return {
+    step,
+    formError,
+    emailUnavailable,
+    retryEmailRead: () => void refreshProfile(),
+    isCurrentPasswordSubmitting,
+    isForgotPasswordRedirecting,
+    isPasswordSubmitting,
+    currentPasswordForm,
+    startFlow,
+    resetFlow,
+    backToVerificationStep,
+    onCurrentPasswordSubmit,
+    onPasswordSubmit,
+    handleForgotPassword,
+  };
+}

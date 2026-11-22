@@ -1,0 +1,128 @@
+'use client';
+
+import { useBanner } from '@/components/ui/banner';
+import { describeFailure } from '@/lib/action-messages';
+import { updateJob } from '@/lib/jobs/actions';
+import type { AssignmentApproval } from '@/lib/qualifications/types';
+import type { Job } from '@/lib/jobs/types';
+import { buildEditJobInput } from './edit-job-input';
+import type { EditJobForm } from './use-edit-job-form';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+import { PLANNING_CHANGED_MESSAGE, isPlanningWarning } from './planning-warning-result';
+import { usePlanningApprovalRetry } from './use-planning-approval-retry';
+
+const CONTENT_REQUIRED_MESSAGE = 'Bitte gib mindestens einen Titel oder eine Beschreibung ein.';
+
+const ERROR_MESSAGES = {
+  not_authorized: 'Du bist nicht berechtigt, Aufträge zu verwalten.',
+  title_or_description_required: 'Bitte gib mindestens einen Titel oder eine Beschreibung ein.',
+  job_not_found: 'Auftrag nicht gefunden.',
+  client_not_found: 'Kunde nicht gefunden.',
+  no_changes: 'Keine Änderungen vorgenommen.',
+  job_has_several_visits:
+    'Dieser Auftrag hat inzwischen mehrere Termine. Datum, Uhrzeit und Dauer änderst du in der Plantafel.',
+  update_failed: 'Fehler beim Aktualisieren des Auftrags.',
+  stale_occurrence: PLANNING_CHANGED_MESSAGE,
+} satisfies Record<string, string>;
+
+type EditJobSubmitInput = {
+  job: Job;
+  form: EditJobForm;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: ((payload: { job: Job; selectedEmployeeIds?: string[] }) => void | Promise<void>) | undefined;
+};
+
+/**
+ * Validates and saves the edit-job draft, including the date-removal,
+ * qualification and planning confirmations.
+ */
+export function useEditJobSubmit({ job, form, onOpenChange, onSuccess }: EditJobSubmitInput) {
+  const { showBanner } = useBanner();
+  const { retryWithPlanningApproval, planningWarningDialog } = usePlanningApprovalRetry();
+  const {
+    title,
+    description,
+    plannedDate,
+    selectedEmployees,
+    setHasAttemptedSubmit,
+    setError,
+    setContentError,
+    setShowAutoParkDialog,
+    runSubmit,
+    setConfirmedDateRemovalForWarning,
+    setQualificationWarning,
+  } = form;
+
+  const submitChanges = async (confirmedDateRemoval = false, approval?: AssignmentApproval) => {
+    setHasAttemptedSubmit(true);
+    setError(null);
+    setContentError(null);
+
+    if (!title.trim() && !description.trim()) {
+      setContentError(CONTENT_REQUIRED_MESSAGE);
+      focusFirstInvalidField({ 'edit-job-title': CONTENT_REQUIRED_MESSAGE });
+      return;
+    }
+
+    const isRemovingPlannedDate = !!job.plannedDate && !plannedDate;
+    if (isRemovingPlannedDate && !confirmedDateRemoval) {
+      setShowAutoParkDialog(true);
+      return;
+    }
+
+    await runSubmit(async () => {
+      try {
+        const input = buildEditJobInput(job, form, approval);
+
+        const result = await retryWithPlanningApproval((planningApproval) =>
+          updateJob(job.id, { ...input, planningApproval }),
+        );
+        // Taken back in the planning dialog: the form stays open for a change.
+        if (isPlanningWarning(result)) return;
+
+        if (!result.success && result.error !== 'no_changes') {
+          if (
+            (result.error === 'qualification_warning' || result.error === 'stale_evaluation') &&
+            'evaluation' in result
+          ) {
+            setConfirmedDateRemovalForWarning(confirmedDateRemoval);
+            setQualificationWarning(result.evaluation);
+            return;
+          }
+          setQualificationWarning(null);
+          setConfirmedDateRemovalForWarning(false);
+          const message = describeFailure(
+            result.error,
+            ERROR_MESSAGES,
+            'Der Auftrag konnte nicht gespeichert werden.',
+          );
+          if (result.error === 'title_or_description_required') {
+            setContentError(message);
+          } else {
+            setError(message);
+          }
+          return;
+        }
+
+        setQualificationWarning(null);
+        setConfirmedDateRemovalForWarning(false);
+        onOpenChange(false);
+        showBanner({ variant: 'success', message: 'Auftrag gespeichert.' });
+        // updateJob's response renders the route; 'no_changes' changed nothing.
+        await onSuccess?.({
+          job: result.success ? result.job : job,
+          selectedEmployeeIds: selectedEmployees,
+        });
+      } catch {
+        setError('Ein unerwarteter Fehler ist aufgetreten.');
+      }
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitChanges();
+  };
+
+  return { submitChanges, handleSubmit, planningWarningDialog };
+}

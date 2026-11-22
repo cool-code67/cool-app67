@@ -1,0 +1,153 @@
+// Fixture-date ownership for the audit battery (Tier 1).
+//
+// Audit spec groups own separate worlds. Date windows still keep integration
+// fixtures explicit where dates affect uniqueness, employment conditions,
+// closure days, absence overlaps, or planning. The registry below is the one
+// home of the partition (docs/technical/integrated-test-state.md owns the
+// rule for claiming a window). The module throws on overlapping
+// registry entries at import and on any out-of-window claim at call time,
+// so a new spec cannot silently squat on another spec's dates.
+//
+// Only uniqueness-constrained fixtures go through ownedBerlinDateAtOffset;
+// facts without a uniqueness constraint use a purpose-specific bounded helper
+// when one exists. Dispatch-visible visit dates use the panel-window helper
+// below, and a week that a week view shows whole uses the week helper. Other
+// facts, such as expiry horizons, use the unchecked formatter.
+
+import { DISPATCH_OVERVIEW_MAX_OFFSET_DAYS } from '@/lib/dispatch/types';
+import { testBusinessDate } from '../../../lib/testing/runner/business-date';
+
+type OffsetRange = { readonly from: number; readonly to: number };
+
+const AUDIT_DATE_WINDOWS = {
+  'a1-auftraege': [
+    { from: 20, to: 21 },
+    { from: 150, to: 150 },
+  ],
+  'a1-kalender': [
+    { from: 22, to: 24 },
+    // Three days hold a workday on every run weekday (ownedBerlinWorkdayAtOffset).
+    { from: 147, to: 149 },
+  ],
+  'a1-kunden': [{ from: 65, to: 65 }],
+  'a2-stammdaten': [{ from: 25, to: 26 }],
+  'a2-anfragen': [{ from: 27, to: 27 }],
+  'a2-beziehungen': [
+    { from: 28, to: 29 },
+    { from: 66, to: 66 },
+  ],
+  'a3-personal': [
+    { from: 30, to: 34 },
+    { from: 67, to: 67 },
+  ],
+  'a4-abwesenheit': [
+    { from: 35, to: 39 },
+    { from: 68, to: 69 },
+    // The conditions of +35 … +39 near December 31 (businessYearOffset).
+    { from: -45, to: -41 },
+  ],
+  'a5-aufgaben-qualifikationen': [{ from: 40, to: 44 }],
+  'a6-planung': [{ from: 45, to: 54 }],
+  'a7-einsaetze': [{ from: 55, to: 64 }],
+  'p1-13': [{ from: 70, to: 74 }],
+  'p1-14': [{ from: 75, to: 79 }],
+  'p1-15': [{ from: 80, to: 84 }],
+  'p1-16': [{ from: 85, to: 89 }],
+  'p1-17': [{ from: 90, to: 94 }],
+  'p1-18': [{ from: 95, to: 99 }],
+  'p1-20': [{ from: 105, to: 109 }],
+  'p1-21': [{ from: 110, to: 114 }],
+  'p1-22': [{ from: 115, to: 119 }],
+  'p1-23': [{ from: 120, to: 124 }],
+  'p1-24': [{ from: 125, to: 129 }],
+  'performance-calendar-live': [
+    { from: -7, to: -7 },
+    { from: 130, to: 130 },
+  ],
+  // Thirteen days: the whole week from the first Monday on or after +152 (ownedBerlinWeekAtOffset).
+  'performance-calendar': [{ from: 152, to: 164 }],
+  'p1-24a': [{ from: 131, to: 140 }],
+  // Thirteen days: the populated week of the visual calendar references, Monday on or after +165.
+  'visual-references': [{ from: 165, to: 177 }],
+} as const satisfies Record<string, readonly OffsetRange[]>;
+
+export type AuditSpecName = keyof typeof AUDIT_DATE_WINDOWS;
+
+function assertDisjointWindows(): void {
+  const claims = new Map<number, string>();
+  for (const [spec, ranges] of Object.entries(AUDIT_DATE_WINDOWS)) {
+    for (const range of ranges) {
+      for (let offset = range.from; offset <= range.to; offset += 1) {
+        const existing = claims.get(offset);
+        if (existing) {
+          throw new Error(
+            `Audit date-ownership registry overlap: run-day offset +${offset} is claimed by both "${existing}" and "${spec}". Fix the registry (and the wave audit doc) before running anything.`,
+          );
+        }
+        claims.set(offset, spec);
+      }
+    }
+  }
+}
+assertDisjointWindows();
+
+/** Formats run-day + offset as a Berlin-calendar YYYY-MM-DD date. */
+export function berlinDateAtOffset(offsetDays: number): string {
+  const berlinToday = testBusinessDate();
+  const date = new Date(`${berlinToday}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Formats a date that the manager dispatch overview can display. */
+export function dispatchOverviewBerlinDateAtOffset(offsetDays: number): string {
+  if (!Number.isInteger(offsetDays) || offsetDays < 0 || offsetDays > DISPATCH_OVERVIEW_MAX_OFFSET_DAYS) {
+    throw new Error(
+      `Dispatch overview offset must be an integer from 0 through ${DISPATCH_OVERVIEW_MAX_OFFSET_DAYS}; received ${offsetDays}.`,
+    );
+  }
+  return berlinDateAtOffset(offsetDays);
+}
+
+/**
+ * The checked variant for uniqueness-constrained fixtures: throws unless the
+ * claiming spec owns the offset in the registry above.
+ */
+export function ownedBerlinDateAtOffset(spec: AuditSpecName, offsetDays: number): string {
+  const owned = AUDIT_DATE_WINDOWS[spec].some((range) => offsetDays >= range.from && offsetDays <= range.to);
+  if (!owned) {
+    const windows = AUDIT_DATE_WINDOWS[spec]
+      .map((range) => (range.from === range.to ? `+${range.from}` : `+${range.from}…+${range.to}`))
+      .join(', ');
+    throw new Error(
+      `Spec "${spec}" claimed run-day offset +${offsetDays} for a uniqueness-constrained fixture, but owns only ${windows} (docs/technical/integrated-test-state.md#choose-fixture-dates). Pick a date inside the owned window or renegotiate the partition in the docs first.`,
+    );
+  }
+  return berlinDateAtOffset(offsetDays);
+}
+
+/**
+ * The first Monday-to-Friday date on or after run-day + offset, for a fixture
+ * that drops a card on a person's row. A person without a work schedule has
+ * no weekend target, and the calendar refuses that drop at the pointer
+ * (`checkPersonDay`). Throws unless the spec owns the date.
+ */
+export function ownedBerlinWorkdayAtOffset(spec: AuditSpecName, offsetDays: number): string {
+  const weekday = new Date(`${berlinDateAtOffset(offsetDays)}T12:00:00Z`).getUTCDay();
+  const daysToMonday = weekday === 6 ? 2 : weekday === 0 ? 1 : 0;
+  return ownedBerlinDateAtOffset(spec, offsetDays + daysToMonday);
+}
+
+/**
+ * The Monday of the first whole week, Monday to Sunday, on or after run-day +
+ * offset, for a fixture that a week view shows. The Plantafel reads the week
+ * of a date, so seven days counted from the run's weekday would put a
+ * different number of them on screen on each run day. Throws unless the spec
+ * owns all seven days.
+ */
+export function ownedBerlinWeekAtOffset(spec: AuditSpecName, offsetDays: number): string {
+  const weekday = new Date(`${berlinDateAtOffset(offsetDays)}T12:00:00Z`).getUTCDay();
+  const monday = offsetDays + ((8 - weekday) % 7);
+  for (let day = 1; day < 7; day += 1) ownedBerlinDateAtOffset(spec, monday + day);
+  return ownedBerlinDateAtOffset(spec, monday);
+}

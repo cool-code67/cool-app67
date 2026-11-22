@@ -1,0 +1,63 @@
+name: Staging
+
+# A merge to main reaches staging in this order: DEV's schema first, then the
+# app (docs/technical/environments.md, "The migration rule"). vercel.json turns
+# off Git deployments of main, and this workflow deploys the exact commit whose
+# migrations it applied, so staging never runs code ahead of its schema;
+# pull-request branches never deploy (vercel.json).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Migrate DEV
+    # A manual run from another branch would push that branch's migrations to DEV.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/supabase-cli
+      # --include-all applies a merged migration whose version sorts before one DEV already holds;
+      # the migration-order gate let it merge only when the two change different objects. The
+      # release applies a migration to PROD only once this step recorded it in DEV's ledger.
+      - name: Apply pending migrations
+        env:
+          DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+        run: supabase db push --include-all --db-url "$DATABASE_URL"
+      # --use-api bundles on Supabase's side, so the runner pulls no Docker image and meets no registry rate limit.
+      # The functions are named: each checks its own caller (the mail functions a secret key,
+      # health its token), so none needs a JWT. A new function deploys only once it is named here,
+      # and lib/security/edge-functions.test.ts fails until it is. A flag, not supabase/config.toml:
+      # CI's stack-image cache is keyed on that file.
+      - name: Deploy the edge functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy send-invite-email send-email-change-current-otp health --project-ref mbkkzuqjbdvzelqvuzcn --use-api --no-verify-jwt
+
+  deploy:
+    name: Deploy staging
+    needs: migrate
+    runs-on: ubuntu-24.04
+    # The deploy waits up to 20 minutes for Vercel to accept it (rate limits, vercel-api.sh), then
+    # up to 20 minutes for the build.
+    timeout-minutes: 45
+    steps:
+      # Only the scripts are read; no step needs the job token in .git/config.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Deploy this commit to staging
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bash .github/scripts/staging-deploy.sh "$GITHUB_SHA"

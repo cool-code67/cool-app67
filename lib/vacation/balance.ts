@@ -1,0 +1,213 @@
+// P1-06 balance contract: WerkFlow stores the organization's entered
+// entitlement and shows arithmetic (Anspruch − genommen = Rest). It makes no
+// legal claims — no automatic pro-rata, no expiry law. Missing configuration
+// is a visible labeled exception, never an invented number.
+//
+// Vacation-day consumption is DERIVED from the P1-04 target truth: a day only
+// costs entitlement if it has a positive resolved target. Weekends, holidays,
+// closure days, and schedule-free days therefore cost nothing with zero new
+// date logic; the labeled `default` source owes Montag–Freitag only, so an
+// unconfigured person never pays seven days per week.
+
+import type { EmploymentCondition } from '@/lib/personnel/types';
+import { isValidIsoDate } from '@/lib/calendar/date-range';
+import type { WorkSchedule } from '@/lib/personnel/schedule';
+import {
+  resolveDailyTarget,
+  type EmploymentInterval,
+  type OrganizationHolidayCalendar,
+} from '@/lib/personnel/targets';
+import type { VacationDayPortion, VacationRequest } from './types';
+
+/**
+ * The entitlement for a vacation year (calendar year) is the
+ * `vacation_days_per_year` of the newest employment condition with
+ * `valid_from` on or before December 31 of that year. A mid-year change means
+ * the latest value entered for the year governs it — deliberately simple,
+ * explainable arithmetic on entered numbers (owner-facing decision, P1-06).
+ * Returns null when no condition carries a value: the labeled
+ * „kein Urlaubsanspruch hinterlegt" exception.
+ */
+export function resolveVacationEntitlementForYear(
+  conditions: EmploymentCondition[],
+  year: number,
+): number | null {
+  const yearEnd = `${year}-12-31`;
+  const effective = conditions
+    .filter((condition) => condition.validFrom <= yearEnd)
+    .sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+  return effective?.vacationDaysPerYear ?? null;
+}
+
+export type VacationCountingContext = {
+  schedules: WorkSchedule[];
+  conditions: EmploymentCondition[];
+  calendar: OrganizationHolidayCalendar;
+};
+
+/**
+ * Upper bound for one request's inclusive day span, enforced at the insert
+ * boundary (`createVacationRequest`). Generous enough for any real vacation
+ * (a full year including a year boundary) while keeping per-day counting
+ * bounded for every persisted row.
+ */
+export const MAX_VACATION_RANGE_DAYS = 366;
+
+/** Inclusive day span of an ISO date range without materializing the days. */
+export function countCalendarDaysInRange(startDate: string, endDate: string): number {
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+  if (
+    !isValidIsoDate(startDate) ||
+    !isValidIsoDate(endDate) ||
+    startYear === undefined ||
+    startMonth === undefined ||
+    startDay === undefined ||
+    endYear === undefined ||
+    endMonth === undefined ||
+    endDay === undefined
+  ) {
+    throw new Error(`Invalid ISO date range: ${startDate} – ${endDate}`);
+  }
+  const startUtc = Date.UTC(startYear, startMonth - 1, startDay);
+  const endUtc = Date.UTC(endYear, endMonth - 1, endDay);
+  return Math.round((endUtc - startUtc) / 86_400_000) + 1;
+}
+
+/**
+ * Inclusive ISO-date iteration without timezone drift. The unit test pins the year
+ * boundary here.
+ * @internal
+ */
+export function listIsoDatesInRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+  if (
+    !isValidIsoDate(startDate) ||
+    !isValidIsoDate(endDate) ||
+    startYear === undefined ||
+    startMonth === undefined ||
+    startDay === undefined ||
+    endYear === undefined ||
+    endMonth === undefined ||
+    endDay === undefined
+  ) {
+    throw new Error(`Invalid ISO date range: ${startDate} – ${endDate}`);
+  }
+  const cursor = Date.UTC(startYear, startMonth - 1, startDay);
+  const last = Date.UTC(endYear, endMonth - 1, endDay);
+  for (let time = cursor; time <= last; time += 86_400_000) {
+    const date = new Date(time);
+    dates.push(
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`,
+    );
+  }
+  return dates;
+}
+
+// Counting does not read the record's entry and exit dates yet
+// (werk-flow/werkflow-planning#200): every requested date counts
+// as employed.
+const COUNTING_EMPLOYMENT: EmploymentInterval = { entryDate: null, exitDate: null };
+
+/**
+ * Whether a single date consumes entitlement, before applying the portion.
+ * Derived from the resolved target (no absence input — consumption asks what
+ * the day would have required, not what it requires after the vacation).
+ */
+export function doesDateConsumeVacation(dateIso: string, context: VacationCountingContext): boolean {
+  return resolveDailyTarget({ dateIso, ...context, employment: COUNTING_EMPLOYMENT }).targetMinutes > 0;
+}
+
+/**
+ * Entitlement days consumed by a request range, split per vacation year (a
+ * range crossing New Year charges each year separately).
+ */
+export function countVacationDaysByYear(
+  input: {
+    startDate: string;
+    endDate: string;
+    dayPortion: VacationDayPortion;
+  },
+  context: VacationCountingContext,
+): Record<string, number> {
+  const perDay = input.dayPortion === 'half_day' ? 0.5 : 1;
+  const daysByYear: Record<string, number> = {};
+  for (const dateIso of listIsoDatesInRange(input.startDate, input.endDate)) {
+    if (!doesDateConsumeVacation(dateIso, context)) continue;
+    const year = dateIso.slice(0, 4);
+    daysByYear[year] = (daysByYear[year] ?? 0) + perDay;
+  }
+  return daysByYear;
+}
+
+/** Total consumed days of a range (sum across years). */
+export function countVacationDays(
+  input: {
+    startDate: string;
+    endDate: string;
+    dayPortion: VacationDayPortion;
+  },
+  context: VacationCountingContext,
+): number {
+  return Object.values(countVacationDaysByYear(input, context)).reduce((total, days) => total + days, 0);
+}
+
+export type VacationBalance = {
+  year: number;
+  /** null = kein Urlaubsanspruch hinterlegt (labeled exception, never 0). */
+  entitlementDays: number | null;
+  /** Sum of approval-time snapshots of approved requests for this year. */
+  takenDays: number;
+  /** Live-computed preview of pending requests for this year. */
+  pendingDays: number;
+  /** entitlement − taken; null while no entitlement is stored. */
+  remainingDays: number | null;
+};
+
+/**
+ * The explainable balance for one vacation year. `takenDays` sums the
+ * approval-time snapshots (`approvedDaysByYear`) so a later schedule change
+ * never silently rewrites a decided balance; pending days are a live preview.
+ * A caller that shows several balances passes `daysByYearOf` to count each
+ * pending request once.
+ */
+export function computeVacationBalance(
+  year: number,
+  requests: VacationRequest[],
+  context: VacationCountingContext,
+  daysByYearOf: (request: VacationRequest) => Record<string, number> = (request) =>
+    countVacationDaysByYear(request, context),
+): VacationBalance {
+  const yearKey = String(year);
+  let takenDays = 0;
+  let pendingDays = 0;
+
+  for (const request of requests) {
+    if (request.status === 'approved') {
+      takenDays += request.approvedDaysByYear?.[yearKey] ?? 0;
+    } else if (request.status === 'pending') {
+      pendingDays += daysByYearOf(request)[yearKey] ?? 0;
+    }
+  }
+
+  const entitlementDays = resolveVacationEntitlementForYear(context.conditions, year);
+
+  return {
+    year,
+    entitlementDays,
+    takenDays,
+    pendingDays,
+    remainingDays: entitlementDays === null ? null : entitlementDays - takenDays,
+  };
+}
+
+/** „3 Tage", „0,5 Tage", „1 Tag" — German day formatting for balances. */
+export function formatVacationDays(days: number): string {
+  const formatted = new Intl.NumberFormat('de-DE', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  }).format(days);
+  return `${formatted} ${days === 1 ? 'Tag' : 'Tage'}`;
+}

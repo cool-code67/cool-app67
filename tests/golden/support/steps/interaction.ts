@@ -1,0 +1,148 @@
+import { errors, expect, type Locator, type Page } from '@playwright/test';
+import { busyElements, isPage, type Scope } from '../busy-elements';
+
+/**
+ * The one home of settling and key presses in browser tests (testing.md,
+ * "Write a spec that stands alone"). A spec acts only after the app's own busy
+ * signals are clear (lib/testing/spec-support/busy-signals.ts): `aria-busy`,
+ * `data-pending`, a skeleton, a spinner, an unconfirmed row or optimistic
+ * layer, a queued or running route refresh, and the calendar's
+ * `data-calendar-state`. Two races
+ * that failed runs proved are unwritable through these steps: Escape while a
+ * dialog still saves, and a shortcut key typed into a focused combobox.
+ *
+ * Compare-then-act values (a badge against list counts) are read together in
+ * one `expect.poll`, never one after another.
+ */
+
+const TEXT_ENTRY_ROLES = new Set(['combobox', 'listbox', 'textbox', 'searchbox', 'spinbutton']);
+
+function pageOf(scope: Scope): Page {
+  return isPage(scope) ? scope : scope.page();
+}
+
+/** Waits until nothing inside the scope is busy; a failure names the busy elements. */
+export async function settled(scope: Scope, options: { timeout?: number } = {}): Promise<void> {
+  await expect
+    .poll(() => busyElements(scope), {
+      message:
+        'The scope settles: no aria-busy, pending dialog, skeleton, spinner, unconfirmed content or route refresh, and every calendar ready',
+      ...(options.timeout !== undefined ? { timeout: options.timeout } : {}),
+    })
+    .toEqual([]);
+}
+
+/**
+ * Waits until React hydrated every element of the page. Server HTML is not
+ * the settled page: a client-only control stays disabled until hydration
+ * (`hooks/use-hydrated.ts`), and a Suspense boundary hydrates after the shell,
+ * later still on a slow machine, without any busy signal. React marks each
+ * element it owns with its fiber key, so an element without one is server HTML
+ * React has not reached. Elements that never belong to React are left out:
+ * the scripts and styles Next.js streams, and its route announcer.
+ */
+export async function hydrated(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const unhydrated: string[] = [];
+          for (const element of document.body.querySelectorAll('*')) {
+            if (element.closest('script, style, link, template, noscript, next-route-announcer')) continue;
+            if (Object.keys(element).some((key) => key.startsWith('__reactFiber$'))) continue;
+            unhydrated.push(
+              `<${element.tagName.toLowerCase()}> ${(element.textContent ?? '').trim().slice(0, 60)}`,
+            );
+          }
+          return unhydrated.slice(0, 5);
+        }),
+      { message: 'React hydrated every element of the page' },
+    )
+    .toEqual([]);
+}
+
+/**
+ * Waits until the app shell hydrated and settled. The realtime provider marks
+ * `<html>` from an effect once its channel joined, so server HTML never
+ * carries the mark; after the root hydrated, React replays a click on content
+ * that still streams in instead of dropping it. The catch-up read the mark
+ * starts must settle before a step acts.
+ */
+export async function hydratedAndSettled(page: Page): Promise<void> {
+  await expect(page.locator('html')).toHaveAttribute('data-realtime-postgres-state', 'ready');
+  await settled(page);
+}
+
+/** Keys that activate the focused control: they go to a named control, never to whatever holds focus. */
+const ACTIVATION_KEYS = new Set(['Enter', ' ', 'Space']);
+
+/**
+ * Settles the scope, then presses the key. With `into`, the key goes to that
+ * control (Enter on a trigger, Enter in a search box) once it is enabled: a
+ * client-only action stays disabled in server HTML until hydration
+ * (`hooks/use-hydrated.ts`), and focus on a disabled control does not land,
+ * so the key would reach the page instead. Without `into`, the key is a
+ * shortcut: it may not be an activation key, and focus must not sit in a text
+ * field, combobox or listbox, where a shortcut becomes typed text.
+ */
+export async function pressKey(
+  scope: Scope,
+  key: string,
+  options: { into?: Locator; timeout?: number } = {},
+): Promise<void> {
+  const timeout = options.timeout !== undefined ? { timeout: options.timeout } : {};
+  await settled(scope, timeout);
+  if (options.into) {
+    await expect(options.into, `The control that takes "${key}" is enabled`).toBeEnabled(timeout);
+    await options.into.press(key, timeout);
+    return;
+  }
+  if (ACTIVATION_KEYS.has(key))
+    throw new Error(
+      `pressKey("${key}") refused: an activation key goes to its control. Pass { into: control }, so the key waits until the control can take it.`,
+    );
+  const page = pageOf(scope);
+  const focusedRole = await page.evaluate(() => {
+    const element = document.activeElement;
+    if (!element || element === document.body) return null;
+    const explicit = element.getAttribute('role');
+    if (explicit) return explicit;
+    if (element instanceof HTMLTextAreaElement) return 'textbox';
+    if (element instanceof HTMLSelectElement) return 'combobox';
+    if (element instanceof HTMLInputElement)
+      return ['button', 'checkbox', 'radio', 'submit', 'reset', 'range', 'file', 'color'].includes(
+        element.type,
+      )
+        ? 'control'
+        : 'textbox';
+    return element instanceof HTMLElement && element.isContentEditable ? 'textbox' : 'other';
+  });
+  if (focusedRole && TEXT_ENTRY_ROLES.has(focusedRole))
+    throw new Error(
+      `pressKey("${key}") refused: focus is in a ${focusedRole}, where the key would be typed or consumed. Move focus first or pass { into }.`,
+    );
+  await page.keyboard.press(key);
+}
+
+/** Closes a dialog or popover with Escape after its request settled; a layer that refuses fails here. */
+export async function dismissDialog(layer: Locator): Promise<void> {
+  await settled(layer);
+  await expect(layer, 'A pending layer refuses dismissal').not.toHaveAttribute('data-pending', 'true');
+  await layer.page().keyboard.press('Escape');
+  await expect(layer).toBeHidden();
+}
+
+/**
+ * Whether a bounded wait (a `waitFor`, a `waitForURL`) settled before its
+ * timeout: false only for a timeout. A closed page, a strict-mode violation or
+ * any other failure propagates, so a branch on the result never hides one.
+ */
+export function settledBeforeTimeout(wait: Promise<unknown>): Promise<boolean> {
+  return wait.then(
+    () => true,
+    (error: unknown) => {
+      if (error instanceof errors.TimeoutError) return false;
+      throw error;
+    },
+  );
+}

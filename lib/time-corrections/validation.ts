@@ -1,0 +1,87 @@
+import { z } from '@/lib/zod';
+import { timeActivitySelectionSchema } from '@/lib/time-tracking/activity-selection-schema';
+import { uuidSchema } from '@/lib/validation/uuid';
+
+import type { TimeCorrectionKind } from './types';
+
+/** The entry types a time entry's check constraint allows. */
+export const timeEntryTypeSchema = z.enum(['clock_in', 'clock_out', 'break_start', 'break_end']);
+
+const timeCorrectionSourceInputSchema = z.object({
+  kind: z.enum(['legacy_entry', 'canonical_session', 'canonical_segment', 'correction_application']),
+  id: uuidSchema,
+});
+
+const timeCorrectionFactInputSchema = z
+  .object({
+    factId: z.string().min(1).max(100),
+    employeeRecordId: uuidSchema,
+    entryType: timeEntryTypeSchema,
+    timestamp: z.iso.datetime({ offset: true }),
+    jobId: uuidSchema.nullable().optional(),
+    activityKind: z
+      .enum(['work', 'travel', 'break', 'standby', 'callout', 'internal_activity'])
+      .nullable()
+      .optional(),
+    /** The activity with its details, as a timeline of a forgotten day records it. */
+    activity: timeActivitySelectionSchema.optional(),
+  })
+  // An activity names the fact's kind and job; it never contradicts them.
+  .refine(
+    (fact) =>
+      !fact.activity ||
+      (fact.activity.kind === fact.activityKind &&
+        ('jobId' in fact.activity ? fact.activity.jobId : null) === (fact.jobId ?? null)),
+  );
+
+const calendarBoundarySchema = z.object({
+  source: timeCorrectionSourceInputSchema.extend({ version: z.string().min(1).max(200) }),
+  entryType: timeEntryTypeSchema,
+  originalTimestamp: z.iso.datetime({ offset: true }),
+  timestamp: z.iso.datetime({ offset: true }),
+  employeeRecordId: uuidSchema,
+});
+
+export type CalendarCorrectionBoundary = z.infer<typeof calendarBoundarySchema>;
+
+export const submitTimeCorrectionSchema = z.object({
+  organizationId: uuidSchema,
+  subjectEmployeeRecordId: uuidSchema,
+  kind: z.enum(['add', 'edit', 'delete', 'split', 'reclassify', 'reallocate', 'reassign', 'missed_clock']),
+  reason: z.string().trim().min(3).max(2000),
+  source: timeCorrectionSourceInputSchema.nullable(),
+  proposedFacts: z.array(timeCorrectionFactInputSchema).max(20),
+  operationId: uuidSchema,
+  calendarAdjustment: z.array(calendarBoundarySchema).min(2).max(20).optional(),
+});
+
+export type SubmitTimeCorrectionInput = z.infer<typeof submitTimeCorrectionSchema>;
+
+export const reviewTimeCorrectionSchema = z.object({
+  requestId: uuidSchema,
+  expectedRevision: z.number().int().positive(),
+  decision: z.enum(['approve', 'reject', 'clarify']),
+  comment: z.string().trim().max(2000).nullable(),
+  operationId: uuidSchema,
+});
+
+export type ReviewTimeCorrectionInput = z.infer<typeof reviewTimeCorrectionSchema>;
+
+export function validateCorrectionShape(input: {
+  kind: TimeCorrectionKind;
+  hasSource: boolean;
+  proposedFactCount: number;
+}): string | null {
+  if (input.kind === 'add' || input.kind === 'missed_clock') {
+    if (input.hasSource || input.proposedFactCount < 1) return 'invalid_shape';
+    return null;
+  }
+  if (!input.hasSource) return 'source_required';
+  if (input.kind === 'delete') {
+    return input.proposedFactCount === 0 ? null : 'invalid_shape';
+  }
+  if (input.kind === 'split') {
+    return input.proposedFactCount >= 4 ? null : 'invalid_shape';
+  }
+  return input.proposedFactCount > 0 ? null : 'invalid_shape';
+}

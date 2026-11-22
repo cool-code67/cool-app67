@@ -1,0 +1,163 @@
+'use client';
+
+import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
+import { SectionError } from '@/components/ui/section-error';
+import { JobMultiSelect } from '../shared/job-multi-select';
+import { ClientSelectWithCreate, type ClientSelectItem } from '../shared/client-select-with-create';
+import { SiteContactFields } from '../shared/site-contact-fields';
+import type { EditProjectForm } from './use-edit-project-form';
+
+type EditProjectFormFieldsProps = {
+  form: EditProjectForm;
+  selectedClient: ClientSelectItem | null;
+};
+
+export function EditProjectFormFields({ form, selectedClient }: EditProjectFormFieldsProps) {
+  const { clientId, handleClientChange, siteId, setSiteId, contactId, setContactId, formDisabled } = form;
+
+  return (
+    <>
+      <EditProjectContentFields form={form} />
+
+      <Field label="Kunde" htmlFor="edit-project-client">
+        <ClientSelectWithCreate
+          selectedClient={selectedClient}
+          value={clientId}
+          onValueChange={handleClientChange}
+          disabled={formDisabled}
+        />
+      </Field>
+
+      <SiteContactFields
+        clientId={clientId}
+        siteId={siteId}
+        contactId={contactId}
+        onSiteChange={(nextSiteId) => setSiteId(nextSiteId)}
+        onContactChange={setContactId}
+        disabled={formDisabled}
+        idPrefix="edit-project"
+      />
+
+      <EditProjectPlanningFields form={form} />
+    </>
+  );
+}
+
+function EditProjectContentFields({ form }: { form: EditProjectForm }) {
+  const {
+    name,
+    setName,
+    description,
+    setDescription,
+    projectNumber,
+    setProjectNumber,
+    contentError,
+    setContentError,
+    showContentError,
+    formDisabled,
+  } = form;
+
+  return (
+    <>
+      <Field label="Titel" htmlFor="edit-project-name">
+        <Input
+          placeholder="z.B. Sanierung Hauptgebäude"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (contentError && e.target.value.trim()) setContentError(null);
+          }}
+          disabled={formDisabled}
+          aria-invalid={showContentError ? true : undefined}
+        />
+      </Field>
+
+      <Field label="Projektnummer" htmlFor="edit-project-number">
+        <Input
+          placeholder="z.B. P-2026-001"
+          value={projectNumber}
+          onChange={(e) => setProjectNumber(e.target.value)}
+          disabled={formDisabled}
+        />
+      </Field>
+
+      <Field
+        label="Beschreibung"
+        htmlFor="edit-project-description"
+        error={showContentError ? contentError : null}
+      >
+        <Textarea
+          placeholder="Optionale Beschreibung des Projekts…"
+          value={description}
+          onChange={(e) => {
+            setDescription(e.target.value);
+            if (contentError && e.target.value.trim()) setContentError(null);
+          }}
+          disabled={formDisabled}
+        />
+      </Field>
+    </>
+  );
+}
+
+function EditProjectPlanningFields({ form }: { form: EditProjectForm }) {
+  const {
+    plannedStartDate,
+    setPlannedStartDate,
+    plannedEndDate,
+    setPlannedEndDate,
+    selectedJobIds,
+    setSelectedJobIds,
+    jobSearch,
+    isLoadingJobs,
+    jobsFailure,
+    formDisabled,
+  } = form;
+
+  return (
+    <>
+      <Separator />
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Planung</p>
+
+      <Field label="Geplanter Beginn" htmlFor="edit-project-start-date">
+        <DatePicker
+          value={plannedStartDate}
+          onChange={setPlannedStartDate}
+          placeholder="Startdatum wählen"
+          disabled={formDisabled}
+        />
+      </Field>
+
+      <Field label="Geplantes Ende" htmlFor="edit-project-end-date">
+        <DatePicker
+          value={plannedEndDate}
+          onChange={setPlannedEndDate}
+          placeholder="Enddatum wählen"
+          disabled={formDisabled}
+        />
+      </Field>
+
+      <Field
+        label="Zugewiesene Aufträge"
+        htmlFor="edit-project-jobs"
+        description={isLoadingJobs ? 'Aufträge werden geladen…' : undefined}
+      >
+        {jobsFailure ? (
+          // A failed load must not read as a project without jobs.
+          <SectionError failure={jobsFailure} />
+        ) : (
+          <JobMultiSelect
+            search={jobSearch}
+            selectedIds={selectedJobIds}
+            onSelectionChange={setSelectedJobIds}
+            disabled={formDisabled || isLoadingJobs}
+          />
+        )}
+      </Field>
+    </>
+  );
+}

@@ -1,0 +1,108 @@
+import type { Database } from '@/lib/supabase/database.types';
+import { formatBerlinLocalDate } from '@/lib/date-time/berlin';
+
+export type WorkScheduleRow = Database['public']['Tables']['work_schedules']['Row'];
+
+// Weekday index convention across the schedule domain: 0 = Montag … 6 = Sonntag
+// (matches the weekly time chart's Monday-first layout).
+export const WEEKDAY_LABELS = [
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag',
+  'Samstag',
+  'Sonntag',
+] as const;
+
+export const WEEKDAY_SHORT_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const;
+
+export type WorkSchedule = {
+  id: string;
+  organizationId: string;
+  employeeRecordId: string;
+  validFrom: string;
+  /** Minutes per weekday, index 0 = Montag … 6 = Sonntag. 0 = kein Arbeitstag. */
+  dayMinutes: number[];
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function toWorkSchedule(row: WorkScheduleRow): WorkSchedule {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    employeeRecordId: row.employee_record_id,
+    validFrom: row.valid_from,
+    dayMinutes: [
+      row.monday_minutes,
+      row.tuesday_minutes,
+      row.wednesday_minutes,
+      row.thursday_minutes,
+      row.friday_minutes,
+      row.saturday_minutes,
+      row.sunday_minutes,
+    ],
+    note: row.note,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** Total contracted minutes per week for one schedule version. */
+export function getWeeklyScheduleMinutes(schedule: WorkSchedule): number {
+  return schedule.dayMinutes.reduce((total, minutes) => total + minutes, 0);
+}
+
+/**
+ * The schedule version effective on a date: newest version with
+ * `valid_from <= date` (same rule as `getEffectiveCondition`). Historical days
+ * therefore keep the version that was effective then.
+ */
+export function getEffectiveSchedule(schedules: WorkSchedule[], onDateIso: string): WorkSchedule | null {
+  const applicable = schedules
+    .filter((schedule) => schedule.validFrom <= onDateIso)
+    .sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+  return applicable[0] ?? null;
+}
+
+/**
+ * Weekday index (0 = Montag … 6 = Sonntag) of an ISO calendar date.
+ * Parses the date parts directly so the host time zone can never shift it.
+ */
+export function getWeekdayIndex(dateIso: string): number {
+  const [year, month, day] = dateIso.split('-').map(Number);
+  const invalid = new Error(`Invalid ISO date: ${dateIso}`);
+  if (
+    year === undefined ||
+    month === undefined ||
+    day === undefined ||
+    ![year, month, day].every(Number.isInteger)
+  )
+    throw invalid;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  // A rolled-over date (2026-02-30) is not the date that was written.
+  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) throw invalid;
+  const jsWeekday = date.getUTCDay();
+  return jsWeekday === 0 ? 6 : jsWeekday - 1;
+}
+
+/** ISO dates Monday–Sunday of the week containing the given Berlin business date. */
+export function getBusinessWeekDates(referenceDate: Date = new Date()): string[] {
+  const todayIso = formatBerlinLocalDate(referenceDate);
+  const [year, month, day] = todayIso.split('-').map(Number);
+  if (year === undefined) throw new Error(`Invalid ISO date: ${todayIso}`);
+  const todayUtcMs = Date.UTC(year, (month ?? 1) - 1, day ?? 1);
+  const weekdayIndex = getWeekdayIndex(todayIso);
+
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(todayUtcMs + (i - weekdayIndex) * 86_400_000);
+    const iso = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    dates.push(iso);
+  }
+  return dates;
+}

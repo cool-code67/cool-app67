@@ -1,0 +1,557 @@
+import { resolve } from 'node:path';
+import type { Locator, Page } from '@playwright/test';
+
+import { expect, test } from '../support/fixtures';
+import { artifactsDirectory } from '../../golden/support/world';
+import { seedCustomer } from '../../golden/support/db/customers';
+import {
+  getConvertedRequestJobState,
+  getRequestAuditState,
+  getRequestConversionState,
+  seedRequest,
+} from '../../golden/support/db/requests';
+import { seedProject } from '../../golden/support/db/work';
+import {
+  documentFileInputs,
+  documentLibraryTrashButton,
+  documentOpenButton,
+  documentViewerFrame,
+  documentViewerHeading,
+  visibleDocumentName,
+} from '../../golden/support/steps/documents';
+import { dismissDialog } from '../../golden/support/steps/interaction';
+import {
+  closeRequestViaDialog,
+  convertedJobLink,
+  convertRequestToProjectViaDialog,
+  convertToJobSubmit,
+  createRequestViaDialog,
+  matchRequestToExistingCustomer,
+  moveRequestDocumentToTrash,
+  noAssigneeOption,
+  REQUEST_DETAIL_TEXT,
+  requestBacklink,
+  requestCaptureButton,
+  openRequestCloseItem,
+  requestCloseReasonLabel,
+  requestCloseSubmit,
+  requestConvertButton,
+  requestDocumentTrashedMessage,
+  requestField,
+  requestMoreActionsButton,
+  renderedMainNavigation,
+  requestsNavLink,
+  searchRequests,
+  setRequestStatusFromDetail,
+  showRequestStatus,
+  uploadDocumentOnRequestDetail,
+} from '../../golden/support/steps/requests';
+import { SHARED_COPY, testData, textInDom, visibleText } from '../../golden/support/steps/shared';
+import { lifecycleBadge } from '../../golden/support/steps/work';
+import { formatBerlinDateTimeInput } from '../../../lib/date-time/berlin';
+import { JOB_PRIORITY_LABELS } from '../../../lib/jobs/types';
+import {
+  REQUEST_CATEGORY_LABELS,
+  REQUEST_CLOSE_REASON_LABELS,
+  REQUEST_SOURCE_LABELS,
+  REQUEST_URGENCY_LABELS,
+} from '../../../lib/requests/types';
+import { expectDefined } from '../../../lib/testing/spec-support/expect-defined';
+import { waitForRouteIntercept } from '../support/network';
+
+// A2 requests: optional facts, number override, lifecycle edges, attachments,
+// conversion into a project, the prefilled job conversion, list filters and the
+// role boundary. GG-01 owns the capture-convert journey; every test here seeds
+// the requests and customers it does not claim.
+
+function fullName(user: { firstName: string; lastName: string }): string {
+  return `${user.firstName} ${user.lastName}`;
+}
+
+async function expectSelectOptions(page: Page, trigger: Locator, labels: string[]): Promise<void> {
+  const [firstLabel] = labels;
+  if (!firstLabel) throw new Error('expectSelectOptions needs at least one label');
+  await trigger.click();
+  for (const label of labels) {
+    await expect(page.getByRole('option', { name: label, exact: true })).toBeVisible();
+  }
+  await page.getByRole('option', { name: firstLabel, exact: true }).click();
+}
+
+test.describe('A2 Anfragen @AUDIT-W1-A2', () => {
+  test('A2-09: Unbekannte Anruferin wird bestehendem Kunden zugeordnet und bleibt nachvollziehbar', async ({
+    bueroPage,
+    world,
+  }) => {
+    const customer = `A2 Zielkunde ${world.runId}`;
+    const requestNumber = `A2-ANF-${world.runId}-09`;
+    const caller = `A2 Unbekannte Anruferin ${world.runId}`;
+    const phone = '+49 30 290009';
+    const email = `anruf-${world.runId}@example.test`;
+    const address = testData`Anrufstraße 9, 10115 Berlin`;
+
+    await seedCustomer({ orgId: world.orgId, actorId: world.users.admin.id, name: customer });
+    const requestId = await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.buero.id,
+      summary: `A2 Bestehender Kunde zuordnen ${world.runId}`,
+      requestNumber,
+      callerName: caller,
+      callerPhone: phone,
+      callerEmail: email,
+      callerAddress: address,
+    });
+    await bueroPage.goto(`/anfragen/${requestId}`);
+    await matchRequestToExistingCustomer(bueroPage, customer);
+    await bueroPage.reload();
+    await expect(visibleText(bueroPage, customer)).toBeVisible();
+    await expect(visibleText(bueroPage, REQUEST_DETAIL_TEXT.callerFacts)).toBeVisible();
+    await expect(visibleText(bueroPage, caller)).toBeVisible();
+    await expect(visibleText(bueroPage, phone)).toBeVisible();
+    await expect(visibleText(bueroPage, email)).toBeVisible();
+    await expect(visibleText(bueroPage, address)).toBeVisible();
+
+    const state = await getRequestAuditState(world.orgId, requestNumber);
+    expect(state.clientId).not.toBeNull();
+    expect(state.callerName).toBe(caller);
+    expect(state.callerPhone).toBe(phone);
+    expect(state.callerEmail).toBe(email);
+    expect(state.callerAddress).toBe(address);
+  });
+
+  test('A2-10/A2-11: Eigene Anfragenummer überlebt späten Vorschlag; Klärung und Wiederöffnung bleiben bestehen', async ({
+    bueroPage,
+    world,
+  }) => {
+    const requestNumber = `A2-ANF-${world.runId}-10`;
+    const summary = `A2 Später Nummernvorschlag ${world.runId}`;
+    let releaseSuggestion: () => void = () => undefined;
+    let markIntercepted: () => void = () => undefined;
+    const suggestionGate = new Promise<void>((resolveGate) => {
+      releaseSuggestion = resolveGate;
+    });
+    const intercepted = new Promise<void>((resolveIntercept) => {
+      markIntercepted = resolveIntercept;
+    });
+    let held = false;
+    // The suggestion is the background read `next-request-number` (GET /api/background-read).
+    const isSuggestion = (url: string): boolean =>
+      new URL(url).searchParams.get('kind') === 'next-request-number';
+    await bueroPage.route('**/api/background-read?*', async (route) => {
+      if (!held && isSuggestion(route.request().url())) {
+        held = true;
+        markIntercepted();
+        await suggestionGate;
+      }
+      await route.continue();
+    });
+
+    await bueroPage.goto('/anfragen');
+    try {
+      await requestCaptureButton(bueroPage).click();
+      try {
+        await waitForRouteIntercept(intercepted);
+      } catch {
+        throw new Error('The request-number suggestion read was not intercepted within 15 seconds.');
+      }
+      const dialog = bueroPage.getByRole('dialog');
+      await requestField(dialog, 'summary').fill(summary);
+      await requestField(dialog, 'number').fill(requestNumber);
+      const suggestionResponse = bueroPage.waitForResponse((response) => isSuggestion(response.url()));
+      releaseSuggestion();
+      await suggestionResponse;
+      await expect(requestField(dialog, 'number')).toHaveValue(requestNumber);
+      await requestCaptureButton(dialog).click();
+      await bueroPage.waitForURL(/\/anfragen\/[0-9a-f-]{36}/);
+    } finally {
+      releaseSuggestion();
+      await bueroPage.unroute('**/api/background-read?*');
+    }
+    expect((await getRequestAuditState(world.orgId, requestNumber)).status).toBe('offen');
+
+    // Back leads to the list the request was captured from, which lists it.
+    await bueroPage.goBack();
+    await expect(requestCaptureButton(bueroPage)).toBeVisible();
+    await expect(visibleText(bueroPage, requestNumber)).toBeVisible();
+    await bueroPage.goForward();
+    await bueroPage.waitForURL(/\/anfragen\/[0-9a-f-]{36}/);
+
+    await setRequestStatusFromDetail(bueroPage, 'clarify');
+    expect((await getRequestAuditState(world.orgId, requestNumber)).status).toBe('in_klaerung');
+    await closeRequestViaDialog(bueroPage, REQUEST_CLOSE_REASON_LABELS.kein_bedarf);
+    expect((await getRequestAuditState(world.orgId, requestNumber)).status).toBe('geschlossen');
+    await setRequestStatusFromDetail(bueroPage, 'reopen');
+    expect((await getRequestAuditState(world.orgId, requestNumber)).status).toBe('offen');
+  });
+
+  test('A2-13: Anfrage wird genau einmal in ein Projekt umgewandelt und beidseitig verlinkt', async ({
+    adminPage,
+    world,
+  }) => {
+    const requestNumber = `A2-ANF-${world.runId}-13`;
+    const projectNumber = `A2-RP-${world.runId}`;
+    const { clientId } = await seedCustomer({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      name: `A2 Projektanfrage Kunde ${world.runId}`,
+    });
+    const requestId = await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      summary: `A2 Projekt aus Anfrage ${world.runId}`,
+      requestNumber,
+      clientId,
+    });
+
+    await adminPage.goto(`/anfragen/${requestId}`);
+    await convertRequestToProjectViaDialog(adminPage, projectNumber);
+    const requestLink = adminPage.getByRole('link', {
+      name: new RegExp(projectNumber),
+    });
+    await expect(requestLink).toBeVisible();
+    await expect(requestConvertButton(adminPage)).toHaveCount(0);
+    await requestLink.click();
+    await expect(requestBacklink(adminPage, requestNumber)).toBeVisible();
+
+    const state = await getRequestConversionState(world.orgId, requestNumber);
+    expect(state.status).toBe('umgewandelt');
+    expect(state.convertedProjectId).not.toBeNull();
+    expect(state.convertedJobId).toBeNull();
+  });
+
+  test('A2-R01: Anfrage erfasst alle optionalen Fakten und die vollständige Auswahl', async ({
+    bueroPage,
+    businessDate,
+    world,
+  }) => {
+    const customer = `A2 Vollständiger Kunde ${world.runId}`;
+    const site = `A2 Nebenstelle ${world.runId}`;
+    const contact = `A2 Hauptkontakt ${world.runId}`;
+    const requestNumber = `A2-ANF-${world.runId}-R01`;
+    const details = testData`Heizkreis prüfen und Rückruf vorbereiten`;
+    const assignee = fullName(world.users.buero);
+
+    await seedCustomer({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      name: customer,
+      contacts: [{ name: contact }],
+      sites: [{ name: site, city: 'Berlin' }],
+    });
+
+    await bueroPage.goto('/anfragen');
+    await requestCaptureButton(bueroPage).click();
+    const dialog = bueroPage.getByRole('dialog');
+    await expect(requestField(dialog, 'receivedAtDate')).toBeVisible();
+    await expectSelectOptions(bueroPage, requestField(dialog, 'category'), [
+      REQUEST_CATEGORY_LABELS.notfall,
+      REQUEST_CATEGORY_LABELS.stoerung_reparatur,
+      REQUEST_CATEGORY_LABELS.wartung,
+      REQUEST_CATEGORY_LABELS.angebotsanfrage,
+      REQUEST_CATEGORY_LABELS.installation_umbau,
+      REQUEST_CATEGORY_LABELS.garantie_mangel,
+      REQUEST_CATEGORY_LABELS.allgemeine_frage,
+      REQUEST_CATEGORY_LABELS.sonstiges,
+    ]);
+    await expectSelectOptions(bueroPage, requestField(dialog, 'urgency'), [
+      REQUEST_URGENCY_LABELS.niedrig,
+      REQUEST_URGENCY_LABELS.normal,
+      REQUEST_URGENCY_LABELS.hoch,
+      REQUEST_URGENCY_LABELS.notfall,
+    ]);
+    await expectSelectOptions(bueroPage, requestField(dialog, 'source'), [
+      REQUEST_SOURCE_LABELS.telefon,
+      REQUEST_SOURCE_LABELS.email,
+      REQUEST_SOURCE_LABELS.vor_ort,
+      REQUEST_SOURCE_LABELS.sonstiges,
+    ]);
+    await requestField(dialog, 'assignee').click();
+    const assigneeListbox = bueroPage.getByRole('listbox');
+    await expect(assigneeListbox).toBeVisible();
+    await expect(noAssigneeOption(assigneeListbox)).toBeVisible();
+    await expect(assigneeListbox.getByRole('option').filter({ hasText: assignee })).toBeVisible();
+    await noAssigneeOption(assigneeListbox).click();
+    await dismissDialog(dialog);
+    await expect(dialog).toHaveCount(0);
+
+    await createRequestViaDialog(bueroPage, {
+      summary: `A2 Vollständige Anfrage ${world.runId}`,
+      details,
+      requestNumber,
+      clientName: customer,
+      siteName: site,
+      contactName: contact,
+      categoryLabel: REQUEST_CATEGORY_LABELS.installation_umbau,
+      urgencyLabel: REQUEST_URGENCY_LABELS.notfall,
+      sourceLabel: REQUEST_SOURCE_LABELS.email,
+      receivedAtLocal: `${businessDate}T06:00`,
+      assigneeName: assignee,
+    });
+    await expect(visibleText(bueroPage, details)).toBeVisible();
+    await expect(visibleText(bueroPage, REQUEST_CATEGORY_LABELS.installation_umbau)).toBeVisible();
+    await expect(visibleText(bueroPage, REQUEST_SOURCE_LABELS.email)).toBeVisible();
+    await expect(visibleText(bueroPage, assignee)).toBeVisible();
+    await expect(visibleText(bueroPage, site)).toBeVisible();
+    await expect(visibleText(bueroPage, contact)).toBeVisible();
+    await expect(visibleText(bueroPage, REQUEST_DETAIL_TEXT.captured)).toBeVisible();
+
+    const state = await getRequestAuditState(world.orgId, requestNumber);
+    expect(state).toMatchObject({
+      status: 'offen',
+      details,
+      category: 'installation_umbau',
+      urgency: 'notfall',
+      source: 'email',
+      assignedTo: world.users.buero.id,
+      eventTypes: ['created'],
+      eventActorIds: [world.users.buero.id],
+    });
+    expect(state.clientId).not.toBeNull();
+    expect(state.siteId).not.toBeNull();
+    expect(state.contactId).not.toBeNull();
+    // The stored instant reads back as the entered Berlin wall time in either season.
+    expect(formatBerlinDateTimeInput(state.receivedAt)).toBe(`${businessDate}T06:00`);
+  });
+
+  test('A2-R02: Anfrage-Anhang öffnet im Viewer und landet im Papierkorb', async ({ adminPage, world }) => {
+    const requestId = await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      summary: `A2 Dokumentierte Anfrage ${world.runId}`,
+      requestNumber: `A2-ANF-${world.runId}-R02`,
+    });
+    await adminPage.goto(`/anfragen/${requestId}`);
+    await uploadDocumentOnRequestDetail(
+      adminPage,
+      resolve(artifactsDirectory(), 'upload-fixture.pdf'),
+      'upload-fixture',
+    );
+    await documentOpenButton(adminPage, 'upload-fixture').click();
+    const viewer = adminPage.getByRole('dialog');
+    await expect(documentViewerHeading(adminPage, 'upload-fixture')).toBeVisible();
+    await expect(documentViewerFrame(viewer, 'upload-fixture')).toBeVisible();
+    await dismissDialog(viewer);
+    await expect(viewer).toHaveCount(0);
+
+    await moveRequestDocumentToTrash(adminPage, 'upload-fixture');
+    await expect(requestDocumentTrashedMessage(adminPage)).toBeVisible();
+    await expect(documentOpenButton(adminPage, 'upload-fixture')).toHaveCount(0);
+    await adminPage.goto('/dokumente');
+    await documentLibraryTrashButton(adminPage).click();
+    await expect(visibleDocumentName(adminPage, 'upload-fixture')).toBeVisible();
+  });
+
+  test('A2-R03: Abschlussgründe sind verpflichtend; umgewandelte Anfragen sind schreibgeschützt', async ({
+    bueroPage,
+    world,
+  }) => {
+    const openRequestId = await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.buero.id,
+      summary: `A2 Abschluss prüfen ${world.runId}`,
+      requestNumber: `A2-ANF-${world.runId}-R03`,
+    });
+    const projectId = await seedProject({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      projectNumber: `A2-R03-P-${world.runId}`,
+      name: `A2 Schreibschutzprojekt ${world.runId}`,
+    });
+    const convertedRequestId = await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      summary: `A2 Bereits umgewandelt ${world.runId}`,
+      requestNumber: `A2-ANF-${world.runId}-R03-CONV`,
+      outcome: { status: 'umgewandelt', projectId },
+    });
+
+    await bueroPage.goto(`/anfragen/${openRequestId}`);
+    await (await openRequestCloseItem(bueroPage)).click();
+    const closeDialog = bueroPage.getByRole('dialog');
+    await expect(requestCloseReasonLabel(closeDialog)).toBeVisible();
+    await expectSelectOptions(bueroPage, requestField(closeDialog, 'closeReason'), [
+      REQUEST_CLOSE_REASON_LABELS.kein_bedarf,
+      REQUEST_CLOSE_REASON_LABELS.abgelehnt,
+      REQUEST_CLOSE_REASON_LABELS.duplikat,
+      REQUEST_CLOSE_REASON_LABELS.anderweitig_geloest,
+      REQUEST_CLOSE_REASON_LABELS.sonstiges,
+    ]);
+    await expect(requestField(closeDialog, 'closeReason')).not.toHaveText('');
+    await requestField(closeDialog, 'closeReason').click();
+    await bueroPage.getByRole('option', { name: REQUEST_CLOSE_REASON_LABELS.duplikat, exact: true }).click();
+    await requestCloseSubmit(closeDialog).click();
+    await expect(closeDialog).toHaveCount(0);
+    await bueroPage.reload();
+    await expect(visibleText(bueroPage, REQUEST_DETAIL_TEXT.closedWithoutWork)).toBeVisible();
+    await expect(visibleText(bueroPage, REQUEST_CLOSE_REASON_LABELS.duplikat)).toBeVisible();
+
+    await bueroPage.goto(`/anfragen/${convertedRequestId}`);
+    await expect(visibleText(bueroPage, REQUEST_DETAIL_TEXT.converted)).toBeVisible();
+    await expect(requestConvertButton(bueroPage)).toHaveCount(0);
+    await expect(bueroPage.getByRole('button', { name: SHARED_COPY.action.edit })).toHaveCount(0);
+    // „Schließen“ and the status steps live in this menu, so its absence proves theirs.
+    await expect(requestMoreActionsButton(bueroPage)).toHaveCount(0);
+    await expect(documentFileInputs(bueroPage)).toHaveCount(0);
+  });
+
+  test('A2-R04: Auftragsumwandlung ist vollständig vorbefüllt, editierbar, ungeplant und versandfrei', async ({
+    adminPage,
+    world,
+  }) => {
+    const customer = `A2 Umwandlungskunde ${world.runId}`;
+    const contact = `A2 Umwandlungskontakt ${world.runId}`;
+    const site = `A2 Umwandlungsstandort ${world.runId}`;
+    const requestNumber = `A2-ANF-${world.runId}-R04`;
+    const summary = `A2 Umwandlung komplett ${world.runId}`;
+    const details = testData`Ursprüngliche Anfragebeschreibung`;
+    const editedTitle = `A2 Editierter Auftrag ${world.runId}`;
+    const editedDescription = testData`Im Umwandlungsdialog bewusst ergänzt`;
+
+    const seeded = await seedCustomer({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      name: customer,
+      contacts: [{ name: contact }],
+      sites: [{ name: site, city: 'Berlin' }],
+    });
+    const siteId = expectDefined(seeded.siteIds.get(site), 'seeded conversion site');
+    const contactId = expectDefined(seeded.contactIds.get(contact), 'seeded conversion contact');
+    const requestId = await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      summary,
+      details,
+      requestNumber,
+      clientId: seeded.clientId,
+      siteId,
+      contactId,
+      urgency: 'notfall',
+    });
+    await adminPage.goto(`/anfragen/${requestId}`);
+    await requestConvertButton(adminPage).click();
+    const dialog = adminPage.getByRole('dialog');
+    await expect(requestField(dialog, 'convertTitle')).toHaveValue(summary);
+    await expect(requestField(dialog, 'convertDescription')).toHaveValue(details);
+    await expect(dialog.getByRole('combobox').filter({ hasText: customer })).toBeVisible();
+    await expect(requestField(dialog, 'convertSite')).toContainText(site);
+    await expect(requestField(dialog, 'convertContact')).toContainText(contact);
+    await expect(requestField(dialog, 'convertPriority')).toContainText(JOB_PRIORITY_LABELS.hoch);
+    await expect(requestField(dialog, 'convertDate')).toContainText(REQUEST_DETAIL_TEXT.noPlannedDate);
+    await expect(dialog.getByText(REQUEST_DETAIL_TEXT.noAutomaticScheduling)).toBeVisible();
+    await requestField(dialog, 'convertTitle').fill(editedTitle);
+    await requestField(dialog, 'convertDescription').fill(editedDescription);
+    await expect(requestField(dialog, 'convertNumber')).toHaveValue(/.+/);
+    await convertToJobSubmit(dialog).click();
+    await expect(dialog).toHaveCount(0);
+    const jobLink = convertedJobLink(adminPage);
+    await expect(jobLink).toBeVisible();
+    await jobLink.click();
+    await expect(visibleText(adminPage, editedTitle)).toBeVisible();
+    await expect(visibleText(adminPage, editedDescription)).toBeVisible();
+    // Since P1-12/P1-14 a conversion no longer creates a passive parked state
+    // (catalog P1-02-F05, BASE-WORK-F03): a date-less converted job is honest
+    // unplanned open work, and parking stays a separate reasoned act.
+    await expect(lifecycleBadge(adminPage, 'unplanned')).toBeVisible();
+
+    const state = await getConvertedRequestJobState(world.orgId, requestNumber);
+    expect(state).toMatchObject({
+      title: editedTitle,
+      description: editedDescription,
+      priority: 'hoch',
+      status: 'nicht_bearbeitet',
+      plannedDate: null,
+      planningCount: 0,
+      dispatchCount: 0,
+      clientId: seeded.clientId,
+      siteId,
+      contactId,
+    });
+  });
+
+  test('A2-R07: Anfragenliste filtert und sucht alle Katalogidentitäten', async ({ bueroPage, world }) => {
+    const customer = `A2 Suchkunde ${world.runId}`;
+    const caller = `A2 Suchanruferin ${world.runId}`;
+    const activeSummary = `A2 Aktive Suchanfrage ${world.runId}`;
+    const activeNumber = `A2-ANF-${world.runId}-R07-AKTIV`;
+    const callerNumber = `A2-ANF-${world.runId}-R07-ANRUF`;
+    const convertedNumber = `A2-ANF-${world.runId}-R07-CONV`;
+    const closedNumber = `A2-ANF-${world.runId}-R07-CLOSED`;
+
+    const { clientId } = await seedCustomer({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      name: customer,
+    });
+    await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.buero.id,
+      summary: activeSummary,
+      requestNumber: activeNumber,
+      clientId,
+      assignedTo: world.users.buero.id,
+    });
+    await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.buero.id,
+      summary: `A2 Anruferanfrage ${world.runId}`,
+      requestNumber: callerNumber,
+      callerName: caller,
+    });
+    const projectId = await seedProject({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      projectNumber: `A2-R07-P-${world.runId}`,
+      name: `A2 Suchprojekt ${world.runId}`,
+    });
+    await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      summary: `A2 Umgewandelte Suchanfrage ${world.runId}`,
+      requestNumber: convertedNumber,
+      outcome: { status: 'umgewandelt', projectId },
+    });
+    await seedRequest({
+      orgId: world.orgId,
+      actorId: world.users.buero.id,
+      summary: `A2 Dauerhaft geschlossen ${world.runId}`,
+      requestNumber: closedNumber,
+      outcome: { status: 'geschlossen', reason: 'sonstiges' },
+    });
+
+    await bueroPage.goto('/anfragen');
+    await expect(visibleText(bueroPage, activeNumber)).toBeVisible();
+    await expect(textInDom(bueroPage, convertedNumber)).toHaveCount(0);
+    await expect(textInDom(bueroPage, closedNumber)).toHaveCount(0);
+    await showRequestStatus(bueroPage, 'umgewandelt');
+    await expect(visibleText(bueroPage, convertedNumber)).toBeVisible();
+    await expect(textInDom(bueroPage, activeNumber)).toHaveCount(0);
+    await showRequestStatus(bueroPage, 'geschlossen');
+    await expect(visibleText(bueroPage, closedNumber)).toBeVisible();
+    await showRequestStatus(bueroPage, 'alle');
+    await expect(visibleText(bueroPage, activeNumber)).toBeVisible();
+    await expect(visibleText(bueroPage, convertedNumber)).toBeVisible();
+    await expect(visibleText(bueroPage, closedNumber)).toBeVisible();
+
+    // The server searches: each query commits its own URL before the row is read.
+    for (const [query, expected] of [
+      [activeSummary, activeNumber],
+      [customer, activeNumber],
+      [caller, callerNumber],
+      [activeNumber, activeNumber],
+      [fullName(world.users.buero), activeNumber],
+    ] as const) {
+      await searchRequests(bueroPage, query);
+      await expect(visibleText(bueroPage, expected)).toBeVisible();
+    }
+  });
+
+  // The server refuses the pages (lib/org/office-page-access.test.ts); this checks the rendered sidebar.
+  test('A2-D02: Handwerker findet Anfragen nicht in der Navigation', async ({ bueroPage, employeePage }) => {
+    await bueroPage.goto('/dashboard');
+    await expect(requestsNavLink(bueroPage)).toBeVisible();
+    await employeePage.goto('/dashboard');
+    // The absence counts only once the employee's sidebar rendered its links, not on its loading shell.
+    await expect(renderedMainNavigation(employeePage)).toBeVisible();
+    await expect(requestsNavLink(employeePage)).toHaveCount(0);
+  });
+});

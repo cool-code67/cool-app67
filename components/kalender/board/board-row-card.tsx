@@ -1,0 +1,167 @@
+'use client';
+
+import { memo } from 'react';
+import { isNoteEntry, type CalendarBoardRow, type CalendarDispatchState } from '@/lib/calendar/board';
+import type { CalendarJob } from '@/lib/jobs/types';
+import { useBoardAbsences } from '../board-absences-context';
+import type { DragSession } from '../drag-engine/drag-engine';
+import {
+  CalendarCard,
+  dispatchChip,
+  readinessChips,
+  unavailableAssigneeWarnings,
+  type CalendarCardChip,
+} from '../surface/calendar-card';
+import type { CalendarSurfaceActions } from './types';
+
+type BoardRowCardProps = {
+  job: CalendarJob;
+  /** The lane item's first visible date: the drag source date. */
+  startDate: string;
+  /** The lane packer's placement: first column, column count and lane. */
+  column: number;
+  span: number;
+  lane: number;
+  row: CalendarBoardRow | null;
+  dispatchState: CalendarDispatchState;
+  /** The job has open material demand. */
+  materialDemand: boolean;
+  compact: boolean;
+  /** A started or past occurrence is history (P1-11): no drag source, no edge handles. */
+  locked: boolean;
+  actions: CalendarSurfaceActions;
+  startDrag: (event: React.PointerEvent, session: DragSession) => void;
+  /** This card's occurrence is hovered, here or in another row. */
+  hovered: boolean;
+  onHoverLink: (occurrenceId: string | null) => void;
+};
+
+/**
+ * The chips of a board card: a warning for each person who cannot work the
+ * visit by its date, then a job visit's dispatch state and readiness.
+ */
+export function boardCardChips(
+  job: CalendarJob,
+  {
+    unavailable,
+    dispatchState,
+    materialDemand,
+  }: {
+    unavailable: CalendarCardChip[];
+    dispatchState: CalendarDispatchState;
+    materialDemand: boolean;
+  },
+): CalendarCardChip[] {
+  const jobChips =
+    isNoteEntry(job) || job.entryKind === 'internal'
+      ? []
+      : [dispatchChip(dispatchState), ...readinessChips(materialDemand)];
+  return [...unavailable, ...jobChips];
+}
+
+/** The card's warning sentence for assistive technology and the one-line icon; undefined without one. */
+/** The grid placement of a lane item: its first column after the name column, its column count and its lane. */
+export function boardLaneStyle({ column, span, lane }: { column: number; span: number; lane: number }) {
+  return { gridColumn: `${column + 2} / span ${span}`, gridRow: lane + 1 } as const;
+}
+
+/** The drag of a card: the ghost takes the card's size, at most 240 px wide. */
+function occurrenceDragSession(
+  event: React.PointerEvent<HTMLButtonElement>,
+  { job, row, startDate }: Pick<BoardRowCardProps, 'job' | 'row' | 'startDate'>,
+): DragSession {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return {
+    payload: {
+      kind: 'occurrence',
+      job,
+      sourceEmployeeRecordId: row?.employeeRecordId ?? null,
+      sourceUserId: row?.userId ?? null,
+      sourceDate: startDate,
+    },
+    ghost: {
+      label: job.title,
+      secondary: job.plannedTime
+        ? `${job.plannedTime} · ${job.clientName ?? ''}`.trim()
+        : (job.clientName ?? undefined),
+      width: Math.min(rect.width, 240),
+      height: rect.height,
+    },
+    pointerOffset: { x: Math.min(event.clientX - rect.left, 240), y: event.clientY - rect.top },
+  };
+}
+
+const BAR_EDGE_HANDLES = {
+  start: {
+    className: 'absolute inset-y-0 left-0 w-2 cursor-ew-resize hover:bg-calendar-planning-strong/30',
+    ghostLabel: 'Beginn ändern',
+  },
+  end: {
+    className: 'absolute inset-y-0 right-0 w-2 cursor-ew-resize hover:bg-calendar-planning-strong/30',
+    ghostLabel: 'Ende ändern',
+  },
+} as const;
+
+/** An edge of an all-day bar: its own drag, which changes the span instead of moving the card. */
+function barEdgeHandle(
+  edge: keyof typeof BAR_EDGE_HANDLES,
+  { job, row, startDrag }: Pick<BoardRowCardProps, 'job' | 'row' | 'startDrag'>,
+): React.JSX.Element {
+  const { className, ghostLabel } = BAR_EDGE_HANDLES[edge];
+  return (
+    <span
+      role="presentation"
+      className={className}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        startDrag(event, {
+          payload: { kind: 'barEdge', job, edge, sourceEmployeeRecordId: row?.employeeRecordId ?? null },
+          ghost: { label: ghostLabel, width: 120, height: 24 },
+          pointerOffset: { x: 60, y: 12 },
+        });
+      }}
+    />
+  );
+}
+
+/**
+ * One occurrence in a Plantafel row: the card with its dispatch and
+ * readiness chips, the drag source, and the edge handles of an all-day bar.
+ * Memoized on its shown props, so a row renders again only its changed cards.
+ */
+export const BoardRowCard = memo(function BoardRowCard(props: BoardRowCardProps): React.JSX.Element {
+  const { job, startDate, row, dispatchState, materialDemand, compact, locked, actions, startDrag } = props;
+  const { hovered, onHoverLink } = props;
+  const { people } = useBoardAbsences();
+  const warnings = unavailableAssigneeWarnings(job, people);
+  const chips = boardCardChips(job, { unavailable: warnings.chips, dispatchState, materialDemand });
+  const linked = hovered && (job.assignedEmployeeRecordIds?.length ?? 0) > 1;
+  const draggable = actions.isManager && !locked;
+  const allDay = !job.plannedTime;
+  return (
+    <div data-board-item-date={startDate} className="relative min-w-0 p-0.5" style={boardLaneStyle(props)}>
+      <CalendarCard
+        job={job}
+        size="board"
+        compact={compact}
+        chips={chips}
+        linked={linked}
+        draggable={draggable}
+        locked={locked}
+        alert={warnings.alert}
+        className="h-full w-full"
+        {...(row ? { 'data-employee-record-id': row.employeeRecordId } : {})}
+        onHoverLink={onHoverLink}
+        onOpen={(element) => actions.onOpenCard(job, element, row)}
+        onPointerDown={(event) => startDrag(event, occurrenceDragSession(event, props))}
+      >
+        {draggable && allDay && job.occurrenceId && (
+          <>
+            {barEdgeHandle('start', props)}
+            {barEdgeHandle('end', props)}
+          </>
+        )}
+      </CalendarCard>
+    </div>
+  );
+});

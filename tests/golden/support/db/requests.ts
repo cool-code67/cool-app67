@@ -1,0 +1,284 @@
+import { randomUUID } from 'node:crypto';
+import type { Database } from '../../../../lib/supabase/database.types';
+import { createAdminClient, persisted, type Persisted } from './shared';
+
+type RequestEnums = Database['public']['Enums'];
+
+/**
+ * Inserts a request in the given state as the actor. Closed and converted
+ * requests carry the facts the table constraints require; the request number
+ * stays run-scoped so list and search assertions find exactly this row.
+ */
+export async function seedRequest(input: {
+  orgId: string;
+  actorId: string;
+  summary: string;
+  requestNumber: string;
+  clientId?: string;
+  siteId?: string;
+  contactId?: string;
+  callerName?: string;
+  callerPhone?: string;
+  callerEmail?: string;
+  callerAddress?: string;
+  details?: string;
+  urgency?: RequestEnums['request_urgency'];
+  assignedTo?: string;
+  outcome?:
+    | { status: 'offen' | 'in_klaerung' }
+    | { status: 'geschlossen'; reason: RequestEnums['request_close_reason'] }
+    | { status: 'umgewandelt'; projectId: string };
+  /** Event-log entries recorded after the request, such as `status_changed`. */
+  eventTypes?: readonly string[];
+}): Promise<string> {
+  const admin = createAdminClient();
+  const requestId = randomUUID();
+  const outcome = input.outcome ?? { status: 'offen' };
+  const now = new Date().toISOString();
+  await admin
+    .from('client_requests')
+    .insert({
+      id: requestId,
+      organization_id: input.orgId,
+      created_by: input.actorId,
+      summary: input.summary,
+      request_number: input.requestNumber,
+      client_id: input.clientId ?? null,
+      site_id: input.siteId ?? null,
+      contact_id: input.contactId ?? null,
+      caller_name: input.callerName ?? null,
+      caller_phone: input.callerPhone ?? null,
+      caller_email: input.callerEmail ?? null,
+      caller_address: input.callerAddress ?? null,
+      details: input.details ?? null,
+      urgency: input.urgency ?? 'normal',
+      assigned_to: input.assignedTo ?? null,
+      status: outcome.status,
+      ...(outcome.status === 'geschlossen'
+        ? { closed_reason: outcome.reason, closed_at: now, closed_by: input.actorId }
+        : {}),
+      ...(outcome.status === 'umgewandelt'
+        ? { converted_project_id: outcome.projectId, converted_at: now, converted_by: input.actorId }
+        : {}),
+    })
+    .throwOnError();
+  for (const eventType of input.eventTypes ?? []) {
+    await admin
+      .from('client_request_events')
+      .insert({
+        organization_id: input.orgId,
+        request_id: requestId,
+        event_type: eventType,
+        created_by: input.actorId,
+      })
+      .throwOnError();
+  }
+  return requestId;
+}
+
+export type RequestConversionState = {
+  status: string;
+  convertedJobId: string | null;
+  convertedProjectId: string | null;
+  convertedAt: string | null;
+  convertedBy: string | null;
+};
+
+// P1-02: DB-side proof that a conversion happened exactly once and is
+// attributable — the UI shows the link, this shows the once-only facts.
+export async function getRequestConversionState(
+  orgId: string,
+  requestNumber: string,
+): Promise<RequestConversionState> {
+  const { data, error } = await createAdminClient()
+    .from('client_requests')
+    .select('status, converted_job_id, converted_project_id, converted_at, converted_by')
+    .eq('organization_id', orgId)
+    .eq('request_number', requestNumber)
+    .single();
+
+  if (error || !data) {
+    throw new Error(`No request found with number ${requestNumber}: ${error?.message}`);
+  }
+
+  return {
+    status: data.status,
+    convertedJobId: data.converted_job_id,
+    convertedProjectId: data.converted_project_id,
+    convertedAt: data.converted_at,
+    convertedBy: data.converted_by,
+  };
+}
+
+export async function getRequestAuditState(
+  orgId: string,
+  requestNumber: string,
+): Promise<{
+  id: string;
+  status: string;
+  clientId: string | null;
+  contactId: string | null;
+  siteId: string | null;
+  callerName: string | null;
+  callerPhone: string | null;
+  callerEmail: string | null;
+  callerAddress: string | null;
+  details: string | null;
+  category: string;
+  urgency: string;
+  source: string;
+  assignedTo: string | null;
+  receivedAt: string;
+  convertedProjectId: string | null;
+  eventTypes: string[];
+  eventActorIds: Array<string | null>;
+}> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('client_requests')
+    .select(
+      'id,status,client_id,contact_id,site_id,caller_name,caller_phone,caller_email,caller_address,details,category,urgency,source,assigned_to,received_at,converted_project_id',
+    )
+    .eq('organization_id', orgId)
+    .eq('request_number', requestNumber)
+    .single();
+  if (error || !data) {
+    throw new Error(`No request found with number ${requestNumber}: ${error?.message}`);
+  }
+  const { data: events, error: eventsError } = await admin
+    .from('client_request_events')
+    .select('event_type,created_by,created_at')
+    .eq('organization_id', orgId)
+    .eq('request_id', data.id)
+    .order('created_at', { ascending: true });
+  if (eventsError) {
+    throw new Error(`Request events could not be read: ${eventsError.message}`);
+  }
+  return {
+    id: data.id,
+    status: data.status,
+    clientId: data.client_id,
+    contactId: data.contact_id,
+    siteId: data.site_id,
+    callerName: data.caller_name,
+    callerPhone: data.caller_phone,
+    callerEmail: data.caller_email,
+    callerAddress: data.caller_address,
+    details: data.details,
+    category: data.category,
+    urgency: data.urgency,
+    source: data.source,
+    assignedTo: data.assigned_to,
+    receivedAt: data.received_at,
+    convertedProjectId: data.converted_project_id,
+    eventTypes: (events ?? []).map((event) => event.event_type),
+    eventActorIds: (events ?? []).map((event) => event.created_by),
+  };
+}
+
+export async function getConvertedRequestJobState(
+  orgId: string,
+  requestNumber: string,
+): Promise<{
+  jobNumber: string | null;
+  title: string;
+  description: string | null;
+  clientId: string | null;
+  contactId: string | null;
+  siteId: string | null;
+  priority: string;
+  status: string;
+  plannedDate: string | null;
+  planningCount: number;
+  dispatchCount: number;
+}> {
+  const admin = createAdminClient();
+  const { data: request, error: requestError } = await admin
+    .from('client_requests')
+    .select('converted_job_id')
+    .eq('organization_id', orgId)
+    .eq('request_number', requestNumber)
+    .single();
+  if (requestError || !request?.converted_job_id) {
+    throw new Error(`Converted job missing for ${requestNumber}: ${requestError?.message}`);
+  }
+  const { data: job, error: jobError } = await admin
+    .from('jobs')
+    .select('job_number,title,description,client_id,contact_id,site_id,priority,status,planned_date')
+    .eq('organization_id', orgId)
+    .eq('id', request.converted_job_id)
+    .single();
+  if (jobError || !job) {
+    throw new Error(`Converted job could not be read: ${jobError?.message}`);
+  }
+  const [planningResult, dispatchResult] = await Promise.all([
+    admin
+      .from('planning_occurrences')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('job_id', request.converted_job_id),
+    admin
+      .from('planning_dispatches')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('job_id', request.converted_job_id),
+  ]);
+  const countError = planningResult.error ?? dispatchResult.error;
+  if (countError) {
+    throw new Error(`Converted job side effects could not be read: ${countError.message}`);
+  }
+  return {
+    jobNumber: job.job_number,
+    title: job.title,
+    description: job.description,
+    clientId: job.client_id,
+    contactId: job.contact_id,
+    siteId: job.site_id,
+    priority: job.priority,
+    status: job.status,
+    plannedDate: job.planned_date,
+    planningCount: planningResult.count ?? 0,
+    dispatchCount: dispatchResult.count ?? 0,
+  };
+}
+
+// P1-07: how many client requests are currently open (offen/in_klaerung) —
+// the mode-independent input for unified-badge expectations.
+export async function countOpenClientRequests(orgId: string): Promise<number> {
+  const { count, error } = await createAdminClient()
+    .from('client_requests')
+    .select('*', { count: 'exact', head: true })
+    .eq('organization_id', orgId)
+    .in('status', ['offen', 'in_klaerung']);
+  if (error) {
+    throw new Error(`Open request count failed: ${error.message}`);
+  }
+  return count ?? 0;
+}
+
+export type PersistedRequest = Persisted<{
+  id: string;
+  organizationId: string;
+  requestNumber: string | null;
+  summary: string;
+  status: RequestEnums['request_status'];
+  clientId: string | null;
+}>;
+
+/** The request a dialog just captured, read back by the id its detail URL carries. */
+export async function getRequestById(id: string): Promise<PersistedRequest> {
+  const { data, error } = await createAdminClient()
+    .from('client_requests')
+    .select('id, organization_id, request_number, summary, status, client_id')
+    .eq('id', id)
+    .single();
+  if (error) throw new Error(`Request ${id} lookup failed: ${error.message}`);
+  return persisted({
+    id: data.id,
+    organizationId: data.organization_id,
+    requestNumber: data.request_number,
+    summary: data.summary,
+    status: data.status,
+    clientId: data.client_id,
+  });
+}

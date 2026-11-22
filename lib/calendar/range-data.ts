@@ -1,0 +1,205 @@
+import { rangeCovers, type CalendarFetchRange } from './navigation';
+
+/**
+ * The calendar's one data owner. Each dataset records
+ * the range its array is authoritative for, the generation of the newest
+ * request that may still commit, and its last read outcome. A response can
+ * only commit when it carries the current generation, so an older range,
+ * a superseded refresh, or a read discarded by a mutation can never overwrite
+ * newer data. Readiness is derived per needed range, never stored: old data
+ * cannot masquerade as coverage of dates it was not read for.
+ */
+
+type DatasetRead =
+  | { kind: 'idle' }
+  | { kind: 'in-flight'; generation: number; range: CalendarFetchRange }
+  | { kind: 'failed'; range: CalendarFetchRange };
+
+export type DatasetState<TData> = {
+  data: TData;
+  /** Range `data` was read for; null until the first committed read. */
+  coverage: CalendarFetchRange | null;
+  /** Newest request generation that may still commit. */
+  generation: number;
+  read: DatasetRead;
+  /**
+   * True from an optimistic local edit until a committed read replaces the
+   * data. The server may have accepted the edit already; only the read
+   * confirms what the server stored (lib/ui/unconfirmed.ts).
+   */
+  unconfirmed: boolean;
+};
+
+export type DatasetMap = Record<string, unknown>;
+
+export type CalendarRangeState<TData extends DatasetMap> = {
+  scopeKey: string;
+  datasets: { [K in keyof TData]: DatasetState<TData[K]> };
+};
+
+/** The actions on one dataset whose data has type `TValue`. */
+type DatasetAction<TValue> =
+  | { type: 'read-started'; generation: number; range: CalendarFetchRange }
+  | { type: 'read-committed'; generation: number; range: CalendarFetchRange; data: TValue }
+  | { type: 'read-failed'; generation: number; range: CalendarFetchRange }
+  | { type: 'reads-invalidated'; generation: number }
+  | { type: 'data-updated'; update: (previous: TValue) => TValue };
+
+/** One action per dataset key in `Keys`; the key ties `dataset` to the type of its data. */
+type CalendarDatasetAction<TData extends DatasetMap, Keys extends keyof TData = keyof TData> = {
+  [K in Keys]: DatasetAction<TData[K]> & { dataset: K };
+}[Keys];
+
+export type CalendarRangeAction<TData extends DatasetMap> =
+  | (CalendarDatasetAction<TData> & { scopeKey: string })
+  | { type: 'scope-reset'; scopeKey: string; empty: TData };
+
+export function createDatasetState<TData>(
+  data: TData,
+  coverage: CalendarFetchRange | null = null,
+): DatasetState<TData> {
+  return { data, coverage, generation: 0, read: { kind: 'idle' }, unconfirmed: false };
+}
+
+function reduceDataset<TData>(state: DatasetState<TData>, action: DatasetAction<TData>): DatasetState<TData> {
+  switch (action.type) {
+    case 'read-started':
+      if (action.generation <= state.generation) return state;
+      return {
+        ...state,
+        generation: action.generation,
+        read: { kind: 'in-flight', generation: action.generation, range: action.range },
+      };
+    case 'read-committed':
+      if (action.generation !== state.generation) return state;
+      return {
+        data: action.data,
+        coverage: action.range,
+        generation: state.generation,
+        read: { kind: 'idle' },
+        unconfirmed: false,
+      };
+    case 'read-failed':
+      if (action.generation !== state.generation) return state;
+      return { ...state, read: { kind: 'failed', range: action.range } };
+    case 'reads-invalidated':
+      return {
+        ...state,
+        generation: Math.max(state.generation, action.generation),
+        // A mutation supersedes the last outcome: an in-flight response can no
+        // longer commit and a failure is no longer current, so the next read
+        // (the settlement's catch-up) decides the presentation.
+        read: { kind: 'idle' },
+      };
+    case 'data-updated':
+      return { ...state, data: action.update(state.data), unconfirmed: true };
+    default: {
+      const exhaustive: never = action;
+      return exhaustive;
+    }
+  }
+}
+
+export function reduceCalendarRange<TData extends DatasetMap>(
+  state: CalendarRangeState<TData>,
+  action: CalendarRangeAction<TData>,
+): CalendarRangeState<TData> {
+  if (action.type === 'scope-reset') {
+    const datasets = { ...state.datasets };
+    for (const key in datasets) {
+      datasets[key] = {
+        data: action.empty[key],
+        coverage: null,
+        // Every in-flight response predates the new scope: move past it.
+        generation: state.datasets[key].generation + 1,
+        read: { kind: 'idle' },
+        unconfirmed: false,
+      };
+    }
+    return { scopeKey: action.scopeKey, datasets };
+  }
+  if (action.scopeKey !== state.scopeKey) return state;
+  const key = action.dataset;
+  const current = state.datasets[key];
+  const next = reduceDataset(current, action);
+  if (next === current) return state;
+  return { ...state, datasets: { ...state.datasets, [key]: next } };
+}
+
+/**
+ * What one dataset can truthfully show for `needed`:
+ * - `ready`: coverage contains the range and nothing is pending.
+ * - `refreshing`: covered data stays visible while a newer read runs.
+ * - `stale`: covered data stays visible, but the latest refresh failed.
+ * - `reloading`: the range is not covered, but the dataset holds data for
+ *   another window; the grid stays mounted while the read runs.
+ * - `loading`: the range is not covered and the dataset holds no data yet.
+ * - `unavailable`: the range is not covered and its read failed.
+ */
+export type DatasetPresentation = 'ready' | 'refreshing' | 'stale' | 'reloading' | 'loading' | 'unavailable';
+
+export function presentDataset(
+  state: DatasetState<unknown>,
+  needed: CalendarFetchRange,
+): DatasetPresentation {
+  const covered = state.coverage !== null && rangeCovers(state.coverage, needed);
+  if (covered) {
+    if (state.read.kind === 'in-flight') return 'refreshing';
+    if (state.read.kind === 'failed') return 'stale';
+    return 'ready';
+  }
+  if (state.read.kind === 'failed' && rangeCovers(state.read.range, needed)) {
+    return 'unavailable';
+  }
+  return state.coverage === null ? 'loading' : 'reloading';
+}
+
+/** True while one of the datasets shows a local edit no committed read has confirmed. */
+export function holdsUnconfirmedEdits(states: readonly DatasetState<unknown>[]): boolean {
+  return states.some((state) => state.unconfirmed);
+}
+
+/** True when the effect must start a read to cover `needed`. */
+export function datasetNeedsRead(state: DatasetState<unknown>, needed: CalendarFetchRange): boolean {
+  if (state.coverage !== null && rangeCovers(state.coverage, needed)) return false;
+  if (state.read.kind === 'in-flight' && rangeCovers(state.read.range, needed)) return false;
+  if (state.read.kind === 'failed' && rangeCovers(state.read.range, needed)) return false;
+  return true;
+}
+
+export type CalendarReadiness =
+  | { kind: 'ready'; isRefreshing: boolean; isStale: boolean }
+  /**
+   * The window is not covered. `hasData` is true when every required dataset
+   * holds data for some other window: the grid stays mounted and marked busy
+   * instead of being replaced by the skeleton (navigation must not unmount
+   * the calendar, which is what the golden month steps and users rely on).
+   */
+  | { kind: 'loading'; hasData: boolean }
+  | { kind: 'unavailable' };
+
+/** Composes the datasets a view requires; one uncovered dataset blocks readiness. */
+export function composeCalendarReadiness(presentations: readonly DatasetPresentation[]): CalendarReadiness {
+  if (presentations.includes('unavailable')) return { kind: 'unavailable' };
+  if (presentations.includes('loading')) return { kind: 'loading', hasData: false };
+  if (presentations.includes('reloading')) return { kind: 'loading', hasData: true };
+  return {
+    kind: 'ready',
+    isRefreshing: presentations.includes('refreshing'),
+    isStale: presentations.includes('stale'),
+  };
+}
+
+/**
+ * Builds the committed-read action for one dataset. The parameter types tie
+ * `data` to `dataset`, and the action type keyed by `K` keeps that tie.
+ */
+export function readCommitted<TData extends DatasetMap, K extends keyof TData>(input: {
+  scopeKey: string;
+  dataset: K;
+  generation: number;
+  range: CalendarFetchRange;
+  data: TData[K];
+}): CalendarDatasetAction<TData, K> & { scopeKey: string } {
+  return { type: 'read-committed', ...input };
+}

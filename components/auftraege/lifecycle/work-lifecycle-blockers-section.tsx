@@ -1,0 +1,173 @@
+'use client';
+
+import { Plus } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FormDisclosure } from '@/components/ui/form-disclosure';
+import { InlinePending } from '@/components/ui/inline-pending';
+import { formatBerlin } from '@/lib/utils';
+import {
+  WORK_BLOCKER_REASON_LABELS,
+  type WorkBlocker,
+  type WorkLifecycleSnapshot,
+} from '@/lib/work-lifecycle/types';
+import type { WorkLifecycleDialogOpener } from './work-lifecycle-dialog-state';
+
+function formatReviewDate(value: string | null): string {
+  return value ? formatBerlin(value, 'numericDate') : 'Ohne Datum';
+}
+
+type WorkLifecycleBlockersSectionProps = {
+  snapshot: WorkLifecycleSnapshot;
+  isManager: boolean;
+  readOnly: boolean;
+  ownerNames: Map<string, string>;
+  ownOwnerId: string | null;
+  rowBusy: { isBusy: (id: string) => boolean };
+  openDialog: WorkLifecycleDialogOpener;
+};
+
+/** Continue a parked target, or edit and resolve a blocker. */
+function BlockerRowActions({
+  blocker,
+  rowBusy,
+  openDialog,
+}: {
+  blocker: WorkBlocker;
+  rowBusy: WorkLifecycleBlockersSectionProps['rowBusy'];
+  openDialog: WorkLifecycleBlockersSectionProps['openDialog'];
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <InlinePending active={rowBusy.isBusy(blocker.id)} label="Blocker wird aktualisiert" />
+      {blocker.kind === 'parking' ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={rowBusy.isBusy(blocker.id)}
+          {...openDialog({ type: 'unpark', blocker })}
+        >
+          Weiterplanen
+        </Button>
+      ) : (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={rowBusy.isBusy(blocker.id)}
+            {...openDialog({ type: 'blocker', blocker })}
+          >
+            Bearbeiten
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={rowBusy.isBusy(blocker.id)}
+            {...openDialog({ type: 'resolve-blocker', blocker })}
+          >
+            Lösen
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function WorkLifecycleBlockersSection({
+  snapshot,
+  isManager,
+  readOnly,
+  ownerNames,
+  ownOwnerId,
+  rowBusy,
+  openDialog,
+}: WorkLifecycleBlockersSectionProps) {
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
+        <h3 className="text-sm font-medium">Blocker & Parkplatz</h3>
+        {!readOnly && (isManager || snapshot.targetType === 'job') && (
+          <Button type="button" size="sm" variant="ghost" {...openDialog({ type: 'blocker' })}>
+            <Plus className="size-4" />
+            Blocker hinzufügen
+          </Button>
+        )}
+      </div>
+      {snapshot.blockers.length === 0 ? (
+        <EmptyState size="compact" title="Keine offenen Blocker." />
+      ) : (
+        snapshot.blockers.map((blocker) => (
+          <div key={blocker.id} className="rounded-md border p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">
+                  {blocker.kind === 'parking'
+                    ? 'Geparkt'
+                    : blocker.reason
+                      ? WORK_BLOCKER_REASON_LABELS[blocker.reason]
+                      : 'Kontext fehlt (Altbestand)'}
+                </p>
+                <p className="text-muted-foreground">
+                  {blocker.details || 'Kein nächster Schritt beschrieben.'}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Verantwortlich:{' '}
+                  {blocker.responsible_employee_record_id
+                    ? (ownerNames.get(blocker.responsible_employee_record_id) ?? 'Unbekannt')
+                    : 'nicht hinterlegt'}{' '}
+                  · Wiedervorlage: {formatReviewDate(blocker.next_review_date)}
+                </p>
+              </div>
+              {!readOnly &&
+                (isManager ||
+                  (blocker.kind === 'blocker' &&
+                    ownOwnerId !== null &&
+                    blocker.responsible_employee_record_id === ownOwnerId)) && (
+                  <BlockerRowActions blocker={blocker} rowBusy={rowBusy} openDialog={openDialog} />
+                )}
+            </div>
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
+
+type WorkLifecycleResolvedBlockersProps = {
+  snapshot: WorkLifecycleSnapshot;
+  openDialog: WorkLifecycleDialogOpener;
+};
+
+export function WorkLifecycleResolvedBlockers({ snapshot, openDialog }: WorkLifecycleResolvedBlockersProps) {
+  return (
+    <FormDisclosure label="Gelöste Blocker">
+      <div className="space-y-2 pt-3">
+        {snapshot.resolvedBlockers.map((blocker) => (
+          <div
+            key={blocker.id}
+            className="flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+          >
+            <div>
+              <p className="font-medium">
+                {blocker.reason ? WORK_BLOCKER_REASON_LABELS[blocker.reason] : 'Gelöster Altbestand'}
+              </p>
+              <p className="text-muted-foreground">{blocker.resolution_note || 'Ohne Lösungsnotiz'}</p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              {...openDialog({ type: 'reopen-blocker', blocker })}
+            >
+              Wieder öffnen
+            </Button>
+          </div>
+        ))}
+      </div>
+    </FormDisclosure>
+  );
+}

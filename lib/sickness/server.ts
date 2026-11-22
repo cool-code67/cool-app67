@@ -1,0 +1,172 @@
+import 'server-only';
+import { logReadFailure } from '@/lib/data/read-request-cache';
+
+import { createSupabaseAdminClient, type AdminClient } from '@/lib/supabase/admin';
+import { LIST_ROW_CAP, readCompleteRows, readInBatches } from '@/lib/supabase/query-batches';
+import type { ApprovedAbsenceSpan } from '@/lib/personnel/targets';
+import { toVacationDayPortion } from '@/lib/vacation/types';
+import { toSicknessReport, type SicknessReport } from './types';
+import { logError } from '@/lib/logging';
+
+// Server-only shared loaders for the sickness domain. Server actions and the
+// target loaders consume these; nothing here performs authorization — callers
+// resolve their own authority first.
+
+/** All sickness reports of one employee record, newest first. */
+export async function loadSicknessReportsForRecord(
+  organizationId: string,
+  employeeRecordId: string,
+): Promise<SicknessReport[] | null> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from('sickness_reports')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('employee_record_id', employeeRecordId)
+    .order('start_date', { ascending: false });
+
+  if (error) {
+    logError('Failed to load sickness reports:', error);
+    return null;
+  }
+  return (data ?? []).map(toSicknessReport);
+}
+
+/**
+ * Active sickness spans per employee record intersecting a date window — the
+ * second variant of the `resolveDailyTarget` absence input (P1-08). Only
+ * `reported` rows qualify; cancelled reports never reach targets. Open-ended
+ * reports (end_date null) are clamped to the window end: while a report is
+ * open, every day from its start counts as absent. A failed read returns
+ * null: "no absence" would silently raise every target.
+ */
+export async function loadActiveSicknessSpansByRecord(
+  organizationId: string,
+  windowStartIso: string,
+  windowEndIso: string,
+  /** Narrows the read to one record (single-person target surfaces). */
+  employeeRecordId?: string,
+): Promise<Map<string, ApprovedAbsenceSpan[]> | null> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await readCompleteRows((from, to) => {
+    const query = admin
+      .from('sickness_reports')
+      .select('employee_record_id, start_date, end_date, day_portion')
+      .eq('organization_id', organizationId)
+      .eq('status', 'reported')
+      .lte('start_date', windowEndIso)
+      .or(`end_date.gte.${windowStartIso},end_date.is.null`);
+    return (employeeRecordId ? query.eq('employee_record_id', employeeRecordId) : query)
+      .order('id')
+      .range(from, to);
+  }, LIST_ROW_CAP);
+
+  if (error) {
+    logError('Failed to load active sickness spans:', error);
+    return null;
+  }
+
+  const spansByRecord = new Map<string, ApprovedAbsenceSpan[]>();
+  for (const row of data) {
+    const spans = spansByRecord.get(row.employee_record_id) ?? [];
+    spans.push({
+      type: 'sickness',
+      startDate: row.start_date,
+      // Open-ended: absent until further notice, honestly bounded to the
+      // requested window instead of pretending a known end date exists.
+      endDate: row.end_date ?? windowEndIso,
+      dayPortion: toVacationDayPortion(row.day_portion),
+    });
+    spansByRecord.set(row.employee_record_id, spans);
+  }
+  return spansByRecord;
+}
+
+/**
+ * Whether the user has an active sickness report covering the date in this
+ * organization (clock-in contradiction NOTICE; resolved at action time).
+ * Unlike vacation this never blocks — a recovered person clocking in early is
+ * reality, not an error — so callers surface it as a visible hint only.
+ */
+export async function hasActiveSicknessOn(
+  organizationId: string,
+  userId: string,
+  dateIso: string,
+): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data: record, error: recordError } = await admin
+    .from('employee_records')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (recordError) {
+    logError('Failed to load record for sickness clock check:', recordError);
+    return false;
+  }
+  if (!record) return false;
+
+  const { data, error } = await admin
+    .from('sickness_reports')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('employee_record_id', record.id)
+    .eq('status', 'reported')
+    .lte('start_date', dateIso)
+    .or(`end_date.gte.${dateIso},end_date.is.null`)
+    .limit(1);
+  if (error) {
+    // Fail open: a transient read failure must not degrade time capture; the
+    // notice is informational and the office sees contradictions either way.
+    logError('Failed sickness clock check:', error);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Display names per employee record for the sickness calendar, profile names
+ * first; null when a read fails. The caller has resolved the organization.
+ */
+export async function loadSicknessCalendarPersonNames(
+  admin: AdminClient,
+  orgId: string,
+  recordIds: string[],
+): Promise<Map<string, string> | null> {
+  const { data: records, error: recordsError } = await readInBatches(recordIds, (ids) =>
+    admin
+      .from('employee_records')
+      .select('id, user_id, first_name, last_name')
+      .eq('organization_id', orgId)
+      .in('id', [...ids]),
+  );
+  if (recordsError) {
+    logReadFailure('Failed to load sickness calendar records:', recordsError);
+    return null;
+  }
+  const userIds = [
+    ...new Set((records ?? []).map((row) => row.user_id).filter((id): id is string => Boolean(id))),
+  ];
+  const profilesResult =
+    userIds.length > 0
+      ? await readInBatches(userIds, (ids) =>
+          admin
+            .from('profiles')
+            .select('id, first_name, last_name')
+            .in('id', [...ids]),
+        )
+      : { data: [], error: null };
+  if (profilesResult.error) {
+    logReadFailure('Failed to load sickness calendar profiles:', profilesResult.error);
+    return null;
+  }
+  const profileByUserId = new Map((profilesResult.data ?? []).map((row) => [row.id, row]));
+  return new Map(
+    (records ?? []).map((record) => {
+      const profile = record.user_id ? profileByUserId.get(record.user_id) : undefined;
+      const firstName = profile?.first_name ?? record.first_name ?? '';
+      const lastName = profile?.last_name ?? record.last_name ?? '';
+      return [record.id, `${firstName} ${lastName}`.trim() || 'Unbekannt'];
+    }),
+  );
+}
