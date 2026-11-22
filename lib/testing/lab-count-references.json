@@ -1,0 +1,3504 @@
+{
+  "version": 2,
+  "steps": [
+    {
+      "stepId": "lab.field.cold-start",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "550ec4c31d4864dcee725c5e6a22fac305c7ecbffdb192c66b5d0a3779687e3f",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 375, "height": 812 },
+        "cpuThrottle": 4,
+        "role": "employee",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 59, "tolerance": 1 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 1, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 64, "tolerance": 1 }
+      },
+      "payloads": {
+        "api:/api/attention-counts": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 2246, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 188, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/time-tracking-state": {
+          "requests": { "reference": 4, "tolerance": 0 },
+          "encodedBytes": { "reference": 5648, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 1530, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        },
+        "direct:/rest/v1/organization_members": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 921, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 273, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "document:/auftraege": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 17380, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 108969, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 1, "tolerance": 0 }
+        },
+        "font": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 54464, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        },
+        "image": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 8478, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        },
+        "prefetch:/auftraege/[jobNumber]": {
+          "requests": { "reference": 5, "tolerance": 0 },
+          "encodedBytes": { "reference": 15590, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 51185, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "route:/auftraege": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 4853, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+          "decodedBytes": { "reference": 26508, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "script": {
+          "requests": { "reference": 42, "tolerance": 1 },
+          "encodedBytes": { "reference": 671539, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        },
+        "stylesheet": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 21862, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 117895, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "fbae0779adf69b8adf2a9922b3842cc570d480deb93c45cccf1148481c409c68",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 375, "height": 812 },
+            "cpuThrottle": 4,
+            "role": "employee",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 59, "tolerance": 1 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 1, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 64, "tolerance": 1 }
+          },
+          "payloads": {
+            "api:/api/attention-counts": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 2246, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 188, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/time-tracking-state": {
+              "requests": { "reference": 4, "tolerance": 0 },
+              "encodedBytes": { "reference": 5648, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 1530, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            },
+            "direct:/rest/v1/organization_members": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 921, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 273, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "document:/auftraege": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 17281, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 110285, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 1, "tolerance": 0 }
+            },
+            "font": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 54464, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            },
+            "image": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 8478, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            },
+            "prefetch:/auftraege/[jobNumber]": {
+              "requests": { "reference": 5, "tolerance": 0 },
+              "encodedBytes": { "reference": 15590, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 51185, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "route:/auftraege": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 9861, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+              "decodedBytes": { "reference": 27705, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "script": {
+              "requests": { "reference": 43, "tolerance": 1 },
+              "encodedBytes": { "reference": 732572, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            },
+            "stylesheet": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 22697, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 122894, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "fbae0779adf69b8adf2a9922b3842cc570d480deb93c45cccf1148481c409c68",
+          "toDigest": "550ec4c31d4864dcee725c5e6a22fac305c7ecbffdb192c66b5d0a3779687e3f",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 732572, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 747297, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-10-31T174358140Z-861d58"],
+          "reason": "The size-cap splits merged on 2026-10-31 grew the /auftraege cold start. Gzip of its entry chunks per merge build, a031b64d 469,119 to c7328f71 477,750 (+8,631): #127 +3147, #113 +1603, #132 +1254, #125 +1141, #121 +538, #119 +519, #118 +167, #134 +109, #126 +61, #117 +57, #124 +35, #110 +13, #128 +11; #116 -8, #135 -13, #120 -3. The lab also counts lazily loaded chunks. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 747297, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 691787, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-06T163031434Z-2c5af8"],
+          "reason": "werk-flow/werkflow-app#173 cut the Zod namespace: lib/zod.ts re-exported all of z, and lib/zod-members.ts now names the members the product uses, so the 63 locales and the JSON Schema conversion leave the shell chunk. -56,174 bytes on this Mac, 747,961 on 23b0de15 to 691,787, with 43 script requests unchanged. The reference is a Mac value: CI's full run on main at d6d52102 (run 42237378515) read 749,939, about 0.3 % above this Mac, inside the 1 % tolerance. Lead's decision of 2026-11-06 (werk-flow/werkflow-planning#212)."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 691787, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 697836, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-08T103722095Z-1c44e2"],
+          "reason": "Owner decision of 2026-11-08 via the CI lead (werk-flow/werkflow-planning#222): accept now, then fix. The cold start crept across about 45 merges since werk-flow/werkflow-app#173, each inside the tolerance alone. CI read 696,885 at 7055dee1, 695,928 at 8862eaec (#238), 697,787 at fe09be21 (#210), 698,667 at ca8df013 (#230), 698,620 at 3f27a259, and 698,812 at 86b61f9b (#258) in PR #263's run 42467917583, above the ceiling 698,705. About 2 KB of the distance to 691,787 is the CI/Mac gap recorded with #173; the rest is first-load script of /auftraege (+3.5 KB gzip since #173) and the job-page chunks the list prefetches (+1.3 KB). Script requests are unchanged at 43. Cause: the manager-only create and edit forms ship to the field worker. This value is a passing run on the 16 GB PC on 86b61f9b; a CI run cannot be accepted here because its proof environment differs. A follow-up PR must bring the value back below 691,787 without raising any office count."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 697836, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 687657, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-08T112625699Z-6f644d"],
+          "reason": "Manager-only create and edit dialogs load on intent (lazyDialog), the create-project helpers left the form module, and the Auftraege table skeleton left the table module the app shell imported: the field worker no longer downloads the create and edit forms or the job table on every page. 697,836 to 687,657 on this PC, script requests unchanged at 43. Back below the 691,787 that werk-flow/werkflow-app#272 named as this follow-up's target (owner decision of 2026-11-08)."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 687657, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 686629, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-09T090629248Z-6a09fe"],
+          "reason": "werk-flow/werkflow-planning#314: the job detail route, which the /auftraege list prefetches into the field cold start, loads EditJobDialog on its actions menu's intent (lazyDialog) instead of importing it statically; #280 had moved only the list's edit dialog. The job form left the detail route's entry chunks: gzip of the /auftraege plus /auftraege/[jobNumber] entry chunks on a production build of 9e1eb5b6 falls from 684,601 to 677,960 (-6,641). This run (Boat, the PC's verification machine) reads 686,629 against 693,153 for main at 9e1eb5b6 (run 2026-11-09T085633435Z-4ccd37) and 693,150 on CI main; script requests unchanged at 43. Below the owner's 691,787 target of 2026-11-08."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "stylesheet",
+          "from": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "encodedBytes": { "reference": 22697, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 122894, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "encodedBytes": { "reference": 21862, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 117895, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-09T215315624Z-b68a0c"],
+          "reason": "Tailwind no longer scans tests and test support (lint examples became shipped utilities), and the unused .hide-time-picker block and duplicate ::selection rules are gone; every dropped utility appears only in an excluded test file, and audit:visual, audit:layout and audit:layout:viewports pass on the same tree"
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 686629, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 693562, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-12T004607647Z-ed5cc5"],
+          "reason": "main before #358 measured 690986 B, inside the old ceiling; two features then add script to the field cold start, which prefetches the work pack's route chunk: #358 (werk-flow/werkflow-planning#162, the work pack's completion-gate list) adds 1646 B (690986 before it, 692632 after, Boat runs of dedb9e84 and 034e1a62), and #348 (werk-flow/werkflow-planning#158, the „Meine Zeit“ rows: activity pairing and their labels, which the work pack renders on its first load) adds 930 B (693562 on 0b354338, after moving the Verlauf's day grouping out of that chunk, which saved 122 B)"
+        },
+        {
+          "kind": "floor-accept",
+          "target": "route:/auftraege",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9861, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+            "decodedBytes": { "reference": 27705, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 7517, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+            "decodedBytes": { "reference": 27113, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-09T191958859Z-6ffc80"],
+          "reason": "The route payload names one script chunk fewer (cold-start script requests 43 to 42): the app shell now imports lazyDialog for the report dialog, so /auftraege no longer references it as a chunk of its own. Rows and route renders are unchanged; nothing is missing."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 43, "tolerance": 1 },
+            "encodedBytes": { "reference": 693562, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 42, "tolerance": 1 },
+            "encodedBytes": { "reference": 671539, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-12T164516903Z-805d1e"],
+          "reason": "werk-flow/werkflow-app#393 on main removed one start-up script and about 6.1 KB (main alone measured 687,435 B against its 693,562 B reference, 42 requests); together with this PR's lazy dialog the sum is 671,539 B here (671,304 B before #400), below main's floor. Request shapes match main's and the job-open step is unchanged. Replayed after merging main 43262e0e (#400)."
+        },
+        {
+          "kind": "ratchet",
+          "target": "requests",
+          "from": { "reference": 59, "tolerance": 1 },
+          "to": { "reference": 57, "tolerance": 1 },
+          "runKeys": ["2026-11-13T073843350Z-d01ff1"],
+          "reason": "Merged with main 5100c6de, the field cold start loads 41 script files instead of 43 (main alone: 42, 58 requests); the five job prefetches stay. Every other request shape (the API and Supabase reads, route, document, fonts, images, stylesheets) and every backend read by path match main 8783c979 and this branch before the merge (c0ea3439). The /auftraege entry chunks of the three builds name both files: one goes with main's own start-up, which since #382 (decision 13) loads the activity fields and their alarm-clock icon on first use and since #405 keeps the member-removal dialog out; the other is bundling: all 564 start-up modules of main 5100c6de stay in the start-up, and Turbopack packs five of main's (app) layout chunks with this PR's two Leistungen skeleton modules (the org-switch overlay's map) into four (1,740,600 to 1,743,228 B over all entry files)."
+        },
+        {
+          "kind": "raise",
+          "target": "requests",
+          "from": { "reference": 57, "tolerance": 1 },
+          "to": { "reference": 59, "tolerance": 1 },
+          "runKeys": ["2026-11-20T105334831Z-6a1656"],
+          "reason": "Owner-approved one-time change: werk-flow/werkflow-planning#17, Owner queue 4 (owner decision 2026-11-20). werk-flow/werkflow-app#485 adds the two Rechnungen routes, and Turbopack's production chunker re-packs the shared (app) layout's unchanged client code into 23 chunks instead of main's 21 (diagnosis in #485's Verification, 'Lab payload regression'). The layout gains only the Receipt icon, the moved ReceiptText and the lazy invoice skeleton loader; no invoice code reaches field workers. Every cold start loads the two extra chunk files: 57 to 59 requests on Boat, head cb34906a."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "route:/auftraege",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 7517, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+            "decodedBytes": { "reference": 27113, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 7690, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+            "decodedBytes": { "reference": 27845, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-20T105334831Z-6a1656"],
+          "reason": "Owner-approved one-time change: werk-flow/werkflow-planning#17, Owner queue 4 (owner decision 2026-11-20). werk-flow/werkflow-app#485 adds the two Rechnungen routes, and Turbopack's production chunker re-packs the shared (app) layout's unchanged client code into 23 chunks instead of main's 21 (diagnosis in #485's Verification, 'Lab payload regression'). The layout gains only the Receipt icon, the moved ReceiptText and the lazy invoice skeleton loader; no invoice code reaches field workers. The route payload's client-reference rows name the two extra chunks: 27,113 to 27,845 decoded bytes on Boat, head cb34906a."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "document:/auftraege",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 17281, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 110285, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": { "reference": 1, "tolerance": 0 }
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 17380, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 108969, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": { "reference": 1, "tolerance": 0 }
+          },
+          "runKeys": ["2026-11-21T055139543Z-159aab"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        },
+        {
+          "kind": "floor-accept",
+          "target": "route:/auftraege",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 7690, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+            "decodedBytes": { "reference": 27845, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 4853, "tolerance": { "relative": 0.9589, "absolute": 512 } },
+            "decodedBytes": { "reference": 26508, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139543Z-159aab"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.field.job-open",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "a85a5531c186713490c285d344aa6640fcea14033c031ea7f203d388984768a2",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 375, "height": 812 },
+        "cpuThrottle": 4,
+        "role": "employee",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 3, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 31, "tolerance": 1 },
+        "componentRenders": { "reference": 561, "tolerance": 10 }
+      },
+      "payloads": {
+        "prefetch:/auftraege": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 4726, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 14987, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "route:/auftraege/[jobNumber]": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1234, "tolerance": { "relative": 1, "absolute": 512 } },
+          "decodedBytes": { "reference": 17871, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "script": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 31727, "tolerance": { "relative": 0.05, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "ec97ceb24219f93c09ca7e85b36cede0ed7315807f24cefe8e4e91244c479830",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 375, "height": 812 },
+            "cpuThrottle": 4,
+            "role": "employee",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 31, "tolerance": 1 },
+            "componentRenders": { "reference": 512, "tolerance": 10 }
+          },
+          "payloads": {
+            "prefetch:/auftraege": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 4726, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 14987, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "route:/auftraege/[jobNumber]": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1101, "tolerance": { "relative": 1, "absolute": 512 } },
+              "decodedBytes": { "reference": 17263, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "ec97ceb24219f93c09ca7e85b36cede0ed7315807f24cefe8e4e91244c479830",
+          "toDigest": "a85a5531c186713490c285d344aa6640fcea14033c031ea7f203d388984768a2",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 512, "tolerance": 10 },
+          "to": { "reference": 536, "tolerance": 10 },
+          "runKeys": ["2026-10-31T174358140Z-861d58"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The job detail and work pack splits (#124) and the shared UI split (#125) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "route:/auftraege/[jobNumber]",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 1101, "tolerance": { "relative": 1, "absolute": 512 } },
+            "decodedBytes": { "reference": 17263, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 1234, "tolerance": { "relative": 1, "absolute": 512 } },
+            "decodedBytes": { "reference": 17871, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-12T143746833Z-bb55cf"],
+          "reason": "werk-flow/werkflow-planning#369: the job page's navigation payload grew 608 B (17263 to 17871, the same in two runs) with identical backendByPath and rows. The change adds the client module lib/inventory/units.ts, which lib/inventory/types.ts (formatInventoryQuantity, used by the job material rows) now imports, so the payload's client references name one more chunk. No data was added; the response body stayed on Boat and was not opened."
+        },
+        {
+          "kind": "raise",
+          "target": "requests",
+          "from": { "reference": 1, "tolerance": 0 },
+          "to": { "reference": 3, "tolerance": 0 },
+          "runKeys": ["2026-11-12T164516903Z-805d1e"],
+          "reason": "The report dialog loads after the job page is idle so a first open without signal works (werk-flow/werkflow-planning#320, CodeRabbit r4547677458; lead decision). Replayed on the tree merged with main 43262e0e (#400), whose reference file this branch took whole. Job-open requests 1 -> 3: the two chunks of the dialog module the idle load fetches."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 536, "tolerance": 10 },
+          "to": { "reference": 587, "tolerance": 10 },
+          "runKeys": ["2026-11-12T164516903Z-805d1e"],
+          "reason": "The report dialog loads after the job page is idle so a first open without signal works (werk-flow/werkflow-planning#320, CodeRabbit r4547677458; lead decision). Replayed on the tree merged with main 43262e0e (#400), whose reference file this branch took whole. Job-open component renders 536 -> 587: the loaded drafts list and the closed dialog host mount. #329 puts the problem-report control on every page, and the dialog chunk shares code with it."
+        },
+        {
+          "kind": "shape-accept",
+          "target": "script",
+          "from": null,
+          "to": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "encodedBytes": { "reference": 28808, "tolerance": { "relative": 0.05, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-12T164516903Z-805d1e"],
+          "reason": "The report dialog loads after the job page is idle so a first open without signal works (werk-flow/werkflow-planning#320, CodeRabbit r4547677458; lead decision). Replayed on the tree merged with main 43262e0e (#400), whose reference file this branch took whole. New script shape, 2 requests, 28,808 B: the dialog module's chunks, which the field worker loads on the job page instead of at the app start. #329 puts the problem-report control on every page, and the dialog chunk shares code with it."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 587, "tolerance": 10 },
+          "to": { "reference": 561, "tolerance": 10 },
+          "runKeys": ["2026-11-19T155027767Z-435761"],
+          "reason": null
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "encodedBytes": { "reference": 28808, "tolerance": { "relative": 0.05, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "encodedBytes": { "reference": 31727, "tolerance": { "relative": 0.05, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139543Z-159aab"],
+          "reason": "Owner-approved one-time exception 2026-11-20 (werk-flow/werkflow-planning#29), #560: the job page's own chunks (card, checkbox, textarea, detail columns, section title, documents layout, client select) no longer come with the layout's start-up, so the job page loads them on its first open; start-up 66 KB gzip lighter for every role"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.field.checklist-tick",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "aae44ad46c9b694f007e5f09e05a706b81166d6f6af848a00737d325d6caaad2",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 375, "height": 812 },
+        "cpuThrottle": 4,
+        "role": "employee",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 2, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+        "backgroundReads": { "reference": 1, "tolerance": 0 },
+        "backendRequests": { "reference": 52, "tolerance": 1 },
+        "componentRenders": { "reference": 471, "tolerance": 9 }
+      },
+      "payloads": {
+        "action:/auftraege/[jobNumber]": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 15515, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 46296, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "background:work-lifecycle-snapshot": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 3058, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 2028, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 8, "tolerance": 0 }
+        },
+        "prefetch:/auftraege": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 6189, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 15559, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "12915a46b78a3c78b2dae442c16d04c914420bfa7a5bae0bdb47686012a441c8",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 375, "height": 812 },
+            "cpuThrottle": 4,
+            "role": "employee",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+            "backgroundReads": { "reference": 1, "tolerance": 0 },
+            "backendRequests": { "reference": 52, "tolerance": 1 },
+            "componentRenders": { "reference": 465, "tolerance": 9 }
+          },
+          "payloads": {
+            "action:/auftraege/[jobNumber]": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 15513, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 47541, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "background:work-lifecycle-snapshot": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 3058, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 2028, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 8, "tolerance": 0 }
+            },
+            "prefetch:/auftraege": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 6189, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 15559, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "12915a46b78a3c78b2dae442c16d04c914420bfa7a5bae0bdb47686012a441c8",
+          "toDigest": "aae44ad46c9b694f007e5f09e05a706b81166d6f6af848a00737d325d6caaad2",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 465, "tolerance": 9 },
+          "to": { "reference": 493, "tolerance": 9 },
+          "runKeys": ["2026-10-31T174358140Z-861d58"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The work pack split (#124) and the shared UI split (#125) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 493, "tolerance": 9 },
+          "to": { "reference": 471, "tolerance": 9 },
+          "runKeys": ["2026-11-19T155027767Z-435761"],
+          "reason": null
+        },
+        {
+          "kind": "floor-accept",
+          "target": "action:/auftraege/[jobNumber]",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 15513, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 47541, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 15515, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 46296, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139543Z-159aab"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.field.evidence-add",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "0d5f0a916673aea8009551d6fdd6c146222f3f7954fc94e69318371b82747ab6",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 375, "height": 812 },
+        "cpuThrottle": 4,
+        "role": "employee",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 1, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 53, "tolerance": 1 }
+      },
+      "payloads": {
+        "action:/auftraege/[jobNumber]": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 16650, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 48788, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "prefetch:/auftraege": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 6189, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 15559, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "cf210c619259e12ca3fc52e576974724e791d874ed33485269ca4b5fccdf52f8",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 375, "height": 812 },
+            "cpuThrottle": 4,
+            "role": "employee",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 53, "tolerance": 1 }
+          },
+          "payloads": {
+            "action:/auftraege/[jobNumber]": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 16631, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 50056, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "prefetch:/auftraege": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 6189, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 15559, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "cf210c619259e12ca3fc52e576974724e791d874ed33485269ca4b5fccdf52f8",
+          "toDigest": "0d5f0a916673aea8009551d6fdd6c146222f3f7954fc94e69318371b82747ab6",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "action:/auftraege/[jobNumber]",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 16631, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 50056, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 16650, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 48788, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139543Z-159aab"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.field.clock-in",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "3fcf7815e92f90b025a46697601384c7ee0d62dca9cc9552581b8c3bdca9c7bd",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 375, "height": 812 },
+        "cpuThrottle": 4,
+        "role": "employee",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 4, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 22, "tolerance": 1 },
+        "componentRenders": { "reference": 656, "tolerance": 13 }
+      },
+      "payloads": {
+        "action:/dashboard": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 8909, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 23950, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/time-tracking-state": {
+          "requests": { "reference": 3, "tolerance": 0 },
+          "encodedBytes": { "reference": 5033, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 1944, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "b575038851a76b0144ff0f2f2e830b0761415167a60cd1e769787d9f28f8b568",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 375, "height": 812 },
+            "cpuThrottle": 4,
+            "role": "employee",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 22, "tolerance": 1 },
+            "componentRenders": { "reference": 683, "tolerance": 13 }
+          },
+          "payloads": {
+            "action:/dashboard": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 9183, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 26210, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/time-tracking-state": {
+              "requests": { "reference": 3, "tolerance": 0 },
+              "encodedBytes": { "reference": 5033, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 1944, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "b575038851a76b0144ff0f2f2e830b0761415167a60cd1e769787d9f28f8b568",
+          "toDigest": "3fcf7815e92f90b025a46697601384c7ee0d62dca9cc9552581b8c3bdca9c7bd",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 683, "tolerance": 13 },
+          "to": { "reference": 708, "tolerance": 13 },
+          "runKeys": ["2026-10-31T174358140Z-861d58"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The clock component split (#132) and the shared UI split (#125) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "action:/dashboard",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9183, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 26210, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9104, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 25593, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-08T112625699Z-6f644d"],
+          "reason": "The dashboard's clock action response lists fewer client chunks now that the app shell no longer imports the Auftraege table, its row menus and their edit forms (AuftraegeTableSkeleton has its own module): about 617 decoded bytes less, rows unchanged."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 708, "tolerance": 13 },
+          "to": { "reference": 656, "tolerance": 13 },
+          "runKeys": ["2026-11-12T193422901Z-d6057f"],
+          "reason": null
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "action:/dashboard",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9104, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 25593, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9271, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 26273, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-20T105334831Z-6a1656"],
+          "reason": "Owner-approved one-time change: werk-flow/werkflow-planning#17, Owner queue 4 (owner decision 2026-11-20). werk-flow/werkflow-app#485 adds the two Rechnungen routes, and Turbopack's production chunker re-packs the shared (app) layout's unchanged client code into 23 chunks instead of main's 21 (diagnosis in #485's Verification, 'Lab payload regression'). The layout gains only the Receipt icon, the moved ReceiptText and the lazy invoice skeleton loader; no invoice code reaches field workers. The action's route payload names the two extra chunks: 25,593 to 26,273 decoded bytes on Boat, head cb34906a."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "action:/dashboard",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9271, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 26273, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 8909, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 23950, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139543Z-159aab"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.field.idle-clocked-in",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "44e1ce072b2d29e951a061c44c7b3ec7cbaccec0e6428b59feee794bc4cee214",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 375, "height": 812 },
+        "cpuThrottle": 4,
+        "role": "employee",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 0, "tolerance": 0 },
+        "routeRenders": { "reference": 0, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 0, "tolerance": 0 },
+        "componentRenders": { "reference": 0, "tolerance": 0 }
+      },
+      "payloads": {},
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "a15f8cb72ae4aa3cd7feeca02226bce8b0d5957e2f9f6cd72b30543017e28574",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 375, "height": 812 },
+            "cpuThrottle": 4,
+            "role": "employee",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 0, "tolerance": 0 },
+            "routeRenders": { "reference": 0, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 0, "tolerance": 0 },
+            "componentRenders": { "reference": 0, "tolerance": 0 }
+          },
+          "payloads": {}
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "a15f8cb72ae4aa3cd7feeca02226bce8b0d5957e2f9f6cd72b30543017e28574",
+          "toDigest": "44e1ce072b2d29e951a061c44c7b3ec7cbaccec0e6428b59feee794bc4cee214",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        }
+      ]
+    },
+    {
+      "stepId": "lab.field.clock-out",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "6bfa1480d7d32a5684360ee2f450592781f5752a71db05e9caf1832e7feeb73c",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 375, "height": 812 },
+        "cpuThrottle": 4,
+        "role": "employee",
+        "backend": "local"
+      },
+      "counts": {
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 }
+      },
+      "payloads": {
+        "action:/dashboard": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 8907, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 23949, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/time-tracking-state": {
+          "requests": { "reference": 3, "tolerance": 0 },
+          "encodedBytes": { "reference": 4725, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 1636, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 1, "tolerance": 0 }
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "c4ce0b10115fb686b4a895e31393517e6dd1dc8e1accde6435d59c57378945ea",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 375, "height": 812 },
+            "cpuThrottle": 4,
+            "role": "employee",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 18, "tolerance": 1 },
+            "componentRenders": { "reference": 671, "tolerance": 13 }
+          },
+          "payloads": {
+            "action:/dashboard": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 9183, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 26209, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/time-tracking-state": {
+              "requests": { "reference": 3, "tolerance": 0 },
+              "encodedBytes": { "reference": 4563, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 1474, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "c4ce0b10115fb686b4a895e31393517e6dd1dc8e1accde6435d59c57378945ea",
+          "toDigest": "6bfa1480d7d32a5684360ee2f450592781f5752a71db05e9caf1832e7feeb73c",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 671, "tolerance": 13 },
+          "to": { "reference": 696, "tolerance": 13 },
+          "runKeys": ["2026-10-31T174358140Z-861d58"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The clock component split (#132) and the shared UI split (#125) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "api:/api/time-tracking-state",
+          "from": {
+            "requests": { "reference": 3, "tolerance": 0 },
+            "encodedBytes": { "reference": 4563, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 1474, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": { "reference": 0, "tolerance": 0 }
+          },
+          "to": {
+            "requests": { "reference": 3, "tolerance": 0 },
+            "encodedBytes": { "reference": 4725, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 1636, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": { "reference": 1, "tolerance": 0 }
+          },
+          "runKeys": ["2026-10-31T192644664Z-7546e0"],
+          "reason": "#107 (Zeiterfassung keeps today's minutes after clock-out and names the running activity) keeps today's time after clock-out, so the state read after clock-out now returns today's row (1 instead of 0). Intended behavior of #107, which merged without a full run; requests and route renders are unchanged."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "action:/dashboard",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9183, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 26209, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9101, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 25592, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-08T112625699Z-6f644d"],
+          "reason": "The dashboard's clock action response lists fewer client chunks now that the app shell no longer imports the Auftraege table, its row menus and their edit forms (AuftraegeTableSkeleton has its own module): about 617 decoded bytes less, rows unchanged."
+        },
+        {
+          "kind": "ungate",
+          "target": "componentRenders",
+          "from": { "reference": 696, "tolerance": 13 },
+          "to": null,
+          "runKeys": ["2026-11-09T222647863Z-a2e761"],
+          "reason": "CI read this count as 623 twice (runs 42494386179 on 2026-11-08 and 42706161239 on 2026-11-09, the second on PR #330, which changes no app code, ten minutes after run 42704658540 read 694 on its base 636f5d44) and as 694 to 696 in the 170 other CI readings since 2026-11-05, with requests, routeRenders, actionRoundTrips and backendRequests equal in every run. A fall of 71 renders with identical requests is React batching on a busy runner, beyond the tolerance of 13, so the count does not repeat on this step (performance.md). Boat run 2026-11-09T222647863Z-a2e761 read 694."
+        },
+        {
+          "kind": "ungate",
+          "target": "requests",
+          "from": { "reference": 4, "tolerance": 0 },
+          "to": null,
+          "runKeys": ["2026-11-13T190548549Z-ac6c68"],
+          "reason": "CI read 3 requests and 14 backend requests on this step once (merge-queue run 43483232112, tree d71678a01 = main e1dc6e9be + PR #445) and 4 and 18 in the 46 other CI readings since 2026-11-13 morning, including #445 alone (run 43480952615) and main with #443 (run 43483228169); Boat run 2026-11-13T190548549Z-ac6c68 on the same merged tree read 4 and 18. The clock sheet suspends live reads while open; the clock's own Realtime echo either lands before the explicit refresh after the transition, which clears it (3), or after, which queues one catch-up clock read when the sheet closes (4). Both start their read after the commit, so the count does not repeat on this step (performance.md)."
+        },
+        {
+          "kind": "ungate",
+          "target": "backendRequests",
+          "from": { "reference": 18, "tolerance": 1 },
+          "to": null,
+          "runKeys": ["2026-11-13T190548549Z-ac6c68"],
+          "reason": "CI read 3 requests and 14 backend requests on this step once (merge-queue run 43483232112, tree d71678a01 = main e1dc6e9be + PR #445) and 4 and 18 in the 46 other CI readings since 2026-11-13 morning, including #445 alone (run 43480952615) and main with #443 (run 43483228169); Boat run 2026-11-13T190548549Z-ac6c68 on the same merged tree read 4 and 18. The clock sheet suspends live reads while open; the clock's own Realtime echo either lands before the explicit refresh after the transition, which clears it (3), or after, which queues one catch-up clock read when the sheet closes (4). Both start their read after the commit, so the count does not repeat on this step (performance.md)."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "action:/dashboard",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9101, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 25592, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9271, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 26272, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-20T105334831Z-6a1656"],
+          "reason": "Owner-approved one-time change: werk-flow/werkflow-planning#17, Owner queue 4 (owner decision 2026-11-20). werk-flow/werkflow-app#485 adds the two Rechnungen routes, and Turbopack's production chunker re-packs the shared (app) layout's unchanged client code into 23 chunks instead of main's 21 (diagnosis in #485's Verification, 'Lab payload regression'). The layout gains only the Receipt icon, the moved ReceiptText and the lazy invoice skeleton loader; no invoice code reaches field workers. The action's route payload names the two extra chunks: 25,592 to 26,272 decoded bytes on Boat, head cb34906a."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "action:/dashboard",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 9271, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 26272, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 8907, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 23949, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139543Z-159aab"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.cold-start",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "dd194789800d44dda412501de7c97e8186f3ae066fb0ff7c37a0492d02332c1c",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 51, "tolerance": 1 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 1, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 90, "tolerance": 1 },
+        "componentRenders": { "reference": 7596, "tolerance": 201 }
+      },
+      "payloads": {
+        "api:/api/attention-counts": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 2246, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 188, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/time-tracking-state": {
+          "requests": { "reference": 4, "tolerance": 0 },
+          "encodedBytes": { "reference": 5648, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 1530, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        },
+        "direct:/rest/v1/organization_members": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 919, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 270, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "document:/auftraege": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 27508, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 521030, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 50, "tolerance": 1 }
+        },
+        "font": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 54464, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        },
+        "image": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 8478, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        },
+        "route:/auftraege": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 14337, "tolerance": { "relative": 0.9874, "absolute": 512 } },
+          "decodedBytes": { "reference": 74475, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "script": {
+          "requests": { "reference": 36, "tolerance": 1 },
+          "encodedBytes": { "reference": 573760, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        },
+        "stylesheet": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 21862, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 117895, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "1ddd0a61a9d5b8c8678d8f1387ed77c8015ee644df073f01096957bf78cd8903",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 55, "tolerance": 1 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 1, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 90, "tolerance": 1 },
+            "componentRenders": { "reference": 10096, "tolerance": 201 }
+          },
+          "payloads": {
+            "api:/api/attention-counts": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 2246, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 188, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/time-tracking-state": {
+              "requests": { "reference": 4, "tolerance": 0 },
+              "encodedBytes": { "reference": 5648, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 1530, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            },
+            "direct:/rest/v1/organization_members": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 919, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 270, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "document:/auftraege": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 27508, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 521030, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 50, "tolerance": 1 }
+            },
+            "font": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 54464, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            },
+            "image": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 8478, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            },
+            "route:/auftraege": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 13510, "tolerance": { "relative": 0.9874, "absolute": 512 } },
+              "decodedBytes": { "reference": 75703, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "script": {
+              "requests": { "reference": 39, "tolerance": 1 },
+              "encodedBytes": { "reference": 646983, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            },
+            "stylesheet": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 22697, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 122894, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "1ddd0a61a9d5b8c8678d8f1387ed77c8015ee644df073f01096957bf78cd8903",
+          "toDigest": "dd194789800d44dda412501de7c97e8186f3ae066fb0ff7c37a0492d02332c1c",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "ratchet",
+          "target": "requests",
+          "from": { "reference": 55, "tolerance": 1 },
+          "to": { "reference": 53, "tolerance": 1 },
+          "runKeys": ["2026-10-30T215330529Z-9e87a6"],
+          "reason": null
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 10096, "tolerance": 201 },
+          "to": { "reference": 10433, "tolerance": 201 },
+          "runKeys": ["2026-10-31T174522133Z-e2d261"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The Auftrag list split (#127), the shared UI and sidebar split (#125) and the live-view hook split (#113) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 39, "tolerance": 1 },
+            "encodedBytes": { "reference": 646983, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 38, "tolerance": 1 },
+            "encodedBytes": { "reference": 652990, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-10-31T183529717Z-5e3e5e"],
+          "reason": "The size-cap splits merged on 2026-10-31 grew the /auftraege cold start, which this step opens. Gzip of its entry chunks per merge build, a031b64d 469,119 to c7328f71 477,750 (+8,631): #127 +3147, #113 +1603, #132 +1254, #125 +1141, #121 +538, #119 +519, #118 +167, #134 +109, #126 +61, #117 +57, #124 +35, #110 +13, #128 +11; #116 -8, #135 -13, #120 -3. This local run measures 652,990; CI's builds measure about 654,800 (runs 41227836236 and 41227929297, Browser 8, on #115 and #131), above the old ceiling. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 38, "tolerance": 1 },
+            "encodedBytes": { "reference": 652990, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 38, "tolerance": 1 },
+            "encodedBytes": { "reference": 597427, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-06T163031434Z-c3366b"],
+          "reason": "werk-flow/werkflow-app#173 cut the Zod namespace: lib/zod.ts re-exported all of z, and lib/zod-members.ts now names the members the product uses, so the 63 locales and the JSON Schema conversion leave the shell chunk. -56,174 bytes on this Mac, 653,601 on 23b0de15 to 597,427, with 38 script requests unchanged. The reference is a Mac value: CI's full run on main at d6d52102 (run 42237378515) read 655,478, about 0.3 % above this Mac, inside the 1 % tolerance. Lead's decision of 2026-11-06 (werk-flow/werkflow-planning#212)."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 10433, "tolerance": 201 },
+          "to": { "reference": 7596, "tolerance": 201 },
+          "runKeys": ["2026-11-08T112625699Z-098a70"],
+          "reason": null
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 38, "tolerance": 1 },
+            "encodedBytes": { "reference": 597427, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 37, "tolerance": 1 },
+            "encodedBytes": { "reference": 575135, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-08T112625699Z-098a70"],
+          "reason": "Manager-only create and edit dialogs load on intent (lazyDialog) instead of in the cold start, and the app shell no longer imports the Auftraege table through its skeleton: 597,427 to 575,135 on this PC (main read 600,972 here), with requests 54 to 53 against main. The create dialog downloads on the hover, focus or press of „Neu“, the edit dialogs when a row menu opens."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "stylesheet",
+          "from": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "encodedBytes": { "reference": 22697, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 122894, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "encodedBytes": { "reference": 21862, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": { "reference": 117895, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-09T215315624Z-23af99"],
+          "reason": "Tailwind no longer scans tests and test support (lint examples became shipped utilities), and the unused .hide-time-picker block and duplicate ::selection rules are gone; every dropped utility appears only in an excluded test file, and audit:visual, audit:layout and audit:layout:viewports pass on the same tree"
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 37, "tolerance": 1 },
+            "encodedBytes": { "reference": 575135, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 36, "tolerance": 1 },
+            "encodedBytes": { "reference": 581215, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-12T065056958Z-ac2af3"],
+          "reason": "The app shell gained the report button, its recorder and its launcher, which the owner accepted on #329 (2026-11-10). CI passed both lab groups on 82a9e350 (run 43092771815) and main passes alone; the merged tree reads 581,215 B, over the 580,887 B ceiling by 328 B, because main's shell changes since then used the remaining room. The field cold start needs no accept: #348's ceiling-accept already covers it."
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 36, "tolerance": 1 },
+            "encodedBytes": { "reference": 581215, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 36, "tolerance": 1 },
+            "encodedBytes": { "reference": 573760, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-12T221701408Z-cb4509"],
+          "reason": "Merged with main 0a645ab9 (#405, #391), the office cold start loads 36 script files (main alone 7635410d: 37; this branch alone 6cfc656d: 37) and 573,760 B (main before #405 7ef4b95c: 581,060; main alone: 578,033; branch alone: 579,387). Module comparison of the captured start-up chunks: the branch's lazy-loader stubs chunk 250d7s622ddpd.js (456 B, loaders 986332, 210572, 777462) now shares a chunk with layout module 537416 again, as on main; every module of main's and of the branch's start-up is present, except the activity fields and their alarm-clock icon (decision 13, loaded on first use) and #405's five Mitarbeiter member-removal modules, absent from main's start-up too. Lead's decision of 2026-11-12."
+        },
+        {
+          "kind": "ratchet",
+          "target": "requests",
+          "from": { "reference": 53, "tolerance": 1 },
+          "to": { "reference": 51, "tolerance": 1 },
+          "runKeys": ["2026-11-13T073843350Z-996ca3"],
+          "reason": "Merged with main 5100c6de, the office cold start loads 35 script files instead of 37 (main alone: 36, 52 requests). Every other request shape (the API and Supabase reads, route, document, fonts, images, stylesheets) and every backend read by path match main 8783c979; against this branch before the merge (c0ea3439) one read differs by main's #391: two read_manager_attention_sets calls replace two list_open_request_attention calls. The /auftraege entry chunks of the three builds name both files: one goes with main's own start-up, which since #382 (decision 13) loads the activity fields and their alarm-clock icon on first use and since #405 keeps the member-removal dialog out; the other is bundling: all 564 start-up modules of main 5100c6de stay in the start-up, and Turbopack packs five of main's (app) layout chunks with this PR's two Leistungen skeleton modules (the org-switch overlay's map) into four (1,740,600 to 1,743,228 B over all entry files)."
+        },
+        {
+          "kind": "raise",
+          "target": "requests",
+          "from": { "reference": 51, "tolerance": 1 },
+          "to": { "reference": 53, "tolerance": 1 },
+          "runKeys": ["2026-11-20T105334831Z-054694"],
+          "reason": "Owner-approved one-time change: werk-flow/werkflow-planning#17, Owner queue 4 (owner decision 2026-11-20). werk-flow/werkflow-app#485 adds the two Rechnungen routes, and Turbopack's production chunker re-packs the shared (app) layout's unchanged client code into 23 chunks instead of main's 21 (diagnosis in #485's Verification, 'Lab payload regression'). The layout gains only the Receipt icon, the moved ReceiptText and the lazy invoice skeleton loader; no invoice code reaches field workers. Every cold start loads the two extra chunk files: 51 to 53 requests on Boat, head cb34906a."
+        },
+        {
+          "kind": "ratchet",
+          "target": "requests",
+          "from": { "reference": 53, "tolerance": 1 },
+          "to": { "reference": 51, "tolerance": 1 },
+          "runKeys": ["2026-11-21T055139544Z-a5f23c"],
+          "reason": null
+        },
+        {
+          "kind": "floor-accept",
+          "target": "route:/auftraege",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 13510, "tolerance": { "relative": 0.9874, "absolute": 512 } },
+            "decodedBytes": { "reference": 75703, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 14337, "tolerance": { "relative": 0.9874, "absolute": 512 } },
+            "decodedBytes": { "reference": 74475, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139544Z-a5f23c"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.job-open",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "6c03d2ad1f413ee819bdbd1208f6f4944ebfeea262a42bb4fed9a218ec7dd565",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 5, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 3, "tolerance": 0 },
+        "backendRequests": { "reference": 87, "tolerance": 1 },
+        "componentRenders": { "reference": 1501, "tolerance": 31 }
+      },
+      "payloads": {
+        "background:job-dispatch-cards": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1056, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 27, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        },
+        "background:job-qualification-detail": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1521, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 491, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 1, "tolerance": 0 }
+        },
+        "background:time-entries-for-job": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1076, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 47, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        },
+        "prefetch:/auftraege/[jobNumber]/uebergabe": {
+          "requests": { "reference": 3, "tolerance": 0 },
+          "encodedBytes": { "reference": 6656, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 10490, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "route:/auftraege/[jobNumber]": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1220, "tolerance": { "relative": 1, "absolute": 512 } },
+          "decodedBytes": { "reference": 15161, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "script": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 13739, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "ae55a4203023b4aabea1c0c64f17a497aab0430bc5f2b8366a4f1a440a273034",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 5, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 3, "tolerance": 0 },
+            "backendRequests": { "reference": 72, "tolerance": 1 },
+            "componentRenders": { "reference": 1571, "tolerance": 31 }
+          },
+          "payloads": {
+            "background:job-dispatch-cards": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1056, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 27, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            },
+            "background:job-qualification-detail": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1521, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 491, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 1, "tolerance": 0 }
+            },
+            "background:time-entries-for-job": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1076, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 47, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            },
+            "prefetch:/auftraege/[jobNumber]/uebergabe": {
+              "requests": { "reference": 3, "tolerance": 0 },
+              "encodedBytes": { "reference": 6656, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 10490, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "route:/auftraege/[jobNumber]": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 4956, "tolerance": { "relative": 1, "absolute": 512 } },
+              "decodedBytes": { "reference": 14099, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "script": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 8475, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "ae55a4203023b4aabea1c0c64f17a497aab0430bc5f2b8366a4f1a440a273034",
+          "toDigest": "6c03d2ad1f413ee819bdbd1208f6f4944ebfeea262a42bb4fed9a218ec7dd565",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 1571, "tolerance": 31 },
+          "to": { "reference": 1634, "tolerance": 31 },
+          "runKeys": ["2026-10-31T174522133Z-e2d261"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The job detail split (#124) and the Auftrag split (#127) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "raise",
+          "target": "backendRequests",
+          "from": { "reference": 72, "tolerance": 1 },
+          "to": { "reference": 87, "tolerance": 1 },
+          "runKeys": ["2026-11-07T155436013Z-7a1b47"],
+          "reason": "Readiness on the job page now assesses capacity and qualifications of the job's next scheduled visit (werk-flow/werkflow-planning#50, #69): the next-visit read and the planning assessment's records, targets, absences, overlaps, qualification and name reads, server-side beside the existing lifecycle reads."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "route:/auftraege/[jobNumber]",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 4956, "tolerance": { "relative": 1, "absolute": 512 } },
+            "decodedBytes": { "reference": 14099, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 6113, "tolerance": { "relative": 1, "absolute": 512 } },
+            "decodedBytes": { "reference": 14625, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-07T155436013Z-7a1b47"],
+          "reason": "The job page's lifecycle snapshot carries the readiness picture's new unplannedReason and the assessed visit's conflict details (werk-flow/werkflow-planning#50, #69)."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 1634, "tolerance": 31 },
+          "to": { "reference": 1583, "tolerance": 31 },
+          "runKeys": ["2026-11-08T162433969Z-6e6e07"],
+          "reason": null
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 1583, "tolerance": 31 },
+          "to": { "reference": 1501, "tolerance": 31 },
+          "runKeys": ["2026-11-19T155027767Z-db164d"],
+          "reason": null
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "route:/auftraege/[jobNumber]",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 6113, "tolerance": { "relative": 1, "absolute": 512 } },
+            "decodedBytes": { "reference": 14625, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 1220, "tolerance": { "relative": 1, "absolute": 512 } },
+            "decodedBytes": { "reference": 15161, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-20T105334831Z-054694"],
+          "reason": "Owner-approved one-time change: werk-flow/werkflow-planning#17, Owner queue 4 (owner decision 2026-11-20). werk-flow/werkflow-app#485 adds the two Rechnungen routes, and Turbopack's production chunker re-packs the shared (app) layout's unchanged client code into 23 chunks instead of main's 21 (diagnosis in #485's Verification, 'Lab payload regression'). The layout gains only the Receipt icon, the moved ReceiptText and the lazy invoice skeleton loader; no invoice code reaches field workers. The route payload's client-reference rows name the two extra chunks: 14,625 to 15,161 decoded bytes on Boat, head cb34906a."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 8475, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 13739, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139544Z-a5f23c"],
+          "reason": "Owner-approved one-time exception 2026-11-20 (werk-flow/werkflow-planning#29), #560: the office UI the layout preloaded (date picker, select, popover, tabs, documents layout) now loads with the job page that uses it, on its first open; start-up 66 KB gzip lighter for every role"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.job-back",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "4a5fcc50e80d21f56d8caa548a6c61e69df0782327326c54948d9ed960d86960",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 0, "tolerance": 0 },
+        "routeRenders": { "reference": 0, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 0, "tolerance": 0 },
+        "componentRenders": { "reference": 745, "tolerance": 15 }
+      },
+      "payloads": {},
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "3a7fce31e7f18fff30fc5f375b85eea36e5bd87b32f42b50aa66067d7c8960c4",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 0, "tolerance": 0 },
+            "routeRenders": { "reference": 0, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 0, "tolerance": 0 },
+            "componentRenders": { "reference": 799, "tolerance": 15 }
+          },
+          "payloads": {}
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "3a7fce31e7f18fff30fc5f375b85eea36e5bd87b32f42b50aa66067d7c8960c4",
+          "toDigest": "4a5fcc50e80d21f56d8caa548a6c61e69df0782327326c54948d9ed960d86960",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 799, "tolerance": 15 },
+          "to": { "reference": 827, "tolerance": 15 },
+          "runKeys": ["2026-10-31T174522133Z-e2d261"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The Auftrag list split (#127) and the job detail split (#124) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 827, "tolerance": 15 },
+          "to": { "reference": 803, "tolerance": 15 },
+          "runKeys": ["2026-11-08T112625699Z-098a70"],
+          "reason": null
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 803, "tolerance": 15 },
+          "to": { "reference": 773, "tolerance": 15 },
+          "runKeys": ["2026-11-13T224018778Z-e324f5"],
+          "reason": null
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 773, "tolerance": 15 },
+          "to": { "reference": 745, "tolerance": 15 },
+          "runKeys": ["2026-11-19T155027767Z-db164d"],
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.customer-find",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "bbc6e784a88c05c49b3cf2643ec127bdda49defba3bc9240a9044bbb0f8e63b7",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 1, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 3, "tolerance": 0 },
+        "componentRenders": { "reference": 4822, "tolerance": 114 }
+      },
+      "payloads": {
+        "route:/kunden": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 2151, "tolerance": { "relative": 1, "absolute": 512 } },
+          "decodedBytes": { "reference": 5790, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "ced4147088dc157706558510bc66a122f827be345ac670fdd44163729c9f018c",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 3, "tolerance": 0 },
+            "componentRenders": { "reference": 5713, "tolerance": 114 }
+          },
+          "payloads": {
+            "route:/kunden": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 2151, "tolerance": { "relative": 1, "absolute": 512 } },
+              "decodedBytes": { "reference": 5790, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "ced4147088dc157706558510bc66a122f827be345ac670fdd44163729c9f018c",
+          "toDigest": "bbc6e784a88c05c49b3cf2643ec127bdda49defba3bc9240a9044bbb0f8e63b7",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 5713, "tolerance": 114 },
+          "to": { "reference": 4822, "tolerance": 114 },
+          "runKeys": ["2026-11-09T194256952Z-696650"],
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.job-create",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "e7647ca92db8a09218bb8f699b6ad7b9436121be30e426b6b81f91f8be4edc4c",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 3, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 44, "tolerance": 1 },
+        "componentRenders": { "reference": 4360, "tolerance": 101 }
+      },
+      "payloads": {
+        "action:/auftraege": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 14773, "tolerance": { "relative": 0.0193, "absolute": 512 } },
+          "decodedBytes": { "reference": 74410, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/attention-counts": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1123, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 94, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/time-tracking-state": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1085, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 56, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "ca07276c5cd1402ce3d0d28db215c175c6320ae9d75b0793cdf383cfafbf34d5",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 3, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 44, "tolerance": 1 },
+            "componentRenders": { "reference": 5085, "tolerance": 101 }
+          },
+          "payloads": {
+            "action:/auftraege": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 14954, "tolerance": { "relative": 0.0193, "absolute": 512 } },
+              "decodedBytes": { "reference": 75638, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/attention-counts": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1123, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 94, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/time-tracking-state": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1085, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 56, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "ca07276c5cd1402ce3d0d28db215c175c6320ae9d75b0793cdf383cfafbf34d5",
+          "toDigest": "e7647ca92db8a09218bb8f699b6ad7b9436121be30e426b6b81f91f8be4edc4c",
+          "reason": "The spec now waits for the suggested job number before it types one (fillJobNumber). The wait and both fills happen before recordLabStep resets the network count, so the measured submit counts the same requests. Then: tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 5085, "tolerance": 101 },
+          "to": { "reference": 5274, "tolerance": 101 },
+          "runKeys": ["2026-10-31T174522133Z-e2d261"],
+          "reason": "Each component the size-cap splits extracted renders once more per instance; no step does more DOM or data work. The Auftrag form split (#127) and the shared UI split (#125) add components to this step. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212). Requests, route renders and backend requests are unchanged in this run."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 5274, "tolerance": 101 },
+          "to": { "reference": 4360, "tolerance": 101 },
+          "runKeys": ["2026-11-08T112625699Z-098a70"],
+          "reason": null
+        },
+        {
+          "kind": "floor-accept",
+          "target": "action:/auftraege",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 14954, "tolerance": { "relative": 0.0193, "absolute": 512 } },
+            "decodedBytes": { "reference": 75638, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 14773, "tolerance": { "relative": 0.0193, "absolute": 512 } },
+            "decodedBytes": { "reference": 74410, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "rows": null
+          },
+          "runKeys": ["2026-11-21T055139544Z-a5f23c"],
+          "reason": "#560: area skeletons load lazily, so the layout carries no office UI and this payload is smaller; nothing is missing"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.entry-open",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "b1e85967ef6758faa27e51adc5544e2cabcad65217bd4e67993a4def6f2cca37",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 0, "tolerance": 0 },
+        "routeRenders": { "reference": 0, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 0, "tolerance": 0 },
+        "componentRenders": { "reference": 2259, "tolerance": 45 }
+      },
+      "payloads": {},
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "e07402633999f0ae415462c017d9a14577ca7c988eb270617145372c791034fd",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 0, "tolerance": 0 },
+            "routeRenders": { "reference": 0, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 0, "tolerance": 0 },
+            "componentRenders": { "reference": 2259, "tolerance": 45 }
+          },
+          "payloads": {}
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "e07402633999f0ae415462c017d9a14577ca7c988eb270617145372c791034fd",
+          "toDigest": "b1e85967ef6758faa27e51adc5544e2cabcad65217bd4e67993a4def6f2cca37",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.visit-move",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "d13e2461644951959461393f140ce8bc87326c4bb0afba845ef15cf4a34334a0",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "routeRenders": { "reference": 0, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+        "backgroundReads": { "reference": 2, "tolerance": 0 }
+      },
+      "payloads": {
+        "action:/kalender": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1294, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 121, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/attention-counts": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1123, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 94, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/calendar-board": {
+          "requests": { "reference": 1, "tolerance": 1 },
+          "encodedBytes": { "reference": 42026, "tolerance": { "relative": 1, "absolute": 512 } },
+          "decodedBytes": { "reference": 39964, "tolerance": { "relative": 1, "absolute": 512 } },
+          "rows": { "reference": 90, "tolerance": 1 }
+        },
+        "api:/api/calendar-window": {
+          "requests": { "reference": 1, "tolerance": 1 },
+          "encodedBytes": { "reference": 531426, "tolerance": { "relative": 1, "absolute": 512 } },
+          "decodedBytes": { "reference": 529362, "tolerance": { "relative": 1, "absolute": 512 } },
+          "rows": { "reference": 281, "tolerance": 5 }
+        },
+        "api:/api/time-tracking-state": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1085, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 56, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        },
+        "background:parked-jobs": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 2110, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 52, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "477dd36ad45613c7961e84122e344950b9bc001723d66f39e4047c1d4781f16a",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "routeRenders": { "reference": 0, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+            "backgroundReads": { "reference": 2, "tolerance": 0 }
+          },
+          "payloads": {
+            "action:/kalender": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1294, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 121, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/attention-counts": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1123, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 94, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/calendar-board": {
+              "requests": { "reference": 1, "tolerance": 1 },
+              "encodedBytes": { "reference": 42026, "tolerance": { "relative": 1, "absolute": 512 } },
+              "decodedBytes": { "reference": 39964, "tolerance": { "relative": 1, "absolute": 512 } },
+              "rows": { "reference": 90, "tolerance": 1 }
+            },
+            "api:/api/calendar-window": {
+              "requests": { "reference": 1, "tolerance": 1 },
+              "encodedBytes": { "reference": 531426, "tolerance": { "relative": 1, "absolute": 512 } },
+              "decodedBytes": { "reference": 529362, "tolerance": { "relative": 1, "absolute": 512 } },
+              "rows": { "reference": 281, "tolerance": 5 }
+            },
+            "api:/api/time-tracking-state": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1085, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 56, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            },
+            "background:parked-jobs": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 2110, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 52, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "477dd36ad45613c7961e84122e344950b9bc001723d66f39e4047c1d4781f16a",
+          "toDigest": "d13e2461644951959461393f140ce8bc87326c4bb0afba845ef15cf4a34334a0",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        }
+      ]
+    },
+    {
+      "stepId": "lab.office.time-approve",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "0b4fd73b80bf55727cf956371965fe08a888fef934c2581a6540fe07e141fcce",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "buero",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 6, "tolerance": 0 },
+        "routeRenders": { "reference": 0, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+        "backgroundReads": { "reference": 2, "tolerance": 0 },
+        "backendRequests": { "reference": 72, "tolerance": 1 }
+      },
+      "payloads": {
+        "action:/zeiterfassung": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1295, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 120, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/attention-counts": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1123, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 94, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "api:/api/time-tracking-state": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 2824, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 765, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        },
+        "background:pending-sessions": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 15140, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 13078, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 5, "tolerance": 0 }
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "d9caa1bc41476c669938b6180e9e3465c8e009c6fe6a2c006d9be1cb9efb1567",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "buero",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 6, "tolerance": 0 },
+            "routeRenders": { "reference": 0, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 1, "tolerance": 0 },
+            "backgroundReads": { "reference": 2, "tolerance": 0 },
+            "backendRequests": { "reference": 72, "tolerance": 1 },
+            "componentRenders": { "reference": 966, "tolerance": 19 }
+          },
+          "payloads": {
+            "action:/zeiterfassung": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1295, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 120, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/attention-counts": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1123, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 94, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "api:/api/time-tracking-state": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 2824, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 765, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            },
+            "background:pending-sessions": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 15140, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 13078, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 5, "tolerance": 0 }
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "d9caa1bc41476c669938b6180e9e3465c8e009c6fe6a2c006d9be1cb9efb1567",
+          "toDigest": "0b4fd73b80bf55727cf956371965fe08a888fef934c2581a6540fe07e141fcce",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 966, "tolerance": 19 },
+          "to": { "reference": 1035, "tolerance": 19 },
+          "runKeys": ["2026-11-01T070519609Z-6e2e24"],
+          "reason": "Debt splits merged after #141 (#137, #136, #109, #129): #129 splits components/zeiterfassung and the period page, which hold the time approval list, into smaller components that render separately (966 to 1035 renders, no extra reads). Behavior unchanged; owner decision 2026-10-31: accept now, win back later under werk-flow/werkflow-planning#212."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ungate",
+          "target": "componentRenders",
+          "from": { "reference": 1035, "tolerance": 19 },
+          "to": null,
+          "runKeys": ["2026-11-06T040531584Z-1a8d88", "2026-11-06T040730589Z-90bc16"],
+          "reason": "On 2026-11-01 CI read this count as 906 (run 41303379980) and 1042 (run 41309276961) among 17 readings of 1035, so it does not repeat on this step (performance.md). The debt lead asked for the ungate on werk-flow/werkflow-planning#94; it was not an owner decision. The two runs named here are Linux PC runs that held 1035."
+        }
+      ]
+    },
+    {
+      "stepId": "lab.admin.tasks-open",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "49d2d86e7c4c64d85742c7cd519ef2a63676cc69a3f17c24a95cdf9e3b28cf92",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "admin",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 14, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 3, "tolerance": 0 },
+        "backendRequests": { "reference": 46, "tolerance": 1 }
+      },
+      "payloads": {
+        "background:attention-overview": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 2058, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 1028, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 5, "tolerance": 0 }
+        },
+        "background:own-personnel-actions": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 2436, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 378, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": { "reference": 0, "tolerance": 0 }
+        },
+        "prefetch:/aufgaben": {
+          "requests": { "reference": 2, "tolerance": 0 },
+          "encodedBytes": { "reference": 5794, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 13105, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "prefetch:/zeiterfassung": {
+          "requests": { "reference": 3, "tolerance": 0 },
+          "encodedBytes": { "reference": 7526, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 16263, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "route:/aufgaben": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 1560, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": { "reference": 4628, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "script": {
+          "requests": { "reference": 4, "tolerance": 0 },
+          "encodedBytes": { "reference": 38150, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "ce85d8db1b671aa682bfe037a5cd2c23efb310a2d6f90c673e833fdea4cfe7f6",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "admin",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 8, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 3, "tolerance": 0 },
+            "backendRequests": { "reference": 46, "tolerance": 1 }
+          },
+          "payloads": {
+            "background:attention-overview": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 2058, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 1028, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 5, "tolerance": 0 }
+            },
+            "background:own-personnel-actions": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 2436, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 378, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": { "reference": 0, "tolerance": 0 }
+            },
+            "prefetch:/aufgaben": {
+              "requests": { "reference": 2, "tolerance": 0 },
+              "encodedBytes": { "reference": 5794, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 13105, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "prefetch:/zeiterfassung": {
+              "requests": { "reference": 3, "tolerance": 0 },
+              "encodedBytes": { "reference": 7526, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 16263, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "route:/aufgaben": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 1560, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": { "reference": 4628, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "script": {
+              "requests": { "reference": 4, "tolerance": 0 },
+              "encodedBytes": { "reference": 29316, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "ce85d8db1b671aa682bfe037a5cd2c23efb310a2d6f90c673e833fdea4cfe7f6",
+          "toDigest": "49d2d86e7c4c64d85742c7cd519ef2a63676cc69a3f17c24a95cdf9e3b28cf92",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 29316, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 31150, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-10-30T215330529Z-9e87a6"],
+          "reason": "werkflow-app#98 moved the time-entry validation (lib/time-tracking/validation.ts) out of an (app) layout chunk into the /zeiterfassung route chunk: before #98 (fa4faae4) layout chunk 0u25amz-dd_w_.js (5983 B gzip) carried it, after (bda6adb7) no layout chunk does. Every page loads less (lab.office.cold-start script bytes -4061 in this run); this step prefetches /zeiterfassung from the task list, so its four route chunks grew from 24964 to 26624 B gzip in the CI builds. Moved, not added."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 31150, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 32185, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-10-31T183529717Z-5e3e5e"],
+          "reason": "#107 (Zeiterfassung keeps today's minutes after clock-out and names the running activity) adds code to the /zeiterfassung route chunks, which the task list prefetches during this step; it is the only merge between c7328f71, where this step passed, and 58f44164. Same mechanism as the #98 accept. A product feature, not a split: E0 and werk-flow/werkflow-planning#212 may win the bytes back."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 32185, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 32999, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-01T070519609Z-6e2e24"],
+          "reason": "Debt splits merged after #141: #129 splits the /zeiterfassung components that the task list prefetches (32185 to 32999 bytes, the same mechanism as the #107 accept in #140). Owner decision 2026-10-31: accept now, win back later under werk-flow/werkflow-planning#212."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 32999, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 33652, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-07T212454898Z-a83f9b"],
+          "reason": "werk-flow/werkflow-app#232: #225 put the manual entry bridge and its Zod schemas into the startup chunk of every page through the menu sign-out (cold start 54 to 55 requests). Its fix keeps only an import-free clear in the sign-out, so the bridge returns to the /zeiterfassung chunks the task list prefetches (32720 to 33652 bytes) while every cold start loads 602426 to 599628 script bytes and 39 to 38 scripts."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 33652, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 35153, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-08T112625699Z-098a70"],
+          "reason": "Owner decision of 2026-11-08 via the CI lead (werk-flow/werkflow-planning#222): accept. TimeInput (components/ui/time-input) left every page's shared chunk, where the Auftraege edit form held it through the app shell's table skeleton, and now arrives with the /zeiterfassung chunks that Aufgaben prefetches: 33,652 to 35,153 (main read 33,645 here), script requests unchanged at 4. No new code; every cold start drops the module instead."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 35153, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 37609, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-08T142527257Z-73e286"],
+          "reason": "werk-flow/werkflow-app#276 adds the employee's „Zeit nachtragen“ flow to /zeiterfassung (earlier-day Zeitkorrektur, withdrawal confirmation, extended „Vorgemerkte Zeit“). The Aufgaben step prefetches that route from the sidebar, so its script grew by about 2.5 kB over main's 35153; the Aufgaben route and its reads are unchanged."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 37609, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 4, "tolerance": 0 },
+            "encodedBytes": { "reference": 38150, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-13T120348256Z-ff99fd"],
+          "reason": "Berufsschule days (werk-flow/werkflow-planning#165, #431): the prefetched Zeiterfassung chunks carry the apprentice's school-day note. Production builds of 8f304a90 and this branch differ in two chunks only: the weekly hours chart gains WeeklySchoolDays (347 raw bytes) with its call (29) and the week view's school_days live table (14), +154 gzip; the dashboard hero gains its school sentence, +82 raw, +38 gzip. next/dynamic for both measured larger (loader stubs of 134 and about 290 raw bytes, gzip 15 bytes more), so they stay inline. Accepted by the E0 lead under decision 21."
+        },
+        {
+          "kind": "raise",
+          "target": "requests",
+          "from": { "reference": 8, "tolerance": 0 },
+          "to": { "reference": 14, "tolerance": 0 },
+          "runKeys": ["2026-11-21T055139544Z-a5f23c"],
+          "reason": "Owner-approved one-time exception 2026-11-20 (werk-flow/werkflow-planning#29), #560: the Aufgaben page's code and the Zeiterfassung prefetch's date picker no longer come with the layout's start-up, so opening Aufgaben fetches their chunks (4 to 10 scripts); no organization switch is involved; start-up 66 KB gzip lighter for every role"
+        }
+      ]
+    },
+    {
+      "stepId": "lab.admin.settings-open",
+      "stepVersion": 1,
+      "labMeasurementVersion": 1,
+      "context": {
+        "measurementDigest": "85883b81346c248c99d89df77bd0708278889d41821a3a9f4e7928c30b144845",
+        "workloadDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+        "browser": "chromium",
+        "browserVersion": "151.0.7922.34",
+        "viewport": { "width": 1440, "height": 900 },
+        "cpuThrottle": 1,
+        "role": "admin",
+        "backend": "local"
+      },
+      "counts": {
+        "requests": { "reference": 4, "tolerance": 0 },
+        "routeRenders": { "reference": 1, "tolerance": 0 },
+        "echoRenders": { "reference": 0, "tolerance": 0 },
+        "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+        "backgroundReads": { "reference": 0, "tolerance": 0 },
+        "backendRequests": { "reference": 11, "tolerance": 1 },
+        "componentRenders": { "reference": 484, "tolerance": 9 }
+      },
+      "payloads": {
+        "route:/einstellungen/mitarbeiter": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 4183, "tolerance": { "relative": 1, "absolute": 512 } },
+          "decodedBytes": { "reference": 11504, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "rows": null
+        },
+        "script": {
+          "requests": { "reference": 1, "tolerance": 0 },
+          "encodedBytes": { "reference": 8186, "tolerance": { "relative": 0.01, "absolute": 512 } },
+          "decodedBytes": null,
+          "rows": null
+        }
+      },
+      "source": {
+        "runKeys": [
+          "2026-10-25T165618654Z-9ebeb1",
+          "2026-10-25T165931988Z-5db192",
+          "2026-10-25T170243762Z-90b20c",
+          "2026-10-25T170554443Z-2d90e9",
+          "2026-10-25T170901476Z-c267d7",
+          "2026-10-25T165618654Z-527242",
+          "2026-10-25T165931988Z-d30194",
+          "2026-10-25T170243762Z-df48e3",
+          "2026-10-25T170554443Z-7570ea",
+          "2026-10-25T170901476Z-38d6bc"
+        ],
+        "buildId": "9e7b093b-362c-4ab4-af5b-a4ba9d1b75c3"
+      },
+      "history": [
+        {
+          "kind": "initial",
+          "runKeys": [
+            "2026-10-25T165618654Z-9ebeb1",
+            "2026-10-25T165931988Z-5db192",
+            "2026-10-25T170243762Z-90b20c",
+            "2026-10-25T170554443Z-2d90e9",
+            "2026-10-25T170901476Z-c267d7",
+            "2026-10-25T165618654Z-527242",
+            "2026-10-25T165931988Z-d30194",
+            "2026-10-25T170243762Z-df48e3",
+            "2026-10-25T170554443Z-7570ea",
+            "2026-10-25T170901476Z-38d6bc"
+          ],
+          "reason": "New development machine: WSL Ubuntu 26.04 on the owner's Windows laptop replaces the Windows host, the recorder follows the gateway log through the native docker CLI, and the app now loads Geist (brief F1); five passing fresh runs on one build",
+          "context": {
+            "measurementDigest": "7df03f8f09833a1bcd5802cecef824d2350d52bbe3f12fcc1af1b4d783167dec",
+            "workloadDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+            "browser": "chromium",
+            "browserVersion": "151.0.7922.34",
+            "viewport": { "width": 1440, "height": 900 },
+            "cpuThrottle": 1,
+            "role": "admin",
+            "backend": "local"
+          },
+          "counts": {
+            "requests": { "reference": 2, "tolerance": 0 },
+            "routeRenders": { "reference": 1, "tolerance": 0 },
+            "echoRenders": { "reference": 0, "tolerance": 0 },
+            "actionRoundTrips": { "reference": 0, "tolerance": 0 },
+            "backgroundReads": { "reference": 0, "tolerance": 0 },
+            "backendRequests": { "reference": 11, "tolerance": 1 },
+            "componentRenders": { "reference": 494, "tolerance": 9 }
+          },
+          "payloads": {
+            "route:/einstellungen/mitarbeiter": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 4183, "tolerance": { "relative": 1, "absolute": 512 } },
+              "decodedBytes": { "reference": 11504, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "rows": null
+            },
+            "script": {
+              "requests": { "reference": 1, "tolerance": 0 },
+              "encodedBytes": { "reference": 8325, "tolerance": { "relative": 0.01, "absolute": 512 } },
+              "decodedBytes": null,
+              "rows": null
+            }
+          }
+        },
+        {
+          "kind": "carry-over",
+          "fromDigest": "7df03f8f09833a1bcd5802cecef824d2350d52bbe3f12fcc1af1b4d783167dec",
+          "toDigest": "85883b81346c248c99d89df77bd0708278889d41821a3a9f4e7928c30b144845",
+          "reason": "tests/audit/support/lab-network.ts now takes a shape's rows only from the requests whose body arrived: a request the app aborted (Network.loadingFailed, a superseded calendar read) no longer clears the rows of the read that replaced it. Requests, route renders and bytes are counted as before, and a step without an aborted request records the same rows."
+        },
+        {
+          "kind": "workload-carry-over",
+          "fromDigest": "caedeec9a74c6fbf6237fed97e3018910554d62fde5058a92e281fb0b387c310",
+          "toDigest": "b226be9602e374b37085120d3736cde2f381bb3bd8f1fae55e547d15e170793b",
+          "reason": "#151 typed tests/audit/support/performance-profile.ts without changing the seeded workload: that file at its parent plus a run's archived counts reproduces the old digest exactly, so the edit alone moved it. The counts stay as reviewed."
+        },
+        {
+          "kind": "ceiling-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 8325, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 8941, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-06T035544252Z-8c2fb1"],
+          "reason": "werk-flow/werkflow-app#147 split the Einstellungen components below the size caps with behavior unchanged. CI held about 8370 bytes through 2026-11-01 13:02 UTC and about 8960 from 13:36, with #147 the only merge between. Owner decision 2026-10-31: accept now, shrink later (werk-flow/werkflow-planning#212)."
+        },
+        {
+          "kind": "ratchet",
+          "target": "componentRenders",
+          "from": { "reference": 494, "tolerance": 9 },
+          "to": { "reference": 471, "tolerance": 9 },
+          "runKeys": ["2026-11-08T150801926Z-0e181a"],
+          "reason": null
+        },
+        {
+          "kind": "floor-accept",
+          "target": "script",
+          "from": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 8941, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "to": {
+            "requests": { "reference": 1, "tolerance": 0 },
+            "encodedBytes": { "reference": 8186, "tolerance": { "relative": 0.01, "absolute": 512 } },
+            "decodedBytes": null,
+            "rows": null
+          },
+          "runKeys": ["2026-11-09T122231468Z-966927"],
+          "reason": "The customer picker loads its create dialog through lazyDialog (werk-flow/werkflow-app#312), so the settings page's script chunk no longer carries modules it shared with the dialog; CI measured 8184 (run 42617438000), this run 8186; requests and renders unchanged"
+        },
+        {
+          "kind": "raise",
+          "target": "componentRenders",
+          "from": { "reference": 471, "tolerance": 9 },
+          "to": { "reference": 484, "tolerance": 9 },
+          "runKeys": ["2026-11-12T203332260Z-8a8d37"],
+          "reason": "The office sidebar gains the Angebote entry (werk-flow/werkflow-planning#379); each sidebar re-render while settings opens renders its link and icon once more"
+        },
+        {
+          "kind": "raise",
+          "target": "requests",
+          "from": { "reference": 2, "tolerance": 0 },
+          "to": { "reference": 4, "tolerance": 0 },
+          "runKeys": ["2026-11-21T055139544Z-a5f23c"],
+          "reason": "Owner-approved one-time exception 2026-11-20 (werk-flow/werkflow-planning#29), #560: the settings page's UI (tabs, select) no longer comes with the layout's start-up, so opening the settings fetches its own chunks; no organization switch is involved; start-up 66 KB gzip lighter for every role"
+        }
+      ]
+    }
+  ],
+  "gatedMetrics": [
+    {
+      "metric": "requests",
+      "stability": "zero spread on most steps over five runs of one build; a step where it varied stays ungated there",
+      "relevance": "one added Server Action round trip before the Arbeitsnachweis showed its version raised requests 4 to 5 and the median wall clock 674 to 886 ms",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "actionRoundTrips",
+      "stability": "zero spread on every step over five runs",
+      "relevance": "one added round trip moved the evidence step's median wall clock 674 to 886 ms",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "backendRequests",
+      "stability": "zero spread on most steps over five runs of one build; a step where it varied stays ungated there",
+      "relevance": "the added round trip raised backend requests 68 to 81 with the wall-clock rise above; one route render costs 46 to 58 of them",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "routeRenders",
+      "stability": "zero spread on every step over five runs",
+      "relevance": "removing the click-time route render (a data prefetch on hover) took the office job open from a median 438 to about 215 ms",
+      "runKeys": [
+        "2026-10-09T024405639Z-a63ae8",
+        "2026-10-09T024854069Z-4b0d42",
+        "2026-10-09T025319878Z-8a994d",
+        "2026-10-09T025758542Z-8bdd0b",
+        "2026-10-09T030226722Z-c94954"
+      ]
+    },
+    {
+      "metric": "echoRenders",
+      "stability": "zero spread on every step over five runs",
+      "relevance": "an echo is a whole route render of the saving session, the same cost as routeRenders",
+      "runKeys": [
+        "2026-10-09T024405639Z-a63ae8",
+        "2026-10-09T024854069Z-4b0d42",
+        "2026-10-09T025319878Z-8a994d",
+        "2026-10-09T025758542Z-8bdd0b",
+        "2026-10-09T030226722Z-c94954"
+      ]
+    },
+    {
+      "metric": "backgroundReads",
+      "stability": "zero spread on every step over five runs",
+      "relevance": "each is an authenticated GET with its own backend reads, which backendRequests counts with it",
+      "runKeys": [
+        "2026-10-09T024405639Z-a63ae8",
+        "2026-10-09T024854069Z-4b0d42",
+        "2026-10-09T025319878Z-8a994d",
+        "2026-10-09T025758542Z-8bdd0b",
+        "2026-10-09T030226722Z-c94954"
+      ]
+    },
+    {
+      "metric": "componentRenders",
+      "stability": "zero spread on most steps; steps whose echo timing varies stay ungated",
+      "relevance": "the same experiment raised rendered components 459-825 to 761-1169 with the wall-clock rise above",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    }
+  ],
+  "rejectedMetrics": [
+    {
+      "metric": "prefetches",
+      "job": "relevance",
+      "evidence": "fewer is not better: turning in-view prefetch off made navigations slower (employee settings 422 to 952 ms); a changed prefetch still shows in requests and the payload shapes",
+      "runKeys": [
+        "2026-10-09T024405639Z-a63ae8",
+        "2026-10-09T024854069Z-4b0d42",
+        "2026-10-09T025319878Z-8a994d",
+        "2026-10-09T025758542Z-8bdd0b",
+        "2026-10-09T030226722Z-c94954"
+      ]
+    },
+    {
+      "metric": "domMutations",
+      "job": "relevance",
+      "evidence": "no experiment moved it together with the wall clock: thirty extra renders left it at 50",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "layoutCount",
+      "job": "relevance",
+      "evidence": "no experiment moved it together with the wall clock",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "recalcStyleCount",
+      "job": "stability",
+      "evidence": "varied on 16 of 18 steps over five runs, by up to 10 on one step",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "longTasks",
+      "job": "stability",
+      "evidence": "varied on 8 of 18 steps over five runs (0 to 3 on the throttled field steps)",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "longAnimationFrames",
+      "job": "stability",
+      "evidence": "varied on 6 of 18 steps over five runs",
+      "runKeys": [
+        "2026-10-09T024405639Z-6b9227",
+        "2026-10-09T024854069Z-2d50d8",
+        "2026-10-09T025319878Z-66b69d",
+        "2026-10-09T025758541Z-4cc4c0",
+        "2026-10-09T030226722Z-782b9c"
+      ]
+    },
+    {
+      "metric": "reactCommits",
+      "job": "stability",
+      "evidence": "five quiet runs showed zero spread on several steps, but a later run on a slower machine state moved lab.office.job-open from 14 to 16: streamed responses commit in timing-dependent batches",
+      "runKeys": [
+        "2026-10-09T041927828Z-d33901",
+        "2026-10-09T042614244Z-a97056",
+        "2026-10-09T043219324Z-11a835",
+        "2026-10-09T043834499Z-e9e693",
+        "2026-10-09T044333153Z-fb1af9"
+      ]
+    }
+  ]
+}

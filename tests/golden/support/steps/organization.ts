@@ -1,0 +1,575 @@
+import { randomUUID } from 'node:crypto';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { ROLE_LABELS } from '../../../../lib/roles';
+import { createAdminClient, getOrganizationByName, type PersistedOrganization } from '../db/shared';
+import { confirmTestUserEmail } from '../seed';
+import { hydratedAndSettled, pressKey, settledBeforeTimeout } from './interaction';
+import { openMemberDetailFromList } from './personnel';
+import { listEntry, openDialogWithRetry, pendingRow, SHARED_COPY, visibleText } from './shared';
+
+/** Copy of accounts, organizations, membership and the member list. */
+const ORGANIZATION_COPY = {
+  signup: {
+    firstName: 'Vorname',
+    lastName: 'Nachname',
+    email: 'E-Mail',
+    password: 'Passwort',
+    submit: 'Registrieren',
+  },
+  login: {
+    email: /^E-Mail/,
+    password: /^Passwort/,
+    submit: 'Anmelden',
+  },
+  signOut: 'Abmelden',
+  accountMenu: 'Kontomenü öffnen',
+  /** The phone header's button that opens the sidebar as a sheet, and the sheet's close button. */
+  phoneMenu: { open: 'Menü öffnen', close: 'Menü schließen' },
+  organizationName: 'Name der Organisation',
+  createOrganization: 'Organisation erstellen',
+  /** The dashboard's banner after a created organization's first load (app/(app)/dashboard/page.tsx). */
+  organizationCreated: 'Organisation erstellt — Du bist jetzt Admin.',
+  joinOrganization: 'Organisation beitreten',
+  joinCode: 'Organisationscode',
+  requestJoin: 'Beitritt anfragen',
+  withdrawJoinRequest: 'Anfrage zurückziehen',
+  joinDialogDone: 'Fertig',
+  joinRequests: /Beitrittsanfragen/,
+  foreignAdminJoinRefused:
+    'Du kannst keiner Organisation beitreten, die nicht vom gleichen Admin stammt wie deine bestehenden Organisationen.',
+  memberJoinedSignal: 'ist jetzt Mitglied',
+  invite: {
+    open: 'Mitarbeiter einladen',
+    title: 'Mitarbeiter einladen',
+    send: 'Einladung senden',
+    invitationsTab: /^Einladungen/,
+    cancel: SHARED_COPY.action.cancelRecord,
+    pending: 'Ausstehend',
+    cancelled: 'Storniert',
+  },
+  memberMenu: {
+    actions: 'Aktionen',
+    details: 'Details anzeigen',
+    remove: SHARED_COPY.action.remove,
+    changeRole: 'Rolle ändern',
+    removeTitle: 'Mitglied entfernen?',
+    removalBlocked:
+      'Vor dem Entfernen muss die Verantwortung für Zeitfreigaben neu zugewiesen oder auf den Standard zurückgestellt werden.',
+    reassignFirst: 'Zuerst neu zuweisen',
+  },
+  workSchedule: /Arbeitszeitmodell/,
+  memberDetailProgress: 'Tagesfortschritt',
+} as const;
+
+/** The clock state a member row shows in the member list (components/mitarbeiter/status-badge.tsx). */
+export const MEMBER_CLOCK_STATUS = {
+  working: 'Arbeitet',
+  onBreak: 'Macht Pause',
+  notClockedIn: 'Nicht eingestempelt',
+} as const;
+
+/** Any clock state of a member row. */
+export const ANY_MEMBER_CLOCK_STATUS = new RegExp(Object.values(MEMBER_CLOCK_STATUS).join('|'));
+
+/** The status of a row in the invitations tab. */
+export const INVITATION_STATUS = {
+  pending: ORGANIZATION_COPY.invite.pending,
+  cancelled: ORGANIZATION_COPY.invite.cancelled,
+} as const;
+
+/** The refusal a code of an organization under another admin produces. */
+export const FOREIGN_ADMIN_JOIN_REFUSAL = ORGANIZATION_COPY.foreignAdminJoinRefused;
+
+/** The progress label of a member's detail page that proves the detail opened. */
+export const MEMBER_DETAIL_PROGRESS = ORGANIZATION_COPY.memberDetailProgress;
+
+/** The roles an invitation grants. */
+type InvitedRole = Exclude<keyof typeof ROLE_LABELS, 'admin'>;
+
+type SignupAccount = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+};
+
+/** The waiting state of a join request, on the join page and in the join dialog. */
+export function joinRequestPendingMessage(organizationName: string): string {
+  return `Deine Anfrage wartet auf Freigabe durch ${organizationName}.`;
+}
+
+/** The banner after the office approves a join request. */
+export function memberJoinedMessage(memberName: string): string {
+  return `${memberName} ${ORGANIZATION_COPY.memberJoinedSignal} deiner Organisation.`;
+}
+
+/** The login form's submit button. */
+function loginSubmitButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_COPY.login.submit, exact: true });
+}
+
+/** Fills the signup form on the current page and submits it once. */
+export async function submitSignupForm(page: Page, account: SignupAccount): Promise<void> {
+  await page.getByLabel(ORGANIZATION_COPY.signup.firstName).fill(account.firstName);
+  await page.getByLabel(ORGANIZATION_COPY.signup.lastName).fill(account.lastName);
+  await page.getByLabel(ORGANIZATION_COPY.signup.email).fill(account.email);
+  await page
+    .getByRole('textbox', { name: ORGANIZATION_COPY.signup.password, exact: true })
+    .fill(account.password);
+  await page.getByRole('button', { name: ORGANIZATION_COPY.signup.submit }).click();
+}
+
+/**
+ * Registers a new account through the signup page. When the environment asks
+ * for email verification, confirms the address and signs in; either way the
+ * account ends on the upgrade or onboarding route.
+ */
+export async function signUpViaUi(page: Page, account: SignupAccount): Promise<void> {
+  await page.goto('/signup');
+  await submitSignupForm(page, account);
+  await expect(page).toHaveURL(/\/(verify|upgrade|onboarding)/);
+  if (!/\/verify/.test(page.url())) return;
+  await confirmTestUserEmail(account.email);
+  await page.goto('/login');
+  await page.getByRole('textbox', { name: ORGANIZATION_COPY.login.email }).fill(account.email);
+  await page.getByRole('textbox', { name: ORGANIZATION_COPY.login.password }).fill(account.password);
+  await loginSubmitButton(page).click();
+  await expect(page).toHaveURL(/\/(upgrade|onboarding)/);
+}
+
+/**
+ * Records a paid Checkout for a signed-up test account, as Stripe's signals
+ * would (werk-flow/werkflow-planning#248): a reservation whose subscription
+ * is active. Browser journeys never reach Stripe.
+ */
+async function recordPaidCheckout(email: string): Promise<void> {
+  if (!email.endsWith('@werkflow-golden.test')) {
+    throw new Error(`Refusing to pay for non-test address: ${email}`);
+  }
+  const admin = createAdminClient();
+  const { data: profile, error: profileError } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .single();
+  if (profileError) throw new Error(`Signup profile not found for ${email}: ${profileError.message}`);
+  const organizationId = randomUUID();
+  const suffix = organizationId.replaceAll('-', '');
+  const { error: reserveError } = await admin.rpc('begin_werkflow_checkout', {
+    p_organization_id: organizationId,
+    p_user_id: profile.id,
+    p_linked: false,
+    p_stripe_customer_id: `cus_test_${suffix}`,
+  });
+  if (reserveError) throw new Error(`Failed to reserve for ${email}: ${reserveError.message}`);
+  const { error: recordError } = await admin.rpc('record_werkflow_subscription_state', {
+    p_organization_id: organizationId,
+    p_stripe_customer_id: `cus_test_${suffix}`,
+    p_stripe_subscription_id: `sub_test_${suffix}`,
+    p_status: 'active',
+    p_cancel_at_period_end: false,
+    p_read_at: new Date().toISOString(),
+  });
+  if (recordError) throw new Error(`Failed to record the subscription for ${email}: ${recordError.message}`);
+}
+
+/**
+ * A paid Checkout for the account, recorded as Stripe's signals would; the
+ * upgrade page then sends the payer on to the organization form.
+ */
+export async function payForNewOrganization(page: Page, email: string): Promise<void> {
+  await recordPaidCheckout(email);
+  await page.goto('/upgrade');
+  await expect(page).toHaveURL(/\/onboarding\/create-organization/);
+}
+
+/**
+ * The landing after either create form: a full load of `/dashboard?created=<id>`.
+ * The dashboard shows the confirmation and strips the parameter at once
+ * (`UrlFlashBanner`), so the URL is no fact to wait on. The banner, the
+ * switcher on the new active organization and the stored row are.
+ */
+async function expectOrganizationCreated(
+  page: Page,
+  organizationName: string,
+): Promise<PersistedOrganization> {
+  await expect(
+    page.getByRole('alert').filter({ hasText: ORGANIZATION_COPY.organizationCreated }),
+  ).toBeVisible();
+  await expect(organizationSwitcher(page, organizationName)).toBeVisible();
+  await hydratedAndSettled(page);
+  return getOrganizationByName(organizationName);
+}
+
+/** Creates the account's first organization on the onboarding form and lands on its dashboard. */
+export async function createOrganizationInOnboarding(
+  page: Page,
+  organizationName: string,
+): Promise<PersistedOrganization> {
+  await page.getByLabel(ORGANIZATION_COPY.organizationName).fill(organizationName);
+  await page.getByRole('button', { name: ORGANIZATION_COPY.createOrganization }).click();
+  return expectOrganizationCreated(page, organizationName);
+}
+
+/**
+ * Creates a further organization through the switcher's dialog and lands on
+ * its dashboard. A further organization needs its own paid Checkout
+ * (werk-flow/werkflow-planning#248), so the step records one for the signed-in
+ * Admin first, as Stripe's signals would.
+ */
+export async function createAdditionalOrganization(
+  page: Page,
+  organizationName: string,
+  adminEmail: string,
+): Promise<PersistedOrganization> {
+  await recordPaidCheckout(adminEmail);
+  await page.getByRole('button', { name: ORGANIZATION_COPY.createOrganization }).click();
+  await page.getByLabel(ORGANIZATION_COPY.organizationName).fill(organizationName);
+  await page.getByRole('button', { name: SHARED_COPY.action.create, exact: true }).click();
+  return expectOrganizationCreated(page, organizationName);
+}
+
+/** The organization switcher while it shows this organization. */
+export function organizationSwitcher(page: Page, organizationName: string): Locator {
+  return page.getByRole('combobox').filter({ hasText: organizationName });
+}
+
+/** Organization and profile dialogs as the rendered audit opens them, by trigger and title. */
+const ORGANIZATION_DIALOG_COPY = {
+  createTitle: 'Neue Organisation erstellen',
+  deleteOrganization: 'Organisation löschen',
+  avatarUpload: /^Profilbild (hochladen|ändern)$/,
+  avatarTitle: 'Profilbild anpassen',
+} as const;
+
+/** A one-pixel PNG, the smallest image the avatar crop dialog accepts. */
+const AVATAR_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+/** The switcher action of an admin: „Organisation erstellen“. */
+export function createOrganizationButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_COPY.createOrganization, exact: true });
+}
+
+export function createOrganizationDialog(page: Page): Locator {
+  return page.getByRole('dialog', { name: ORGANIZATION_DIALOG_COPY.createTitle, exact: true });
+}
+
+/** The switcher action of a member without an admin membership: „Organisation beitreten“. */
+export function joinOrganizationButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_COPY.joinOrganization, exact: true });
+}
+
+export function joinOrganizationDialog(page: Page): Locator {
+  return page.getByRole('dialog', { name: ORGANIZATION_COPY.joinOrganization, exact: true });
+}
+
+/**
+ * Brings the sidebar's organization switcher on screen. From the tablet width
+ * the sidebar is always shown; below it the switcher sits in the sheet that
+ * the phone header's menu button opens (components/sidebar/app-shell.tsx).
+ */
+export async function showOrganizationSwitcher(page: Page): Promise<void> {
+  const openMenu = page.getByRole('button', { name: ORGANIZATION_COPY.phoneMenu.open, exact: true });
+  if (!(await openMenu.isVisible())) return;
+  await hydratedAndSettled(page);
+  await openMenu.click();
+  await expect(
+    page.getByRole('button', { name: ORGANIZATION_COPY.phoneMenu.close, exact: true }),
+  ).toBeVisible();
+}
+
+/** The admin's delete action on the organization settings; its confirmation shares the name. */
+export function deleteOrganizationButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_DIALOG_COPY.deleteOrganization, exact: true });
+}
+
+export function deleteOrganizationConfirmation(page: Page): Locator {
+  return page.getByRole('alertdialog', { name: ORGANIZATION_DIALOG_COPY.deleteOrganization, exact: true });
+}
+
+/** The profile settings action that opens the file chooser for a new avatar. */
+export function profileAvatarUploadButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_DIALOG_COPY.avatarUpload });
+}
+
+export function profileAvatarDialog(page: Page): Locator {
+  return page.getByRole('dialog', { name: ORGANIZATION_DIALOG_COPY.avatarTitle, exact: true });
+}
+
+/**
+ * Answers the next file chooser of the page with a small PNG, so activating
+ * the avatar upload button opens the crop dialog as a chosen file does.
+ */
+export function answerNextFileChooserWithAvatar(page: Page): void {
+  page.once('filechooser', (chooser) => {
+    void chooser.setFiles({
+      name: 'profilbild.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(AVATAR_PNG_BASE64, 'base64'),
+    });
+  });
+}
+
+/** Opens the join dialog from the dashboard and returns it. */
+export async function openJoinOrganizationDialog(page: Page): Promise<Locator> {
+  const dialog = page.getByRole('dialog');
+  await openDialogWithRetry({
+    trigger: page.getByRole('button', { name: ORGANIZATION_COPY.joinOrganization }),
+    dialog,
+  });
+  return dialog;
+}
+
+/** The one submit of a join code, on the join page and in the join dialog. */
+function joinRequestButton(scope: Page | Locator): Locator {
+  return scope.getByRole('button', { name: ORGANIZATION_COPY.requestJoin, exact: true });
+}
+
+/** Enters an organization code and asks to join with it. */
+export async function requestJoinWithCode(scope: Page | Locator, code: string): Promise<void> {
+  await scope.getByLabel(ORGANIZATION_COPY.joinCode).fill(code);
+  await joinRequestButton(scope).click();
+}
+
+export function withdrawJoinRequestButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_COPY.withdrawJoinRequest, exact: true });
+}
+
+export function joinDialogDoneButton(dialog: Locator): Locator {
+  return dialog.getByRole('button', { name: ORGANIZATION_COPY.joinDialogDone, exact: true });
+}
+
+/** The office's list of open join requests on the member page. */
+export function joinRequestsRegion(page: Page): Locator {
+  return page.getByRole('region', { name: ORGANIZATION_COPY.joinRequests });
+}
+
+export function approveJoinRequestButton(joinRequests: Locator, requesterName: string): Locator {
+  return joinRequests.getByRole('button', { name: `${requesterName} freigeben`, exact: true });
+}
+
+/** The banner that confirms an approved join request. */
+export function memberJoinedBanner(page: Page): Locator {
+  return page.getByRole('alert').filter({ hasText: ORGANIZATION_COPY.memberJoinedSignal });
+}
+
+/** A row of the member list or the invitations tab, by member name or invited email. */
+/** A member or invitation that shows this name or email: its table row, or its card on a phone. */
+export function memberRow(page: Page, nameOrEmail: string): Locator {
+  return listEntry(page, { hasText: nameOrEmail });
+}
+
+export function memberRowActionsButton(row: Locator): Locator {
+  return row.getByRole('button', { name: SHARED_COPY.action.openActions });
+}
+
+/**
+ * The daily progress bar of a member row. Its name carries the percentage on
+ * a day with a target and the reason on a day without one (a weekend under
+ * the default target), so it shows on every run day.
+ */
+export function memberRowDailyProgress(row: Locator): Locator {
+  return row.getByRole('progressbar', { name: new RegExp(`^${ORGANIZATION_COPY.memberDetailProgress}: `) });
+}
+
+/** The work schedule indicator of a member row. */
+export function memberRowWorkSchedule(row: Locator): Locator {
+  return row.getByLabel(ORGANIZATION_COPY.workSchedule);
+}
+
+/** The open actions menu of a member or invitation row. */
+export function memberActionsMenu(page: Page): Locator {
+  return page.getByRole('menu');
+}
+
+export function memberMenuItem(
+  page: Page,
+  item: 'details' | 'remove' | 'changeRole' | 'cancelInvitation',
+): Locator {
+  const names = {
+    details: ORGANIZATION_COPY.memberMenu.details,
+    remove: ORGANIZATION_COPY.memberMenu.remove,
+    changeRole: ORGANIZATION_COPY.memberMenu.changeRole,
+    cancelInvitation: ORGANIZATION_COPY.invite.cancel,
+  } as const;
+  return page.getByRole('menuitem', { name: names[item] });
+}
+
+/** The copy of the role change entry, for absence checks across the whole DOM. */
+export const MEMBER_CHANGE_ROLE_ACTION = ORGANIZATION_COPY.memberMenu.changeRole;
+
+export function invitationsTab(page: Page): Locator {
+  return page.getByRole('tab', { name: ORGANIZATION_COPY.invite.invitationsTab });
+}
+
+/** Cancels a pending invitation from its row menu and confirms the cancellation. */
+export async function cancelInvitationFromRow(page: Page, row: Locator): Promise<void> {
+  await memberRowActionsButton(row).click();
+  await memberMenuItem(page, 'cancelInvitation').click();
+  await page.getByRole('alertdialog').getByRole('button', { name: ORGANIZATION_COPY.invite.cancel }).click();
+}
+
+/** Asks to remove the member of the row and confirms; the alert dialog stays open on a refusal. */
+export async function requestMemberRemovalFromRow(page: Page, row: Locator): Promise<Locator> {
+  await memberRowActionsButton(row).click();
+  await memberMenuItem(page, 'remove').click();
+  const removalDialog = page.getByRole('alertdialog');
+  await removalDialog.getByRole('button', { name: SHARED_COPY.action.remove }).click();
+  return removalDialog;
+}
+
+export async function inviteMember(page: Page, email: string, role: InvitedRole): Promise<void> {
+  await page.goto('/mitarbeiter');
+  await page.getByRole('button', { name: ORGANIZATION_COPY.invite.open }).click();
+  await expect(page.getByRole('heading', { name: ORGANIZATION_COPY.invite.title })).toBeVisible();
+  await page.locator('#email').fill(email);
+  // Role picker is a Radix select; its options render with role "option".
+  await page.locator('#role').click();
+  await page.getByRole('option', { name: ROLE_LABELS[role], exact: true }).click();
+  await page.getByRole('button', { name: ORGANIZATION_COPY.invite.send }).click();
+  // Phase 5 closes the dialog after validation and lets the list own the
+  // pending row. The email-specific banner confirms the server action; the
+  // marker clearing confirms the refreshed server list replaced the draft.
+  await expect(page.getByText(`Einladung an ${email} wurde gesendet.`)).toBeVisible();
+  await expect(page.getByRole('heading', { name: ORGANIZATION_COPY.invite.title })).toBeHidden({
+    timeout: 10_000,
+  });
+  await invitationsTab(page).click();
+  await expect(pendingRow(page, email)).toHaveCount(0);
+  await expect(visibleText(page, email)).toBeVisible();
+}
+
+// Simulates the invited existing user clicking the email's invite link:
+// /auth/callback?invite_code=... bounces to /login, and a successful login, or
+// for a signed-in user the accept button, redeems the invite and lands on
+// /dashboard?joined=<orgId>.
+export async function joinOrganizationViaInviteLink(
+  page: Page,
+  inviteCode: string,
+  credentials: { email: string; password: string },
+  expectedOrgId: string,
+): Promise<void> {
+  // already_member also counts: it means an earlier (slow) attempt already
+  // redeemed the invite before the retry re-opened the link.
+  const confirmationUrl = new RegExp(`/dashboard\\?(joined|already_member)=${expectedOrgId}`);
+
+  let joined = false;
+  for (let attempt = 1; attempt <= 3 && !joined; attempt++) {
+    // The invite link redeems nothing by itself: every user lands on
+    // /login?invite_code=..., where a signed-in user accepts with a click
+    // and a signed-out user signs in.
+    await page.goto(`/auth/callback?invite_code=${inviteCode}`);
+    if (!page.url().includes('/login')) {
+      continue;
+    }
+
+    // Same pre-hydration caution as the global setup's login helper.
+    await page.waitForLoadState('networkidle');
+    const acceptButton = page.getByRole('button', { name: 'Einladung annehmen', exact: true });
+    if (await acceptButton.isVisible()) {
+      await acceptButton.click();
+      joined = await settledBeforeTimeout(page.waitForURL(confirmationUrl));
+      continue;
+    }
+    await page.locator('input[autocomplete="email"]').fill(credentials.email);
+    await page.locator('input[autocomplete="current-password"]').fill(credentials.password);
+    await loginSubmitButton(page).click();
+    joined = await settledBeforeTimeout(page.waitForURL(confirmationUrl));
+  }
+  if (!joined) {
+    throw new Error(`Invited user ${credentials.email} did not reach /dashboard?joined=${expectedOrgId}`);
+  }
+}
+
+/** The actions menu trigger of a member detail. */
+function memberDetailActionsButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_COPY.memberMenu.actions, exact: true });
+}
+
+export async function removeMemberFromDetail(page: Page, name: string): Promise<void> {
+  await openMemberDetailFromList(page, name);
+  await memberDetailActionsButton(page).click();
+  await page.getByRole('menuitem', { name: ORGANIZATION_COPY.memberMenu.remove }).click();
+  await expect(page.getByRole('heading', { name: ORGANIZATION_COPY.memberMenu.removeTitle })).toBeVisible();
+  await page.getByRole('button', { name: ORGANIZATION_COPY.memberMenu.remove, exact: true }).click();
+  await page.waitForURL(/\/mitarbeiter\?removed_member=/);
+}
+
+/** The removal of a member who still approves time entries stops at its reassignment notice. */
+export async function expectMemberRemovalBlockedByResponsibility(
+  page: Page,
+  memberName: string,
+): Promise<void> {
+  await openMemberDetailFromList(page, memberName);
+  await memberDetailActionsButton(page).click();
+  await page.getByRole('menuitem', { name: ORGANIZATION_COPY.memberMenu.remove }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog.getByText(ORGANIZATION_COPY.memberMenu.removalBlocked)).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: ORGANIZATION_COPY.memberMenu.reassignFirst }),
+  ).toBeDisabled();
+}
+
+export async function expectRedirectedAway(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  await expect(page).not.toHaveURL(new RegExp(`${path.replace('/', '\\/')}$`));
+}
+
+export async function loginViaUi(
+  page: Page,
+  credentials: { email: string; password: string },
+): Promise<void> {
+  let loggedIn = false;
+  // Same pre-hydration retry the global setup uses.
+  for (let attempt = 1; attempt <= 3 && !loggedIn; attempt++) {
+    await page.goto('/login');
+    await page.waitForLoadState('networkidle');
+    await page.locator('input[autocomplete="email"]').fill(credentials.email);
+    await page.locator('input[autocomplete="current-password"]').fill(credentials.password);
+    await loginSubmitButton(page).click();
+    loggedIn = await settledBeforeTimeout(page.waitForURL('**/dashboard**'));
+  }
+  if (!loggedIn) {
+    throw new Error(`Login did not reach the dashboard for ${credentials.email}`);
+  }
+}
+
+/** The button of the sidebar's profile card that opens the account menu. */
+export function accountMenuButton(page: Page): Locator {
+  return page.getByRole('button', { name: ORGANIZATION_COPY.accountMenu }).filter({ visible: true }).first();
+}
+
+/** „Abmelden“ in the open account menu. */
+export function signOutMenuItem(page: Page): Locator {
+  return page.getByRole('menuitem', { name: ORGANIZATION_COPY.signOut }).filter({ visible: true }).first();
+}
+
+export async function signOutViaUi(page: Page): Promise<void> {
+  await page.goto('/dashboard');
+  const directButton = page.getByRole('button', { name: ORGANIZATION_COPY.signOut });
+  if (await directButton.isVisible()) {
+    await directButton.click();
+  } else {
+    // The sign-out control sits in the sidebar profile card menu.
+    const menuButton = accountMenuButton(page);
+    await expect(menuButton).toBeVisible();
+    const menuItem = signOutMenuItem(page);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await menuButton.click();
+      const menuOpened = await settledBeforeTimeout(menuItem.waitFor({ state: 'visible', timeout: 2_000 }));
+      if (!menuOpened) {
+        await pressKey(page, 'Escape');
+        continue;
+      }
+      const reachedLogin = settledBeforeTimeout(page.waitForURL('**/login', { timeout: 5_000 }));
+      // best-effort: the starting navigation may detach the item mid-click; the login URL
+      // awaited next is the outcome.
+      await menuItem.click({ force: true, timeout: 2_000 }).catch(() => undefined);
+      if (await reachedLogin) return;
+      await pressKey(page, 'Escape');
+    }
+    throw new Error('Sign-out menu did not navigate to login after three attempts.');
+  }
+  await page.waitForURL('**/login');
+}

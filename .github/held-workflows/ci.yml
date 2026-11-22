@@ -1,0 +1,324 @@
+name: CI
+
+# The gate every pull request to main passes (docs/technical/testing.md, "CI"). The jobs, their
+# needs and the events that run them are lib/testing/ci/dag.ts; every job body is one call of
+# scripts/ci/job.ts, the same on any runner, and runs its groups through scripts/verify.ts, the
+# engine of a local run. This file adds only what GitHub owns: triggers, runners, caches, tokens
+# and artifacts. The required check is `Check` at the end of this file.
+# - A pull request's run, draft or ready, is the fast tier: Fast, SQL, Component contracts and
+#   E-invoices, each running only the groups the plan selects for the diff
+#   (lib/testing/selection/fast-tier.ts, e-invoice-selection.ts). A job whose selection is empty is
+#   skipped with the plan's reason.
+# - The merge queue's run (`integration`) adds the plan's browser shards: browser groups run once
+#   per PR, on the PR on top of main and of every PR ahead of it (owner decision D1,
+#   werk-flow/werkflow-planning#503).
+# - A push to main runs the same, unless a green queue run passed its exact tree: then Check cites
+#   that run and no other job runs.
+# - A call with `full` (the nightly run, main's full run, the release gate) runs every browser group.
+# `Plan` maps the diff to browser groups (lib/testing/selection/ci-plan.ts) and fails open: an
+# unreadable diff or a tooling change runs every browser group. `Midnight wait` holds the browser
+# shards around Berlin midnight, so a run never starts a group inside the window
+# (ciBrowserHoldUntil in lib/testing/runner/group-schedule.ts).
+on:
+  # No label event starts a run: a relabel on the same commit cancelled the run in progress and
+  # left the required `Check` failed or "Expected". The Fast job reads the PR's labels at run
+  # time, and list-growth.yml reruns it when the owner's `approved: list growth` label changes.
+  # Marking a draft ready starts no run: the draft's run already is the PR's whole run.
+  # A stacked PR runs when GitHub retargets it to main after its base branch merged: an `edited`
+  # event that changed the base. Any other edit (title, body) starts a run in a group of its own,
+  # so it cancels nothing; it skips Plan, so no job runs, and its skipped last job is named
+  # `Ignored edit`, never `Check`, because a skipped Check would count as passed.
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      full:
+        description: Why every browser group runs
+        type: string
+        required: true
+  # Proof of the midnight wait on a branch. A caller's run cannot set it, and main refuses it.
+  workflow_dispatch:
+    inputs:
+      midnight_proof_minutes:
+        description: 'Proof run only: hold the browser shards this many minutes, as if the midnight window were open'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# A new commit's run cancels the PR's older run. A rerun takes a group of its own commit:
+# list-growth.yml may rerun a commit the PR has just left, and that rerun must neither cancel nor
+# replace the new head's run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}-${{ inputs.full && 'full' || 'diff' }}${{ github.run_attempt != '1' && format('-rerun-{0}', github.event.pull_request.head.sha || github.sha) || '' }}${{ github.event.action == 'edited' && !github.event.changes.base && format('-edit-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The inputs of scripts/ci/job.ts (its header names them all).
+env:
+  CI_EVENT: ${{ (inputs.full || inputs.midnight_proof_minutes) && 'full' || github.event_name == 'pull_request' && 'pr' || github.event_name == 'merge_group' && 'integration' || 'main' }}
+  # A pull request is checked out as GitHub's merge commit with the current main; its first parent
+  # is that main, so the plan diffs exactly the PR's own changes. The event's base.sha can predate
+  # main's newer commits, which then counted as the PR's own (2026-10-30: #85 ran all 82 groups for
+  # #77's heavy-slot.ts). A force push or a new branch has no readable `before`, so the plan fails
+  # open to a full run. The queue's commit sits on its base, the main it will land on.
+  CI_BASE_SHA: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+  CI_FULL_REASON: ${{ inputs.full || (inputs.midnight_proof_minutes && 'Midnight proof run') || '' }}
+  CI_PRODUCER: github-actions
+  CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  MIDNIGHT_PROOF_MINUTES: ${{ inputs.midnight_proof_minutes }}
+  # Measurement only (lib/testing/ci/measurement.ts): the PR a run serves, or the queue ref that names it.
+  CI_PRS: ${{ github.event.pull_request.number || github.event.merge_group.head_ref || '' }}
+  CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+
+jobs:
+  plan:
+    name: Plan
+    # An edit that kept the base changes no tested input (see `on`).
+    if: github.event.action != 'edited' || github.event.changes.base
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Lists the merge queue's runs of this workflow.
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+      browser: ${{ steps.plan.outputs.browser }}
+      shards: ${{ steps.plan.outputs.shards }}
+      midnight_until: ${{ steps.plan.outputs.midnight_until }}
+      static: ${{ steps.plan.outputs.static }}
+      sql: ${{ steps.plan.outputs.sql }}
+      component_shards: ${{ steps.plan.outputs.component_shards }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - id: plan
+        uses: ./.github/actions/ci-job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          job: plan
+
+  # Lint, the static gates, Unit, then the run's one production build, which every browser shard serves.
+  fast:
+    name: Fast
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'fast')
+    runs-on: ubuntu-24.04
+    # The former Lint, Static gates, Unit and Build jobs had 20 min each; the build follows the rest.
+    # The midnight hold counts it (CI_FAST_JOB_TIMEOUT_MS); a test keeps the two in step.
+    timeout-minutes: 30
+    # migrations:order reads the open pull requests' migrations; the approval reads the PR's labels.
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # docs:check reads the decision records' history.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      # docs:check reads the sibling clones beside the app (docs/README.md, "Sibling repositories").
+      # The token stays in this step: it runs before any code of the checkout (its install scripts,
+      # its Bun configuration), outside it, and hands the token to git through its environment, so
+      # it is in no argument and no clone's .git/config. prepare.ts siblings keeps the clones in place.
+      - name: Clone the sibling repositories
+        working-directory: ${{ runner.temp }}
+        env:
+          SIBLING_REPOSITORIES_TOKEN: ${{ secrets.SIBLING_REPOSITORIES_TOKEN }}
+        run: |
+          parent="$(dirname "$GITHUB_WORKSPACE")"
+          git clone --quiet --depth 1 https://github.com/werk-flow/werkflow-website "$parent/werkflow-website"
+          if [ -n "$SIBLING_REPOSITORIES_TOKEN" ]; then
+            header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$SIBLING_REPOSITORIES_TOKEN" | base64 -w0)"
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="$header" \
+              git clone --quiet --depth 1 https://github.com/werk-flow/werkflow-business "$parent/werkflow-business"
+          fi
+      - uses: ./.github/actions/setup
+      # Without the token the business clone is missing: docs:check then says it cannot read it.
+      - name: Mark a missing sibling clone
+        run: bun scripts/ci/prepare.ts siblings
+      # The owner's approval for a shrink-only list to grow, read at run time from the labels of the
+      # run's PRs (scripts/ci/prepare.ts approval).
+      - name: Read the list growth approval
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        run: bun scripts/ci/prepare.ts approval
+      # The stack's URL and keys are the CLI's fixed defaults, so the build needs no stack. The job
+      # writes .env.local only after the static gates and Unit, which run without it as before.
+      - uses: ./.github/actions/local-stack
+        with:
+          environment-only: 'true'
+          point-env: 'false'
+      - uses: ./.github/actions/ci-job
+        env:
+          CI_BUILD_TAR: ${{ contains(fromJSON(needs.plan.outputs.jobs), 'browser') && format('{0}/build.tar', runner.temp) || '' }}
+        with:
+          job: fast
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: contains(fromJSON(needs.plan.outputs.jobs), 'browser')
+        with:
+          name: build
+          path: ${{ runner.temp }}/build.tar
+          # A rerun of failed jobs, possible for 30 days, reuses the passed Fast job's artifact.
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
+  # The plan's selected component areas, in the shards it packs them into (at most two).
+  components:
+    name: Component contracts ${{ matrix.shard }}
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'components')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.component_shards || '[]') }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/playwright
+      - uses: ./.github/actions/ci-job
+        with:
+          job: components
+          shard: ${{ matrix.shard }}
+
+  # The reference invoices rendered as ZUGFeRD PDFs, then Mustang and veraPDF on them, when the
+  # plan selects them (lib/testing/selection/e-invoice-selection.ts).
+  invoices:
+    name: E-invoices
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'invoices')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/ci-job
+        with:
+          job: invoices
+      - name: Keep the checked PDFs and Mustang's reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e-invoices
+          path: .agent-logs/e-invoices
+          retention-days: 14
+          if-no-files-found: ignore
+          # A rerun of the job keeps its own attempt's folder beside the earlier ones.
+          overwrite: true
+
+  sql:
+    name: SQL
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'sql')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/local-stack
+        with:
+          save-images: 'true'
+      # The job checks the generated types after a failed SQL group too, and keeps the file it
+      # generated when the committed one is stale: a workstation without Boat takes its types from
+      # that artifact (docs/technical/boat-verification.md, "Types on Boat"). A failed stack start
+      # never reaches it: a migration that failed leaves a partial schema, and its types would carry
+      # the tree's digest.
+      - uses: ./.github/actions/ci-job
+        env:
+          WERKFLOW_TYPES_ARTIFACT: ${{ runner.temp }}/database-types/database.types.ts
+        with:
+          job: sql
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: database-types
+          path: ${{ runner.temp }}/database-types/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # A shard that started now could reach a group in the midnight start window, so the run waits
+  # here. The wait is a job of its own: in a Browser job it would count against that job's timeout
+  # and end in a cancellation (#131).
+  midnight:
+    name: Midnight wait
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'midnight')
+    runs-on: ubuntu-24.04
+    # Above the longest hold, CI_MIDNIGHT_HOLD_MAX_MS; a test keeps the two in step.
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/ci-job
+        with:
+          job: midnight
+
+  browser:
+    name: Browser ${{ matrix.shard }}
+    # A shard serves the Fast job's build. `midnight` is skipped on almost every run, and a skipped
+    # need skips this job by default.
+    needs: [plan, fast, midnight]
+    if: ${{ !cancelled() && contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'browser') && needs.fast.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.midnight.result) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # Only the queue's run, a push to main and a full run start shards, every shard at once: the
+      # queue and the release wait on them.
+      max-parallel: 8
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.shards || '[]') }}
+    steps:
+      # The stack's images, the pinned Playwright image, the build and a capture group's screenshots
+      # filled a runner's disk (2026-10-31: 98 MB left, then Chromium crashed). The image's unused
+      # toolchains hold far more than the shard needs.
+      - name: Free the runner's disk
+        run: |
+          df --human-readable /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df --human-readable /
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/local-stack
+      - uses: ./.github/actions/playwright
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build
+          path: ${{ runner.temp }}
+      - uses: ./.github/actions/ci-job
+        env:
+          CI_BUILD_TAR: ${{ runner.temp }}/build.tar
+        with:
+          job: browser
+          shard: ${{ matrix.shard }}
+
+  # The one required status check: scripts/ci/job.ts check (lib/testing/ci/check.ts). It fails
+  # unless every job the plan runs passed with a complete result of this tree, and every job it
+  # skips has the plan's reason. `always()`, never `!cancelled()`: a cancelled run reports a failed
+  # Check, and a skipped Check would count as passed.
+  check:
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Ignored edit' || 'Check' }}
+    if: always() && (github.event.action != 'edited' || github.event.changes.base)
+    needs: [plan, fast, sql, components, invoices, midnight, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/ci-job
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        with:
+          job: check

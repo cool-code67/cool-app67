@@ -1,0 +1,157 @@
+import { describe, expect, test } from 'bun:test';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { SHARED_FAILURE_MESSAGES } from '@/lib/action-messages';
+import { TIME_VALIDATION_CODES } from '@/lib/time-tracking/validation-messages';
+import {
+  CALENDAR_REFUSAL_CODES,
+  calendarRefusalMessage,
+  calendarUndoFailureMessage,
+  formatRefusalDate,
+} from './messages';
+
+const mappedCodes = new Set(CALENDAR_REFUSAL_CODES);
+const isCalendarRefusalCode = (code: string): boolean => mappedCodes.has(code);
+// The time rule codes keep their sentences in the time-tracking home, which
+// the message layer delegates to.
+const timeRuleCodes = new Set(TIME_VALIDATION_CODES);
+
+// Tier 2 for criterion 27: the message map is checked against the actual
+// result codes of the modules the calendar calls, and no calendar component
+// may render an action's error code as text.
+
+const repositoryRoot = resolve(import.meta.dir, '../..');
+
+// Every 'use server' module a calendar component or the calendar reads call,
+// plus the helpers whose codes those actions pass through.
+const CALENDAR_ACTION_MODULES = [
+  'lib/jobs/actions.ts',
+  'lib/jobs/auth.ts',
+  'lib/planning/actions.ts',
+  'lib/planning/edit-assignments.ts',
+  'lib/planning/edit-drafts.ts',
+  'lib/planning/series-sources.ts',
+  'lib/work-lifecycle/actions.ts',
+  'lib/time-tracking/entry-read-actions.ts',
+  'lib/time-tracking/entry-write-actions.ts',
+  'lib/time-tracking/entry-edit-checks.ts',
+  'lib/time-tracking/manual-entry-staging.ts',
+  'lib/time-tracking/validation.ts',
+  'lib/time-tracking/review-actions.ts',
+  'lib/time-tracking/review-entry-reads.ts',
+  'lib/calendar/actions.ts',
+  'lib/calendar/board-actions.ts',
+  'lib/calendar/preferences-actions.ts',
+  'lib/calendar/client.ts',
+  'lib/calendar/action-result.ts',
+  'lib/parking/actions.ts',
+];
+
+function scanActionCodes(): Set<string> {
+  const codes = new Set<string>();
+  for (const file of CALENDAR_ACTION_MODULES) {
+    const source = readFileSync(resolve(repositoryRoot, file), 'utf8');
+    for (const match of source.matchAll(/error:\s*['"]([a-z_]+)['"]/g)) codes.add(match[1] ?? '');
+    // The work-lifecycle mapper lists the database codes it forwards verbatim.
+    const known = /function mapWorkError[\s\S]*?const known = \[([\s\S]*?)\]/.exec(source);
+    for (const match of (known?.[1] ?? '').matchAll(/['"]([a-z_]+)['"]/g)) codes.add(match[1] ?? '');
+  }
+  codes.delete('');
+  return codes;
+}
+
+describe('calendar message map', () => {
+  test('carries a sentence for every result code the calendar-reachable actions return', () => {
+    const missing = [...scanActionCodes()]
+      .filter((code) => !isCalendarRefusalCode(code) && !timeRuleCodes.has(code))
+      .sort();
+    expect(missing).toEqual([]);
+  });
+
+  test('the scan sees the time rule codes, and every one reaches its time-tracking sentence', () => {
+    const scanned = scanActionCodes();
+    for (const code of TIME_VALIDATION_CODES) {
+      expect(scanned.has(code), code).toBe(true);
+      expect(isCalendarRefusalCode(code), `${code} must keep one home`).toBe(false);
+    }
+    const failure = { success: false, error: 'entry_minute_taken', at: '2026-03-29T01:15:00.000Z' };
+    expect(calendarRefusalMessage(failure)).toBe(
+      'Ein Eintrag existiert bereits um 03:15. Der früheste verfügbare Zeitpunkt ist eine Minute später.',
+    );
+    expect(calendarUndoFailureMessage('edited_timestamp_in_future')).toBe(
+      'Rückgängig war nicht möglich: Zeitstempel kann nicht in der Zukunft liegen.',
+    );
+  });
+
+  test('every sentence is German prose that names a next step, or an explicit dialog-owned null', () => {
+    for (const code of CALENDAR_REFUSAL_CODES) {
+      const sentence = calendarRefusalMessage(code, { name: 'Sven Neumann', date: '18.9.' });
+      if (sentence === null) {
+        expect([
+          'planning_warning',
+          'qualification_warning',
+          'qualification_declined',
+          'no_changes',
+        ]).toContain(code);
+        continue;
+      }
+      expect(sentence.length, code).toBeGreaterThan(20);
+      expect(sentence, code).not.toMatch(/[a-z]+_[a-z_]+/);
+      expect(sentence, code).toMatch(/\.$/);
+    }
+  });
+
+  test('every shared failure code has a sentence, and a closed period keeps the shared one', () => {
+    // A guard in any calendar-reachable action can answer a shared code
+    // (lib/action-result.ts); the database refuses time-fact writes in a
+    // closed period, so a calendar time edit can return `period_closed`.
+    for (const code of Object.keys(SHARED_FAILURE_MESSAGES)) {
+      expect(isCalendarRefusalCode(code), code).toBe(true);
+      expect(calendarRefusalMessage(code), code).not.toBeNull();
+    }
+    expect(calendarRefusalMessage('period_closed')).toBe(SHARED_FAILURE_MESSAGES.period_closed);
+  });
+
+  test('fills the person and the date into the sentences that name them', () => {
+    expect(calendarRefusalMessage('person_absent', { name: 'Sven Neumann', date: '18.9.' })).toBe(
+      'Sven Neumann ist am 18.9. abwesend. Wähle einen anderen Tag oder eine andere Person.',
+    );
+    expect(calendarRefusalMessage('overlapping_time_block', {})).toContain('Diese Person hat');
+  });
+
+  test('never passes a sentence through, never renders an unknown code, and prefixes undo failures', () => {
+    const saveFailed = calendarRefusalMessage('update_failed');
+    expect(calendarRefusalMessage('Zeitstempel kann nicht in der Zukunft liegen.')).toBe(saveFailed);
+    expect(calendarRefusalMessage('some_new_code')).toBe(saveFailed);
+    expect(calendarUndoFailureMessage('overlapping_time_block', { name: 'Mia' })).toBe(
+      'Rückgängig war nicht möglich: Mia hat in diesem Zeitraum bereits Arbeitszeit. Wähle eine freie Zeit.',
+    );
+    expect(formatRefusalDate('2026-09-08')).toBe('8.9.');
+  });
+
+  test('no calendar component renders a result code as text', () => {
+    const offenders: string[] = [];
+    function visit(directory: string): void {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) {
+          visit(path);
+          continue;
+        }
+        if (!entry.name.endsWith('.tsx')) continue;
+        const source = readFileSync(path, 'utf8');
+        // A raw code reaches the user through `{result.error}`, `message: result.error`
+        // or a `?? error` fallback; the message layer is the only allowed route.
+        if (
+          /\{\s*\w+\.error\s*\}|message:\s*\w+\.error\s*[,}]|\?\?\s*\w+\.error\s*[,;)}]|return\s+error;/.test(
+            source,
+          )
+        ) {
+          offenders.push(path.slice(repositoryRoot.length + 1));
+        }
+      }
+    }
+    visit(resolve(repositoryRoot, 'components/kalender'));
+    expect(offenders).toEqual([]);
+  });
+});

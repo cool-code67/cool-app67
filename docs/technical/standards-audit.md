@@ -1,0 +1,54 @@
+# Audit a wave and accept a rendered design
+
+Two procedures the virtues refer to. A gate proves only its registered assertions on the inputs it ran on. Reusing a shared component does not prove the caller composes it well. An earlier audit is evidence for its date only.
+
+## Rendered design acceptance
+
+Tests do not establish that a screen is clear, well composed, or fit for daily SHK work. That judgment is Tier 3 and required evidence. For a new major screen or a substantial redesign:
+
+1. In the slice record, name the role, the main task, representative data and the viewports. State the action hierarchy and what the user must see without opening another panel. Use realistic names, long labels, crowded schedules and exceptions, not only empty states.
+2. Inspect reference screens and record the pattern you adopt and why. Existing WerkFlow pages are not automatically the target.
+3. Render one representative composition before you extend it. Compare hierarchy, toolbar height, density, typography, alignment, reading order and space for content. A change that follows the design system and the spec needs no approval. A new visual direction with real alternatives is a kind-3 decision ([Decide or ask](../../AGENTS.md#decide-or-ask)): put a concrete rendered proposal into the plan the owner approves.
+4. Review the result in the browser with the named roles, themes, viewports and states. Exercise the main task, the keyboard path and error recovery. A screenshot does not prove an interaction; a passing click test does not prove visual quality.
+5. Have an independent reviewer compare the result with the intended composition and the task. Record revision, route, role, data state, theme, viewport, artifact location and findings. A loading screen, failed capture, login page or connection error is missing evidence, never a pass. Check the affected captures again after a visual repair.
+6. Put accepted shared choices into tokens, primitives and the `werkflow-design` skill. Add a geometry, interaction or screenshot check only where it protects an accepted invariant. Never keep a baseline of an appearance the owner rejected.
+
+The lead accepts the result once steps 4 and 5 hold and the screens and copy follow the design system and the spec. Outside an epic, the PR's own thread is the lead. The lead posts the captures under "For the owner to look at" on the epic issue ([Decide or ask](../../AGENTS.md#decide-or-ask)). Outside an epic, the PR's Screenshots section links them. The owner's look blocks no merge, and a screen the owner rejects later is a new change.
+
+Each visual and interaction finding needs an explicit disposition. Visual polish cannot waive security, keyboard access, data integrity or response time. A browser review that could not run leaves the design unverified.
+
+### Captures
+
+- Add a set as one file, `tests/audit/support/acceptance-sets/<set>.ts`, named after its id: it calls `acceptanceSet` once and holds the records it seeds. Run `bun run test:audit:focused --grep "@ACCEPT <set>"`. The fixture writes an image only of a ready screen. On an app page that includes the live reads that land after the page body without a skeleton, such as the nav's badge counts (`settleLiveShell`); a visual reference waits the same way.
+- With a Boat key the capture runs on a Boat machine and brings its images back to the same folder; start no test server for it. To capture on the workstation on purpose, run `bun run test:server local`, then the capture with `WERKFLOW_VERIFY_LOCAL=1` ([focused runs on Boat](boat-verification.md#focused-runs-on-boat)).
+- The rounds over the whole inventory (`tests/audit/support/acceptance-rounds.ts`) run as one group per dialog opener module, plus `pages` and `standalone`: `bun run test:verify --group audit:visual:acceptance:customers`. A focused run takes one spec file, so `--grep` a round with a capture id.
+- A capture id ending in `-loading` or `-error` captures that state.
+- Capture a changed screen before and after the change, so the reviewer judges a pair.
+- Images land under `.agent-logs/playwright-runs/<run>/acceptance/<set>/`. Only a capture whose entry in `acceptance/index.json` says `passed` is evidence. Cite it as `` `capture:<run-key>/<set>/<capture>-<width>-<scheme>` ``.
+- An image shown in a PR goes to the `pr-screenshots` prerelease ([file a PR](../../.claude/skills/file-pr/SKILL.md)), never into a branch.
+- `.github/workflows/pr-screenshots.yml` deletes a PR's images when it closes. Commit a capture for the owner to look at to `werk-flow/werkflow-planning`, which is private, and link that copy.
+
+### Keep accepted screens as visual references
+
+`audit:visual` (`tests/audit/visual/references.spec.ts`) compares one screenshot per page family with its reference, desktop and phone, light and dark. `tests/audit/support/visual-families.ts` names the families. The browser runs in Playwright's pinned image, so every reference carries the suffix `-linux`. The spec holds the page's wall clock while its timers run, so a countdown keeps its first value. It replaces clock-derived and run-specific text with constant stand-ins, and a text reference (`.txt`) beside each image must match exactly, so a changed word fails even under the pixel tolerance. A verification run never writes a reference.
+
+On an Apple Silicon Mac, that image is amd64, and its Chromium crashes on launch under Colima's default QEMU emulation; it needs Rosetta ([machine setup](machine-setup.md#set-up-a-new-machine)). `colima ssh -- ls /proc/sys/fs/binfmt_misc` lists `rosetta` when it is on. With Rosetta installed (`softwareupdate --install-rosetta`), an existing `vz` VM (`vmType: vz` in `~/.colima/default/colima.yaml`) takes `rosetta: true` in that file, a `colima restart` and `bunx supabase start`. A `qemu` VM cannot use Rosetta. The setup command never creates one. `colima delete` erases everything in its profile (containers, volumes and images), so back up what you need first, then run `colima delete`, the setup command, and on `main` `bunx supabase start` and `bun run stack:sync` ([machine setup](machine-setup.md#set-up-a-new-machine), step 5). Either path stops the shared stack and takes no stack lock: start only while no worktree holds the stack, and ask the other threads to start no run until the last command has finished.
+
+A failed comparison is an intended design change that is not accepted yet, or a regression to repair. Never update a reference to make a run pass.
+
+To update references after an intended design change:
+
+1. Accept the rendered change through [rendered design acceptance](#rendered-design-acceptance).
+2. Run `WERKFLOW_UPDATE_VISUAL_REFERENCES=1 bun run test:audit:focused --grep "@AUDIT-VISUAL rendered references"`. The full title matters: the bare tag also matches `@AUDIT-VISUAL-ACCEPT`, and the runner refuses two spec files. The run rewrites differing images and text references and writes missing ones. An image under the tolerance is rewritten when its text reference changed, or when you delete it first. The update run certifies nothing and may repeat. With a Boat key it runs on Boat at the tree's migrations, so a branch with a migration updates its references too, and the references of a passed run come back into the checkout with a list ([focused runs on Boat](boat-verification.md#focused-runs-on-boat)).
+3. Look at every changed image. Keep the ones the accepted change explains and restore the others with `git checkout`. List the kept ones under "For the owner to look at".
+4. Run `bun run test:verify --group audit:visual`. A failure there follows [Failures](testing.md#failures).
+
+## Audit a wave
+
+1. Run the release plan and the cloud canary on the wave's final tree.
+2. For each virtue, read its block in `AGENTS.md` and its owner doc. Walk the wave's slice records against the Tier 3 defaults and the recorded divergences. Write one finding list per virtue with file and line. A divergence that recurs means its default should change.
+3. Check registration. Every flow the wave added is a journey in `lib/testing/journeys.ts` or a measured scenario, a component contract, or a catalog clause with coverage. A declined registration states its reason in the slice record.
+4. Push every finding up the ladder ([decision 0005](../decisions/0005-enforcement-ladder.md)). Build the mechanism where one is reachable; otherwise add a [backlog](enforcement-ladder-backlog.md) row. Change the rule in the same change when the finding shows it was missing or wrong.
+5. Record the audit in the PR that closes the wave. Move every lasting fact to its living home.
+
+A finding changes its owner doc and its check. It does not trigger another audit of the whole app.

@@ -1,0 +1,199 @@
+'use client';
+
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorText } from '@/components/ui/error-text';
+import { Field } from '@/components/ui/field';
+import { Label } from '@/components/ui/label';
+import { cn, toLocalDateString } from '@/lib/utils';
+import { AbsenceAffectedVisits } from '@/components/kalender/absence-affected-visits';
+
+import { SicknessAbsenceTypeSelect } from './sickness-absence-type-select';
+import {
+  useSicknessReportRecordForm,
+  type RecordedSickness,
+  type SicknessReportRecordForm,
+} from './use-sickness-report-record-form';
+
+export function RecordSicknessDialog({
+  recordId,
+  onClose,
+}: {
+  recordId: string;
+  onClose: (saved: boolean) => void;
+}) {
+  const form = useSicknessReportRecordForm(recordId);
+  const { absenceType, setAbsenceType, evidenceRequired, setEvidenceRequired, isSaving, error, recorded } =
+    form;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose(recorded !== null)} pending={isSaving}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Krankmeldung erfassen</DialogTitle>
+          <DialogDescription>
+            {recorded
+              ? 'Die Krankmeldung ist gespeichert.'
+              : 'Für telefonische oder persönliche Meldungen. Es werden keine Krankheitsdetails erfasst.'}
+          </DialogDescription>
+        </DialogHeader>
+        {recorded ? (
+          <RecordedSicknessSummary recorded={recorded} onDone={() => onClose(true)} />
+        ) : (
+          <form onSubmit={form.handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="grid gap-4 py-4">
+              <Field label="Art" htmlFor="record-sickness-type">
+                <SicknessAbsenceTypeSelect
+                  value={absenceType}
+                  onChange={setAbsenceType}
+                  disabled={isSaving}
+                />
+              </Field>
+
+              <SicknessReportRecordPeriodFields form={form} />
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="record-sickness-evidence"
+                  checked={evidenceRequired}
+                  onCheckedChange={(checked) => setEvidenceRequired(checked === true)}
+                  disabled={isSaving}
+                />
+                <Label htmlFor="record-sickness-evidence" className="text-sm font-normal">
+                  Nachweis erforderlich (Entscheidung des Betriebs)
+                </Label>
+              </div>
+
+              <ErrorText>{error}</ErrorText>
+            </DialogBody>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onClose(false)} disabled={isSaving}>
+                Abbrechen
+              </Button>
+              <Button pending={isSaving} type="submit" disabled={isSaving}>
+                {isSaving ? 'Wird gespeichert…' : 'Krankmeldung erfassen'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** What the saved report affects: the visits to rearrange and an overlap with approved vacation. */
+function RecordedSicknessSummary({ recorded, onDone }: { recorded: RecordedSickness; onDone: () => void }) {
+  const { report, vacationOverlap } = recorded;
+  return (
+    <>
+      <DialogBody className="grid gap-4 py-4">
+        {vacationOverlap && (
+          <p role="status" className="text-xs text-muted-foreground">
+            Hinweis: Der Zeitraum überschneidet sich mit genehmigtem Urlaub. Eine Anpassung des Urlaubs bleibt
+            eine bewusste Entscheidung über die Urlaubsverwaltung.
+          </p>
+        )}
+        <AbsenceAffectedVisits
+          absence={{
+            employeeRecordId: report.employeeRecordId,
+            startDate: report.startDate,
+            endDate: report.endDate,
+          }}
+        />
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" onClick={onDone}>
+          Fertig
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function SicknessReportRecordPeriodFields({ form }: { form: SicknessReportRecordForm }) {
+  const {
+    startDate,
+    setStartDate,
+    endKnown,
+    setEndKnown,
+    endDate,
+    setEndDate,
+    halfDay,
+    setHalfDay,
+    isSaving,
+    dateErrors,
+    isSingleDay,
+  } = form;
+
+  return (
+    <>
+      <Field label="Ab" htmlFor="record-sickness-start" required error={dateErrors.start}>
+        <DatePicker
+          ariaLabel="Ab"
+          value={startDate ? new Date(`${startDate}T00:00:00`) : undefined}
+          onChange={(date) => {
+            const next = date ? toLocalDateString(date) : '';
+            setStartDate(next);
+            if (next && endKnown && (!endDate || endDate < next)) {
+              setEndDate(next);
+            }
+          }}
+          disabled={isSaving}
+        />
+      </Field>
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="record-sickness-end-known"
+          checked={endKnown}
+          onCheckedChange={(checked) => setEndKnown(checked === true)}
+          disabled={isSaving}
+        />
+        <Label htmlFor="record-sickness-end-known" className="text-sm font-normal">
+          Enddatum ist schon bekannt
+        </Label>
+      </div>
+
+      {endKnown ? (
+        <Field label="Bis" htmlFor="record-sickness-end" required error={dateErrors.end}>
+          <DatePicker
+            ariaLabel="Bis"
+            value={endDate ? new Date(`${endDate}T00:00:00`) : undefined}
+            onChange={(date) => setEndDate(date ? toLocalDateString(date) : '')}
+            disabled={isSaving}
+          />
+        </Field>
+      ) : (
+        <p className="text-xs text-muted-foreground">Ohne Enddatum gilt die Meldung bis auf Weiteres.</p>
+      )}
+
+      {endKnown && (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="record-sickness-half-day"
+            checked={halfDay && isSingleDay}
+            onCheckedChange={(checked) => setHalfDay(checked === true)}
+            disabled={isSaving || !isSingleDay}
+          />
+          <Label
+            htmlFor="record-sickness-half-day"
+            className={cn('text-sm font-normal', !isSingleDay && 'text-muted-foreground')}
+          >
+            Halbtägig
+            {!isSingleDay && ' – nur bei einem einzelnen Tag'}
+          </Label>
+        </div>
+      )}
+    </>
+  );
+}

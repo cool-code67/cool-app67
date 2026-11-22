@@ -1,0 +1,149 @@
+'use client';
+
+import { focusFirstInvalidField, REASON_MIN_8_MESSAGE } from '@/lib/ui/field-validation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Field } from '@/components/ui/field';
+import { Textarea } from '@/components/ui/textarea';
+import type { PlanningConflict } from '@/lib/planning/types';
+import { formatGermanDate } from '@/lib/utils';
+
+type PlanningApproval = { fingerprint: string; reason: string };
+
+/** The warnings the approval answers. */
+function PlanningWarningList({ conflicts }: { conflicts: PlanningConflict[] }): React.JSX.Element {
+  return (
+    <ul className="space-y-2 text-sm">
+      {conflicts.map((conflict, index) => (
+        <li
+          key={`${conflict.kind}-${conflict.employeeRecordId}-${conflict.localDate}-${index}`}
+          className="rounded-md border bg-muted/30 px-3 py-2"
+        >
+          <p className="font-medium">
+            {conflict.employeeName ? `${conflict.employeeName}: ` : ''}
+            {conflict.message}
+          </p>
+          {conflict.localDate && (
+            <p className="text-xs text-muted-foreground">{formatGermanDate(conflict.localDate)}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PlanningWarningReasonField({
+  reason,
+  reasonError,
+  onReasonChange,
+}: {
+  reason: string;
+  reasonError: string | null;
+  onReasonChange: (reason: string) => void;
+}): React.JSX.Element {
+  return (
+    <Field
+      label="Kurze Begründung"
+      htmlFor="planning-warning-reason"
+      required
+      description="Mindestens 8 Zeichen."
+      error={reasonError}
+    >
+      <Textarea
+        value={reason}
+        onChange={(event) => onReasonChange(event.target.value)}
+        placeholder="z. B. abgestimmter Notdiensteinsatz"
+        // planning_occurrence_assessments.override_reason holds at most 500 characters.
+        maxLength={500}
+      />
+    </Field>
+  );
+}
+
+export function usePlanningWarningConfirmation(): {
+  requestApproval: (conflicts: PlanningConflict[], fingerprint: string) => Promise<PlanningApproval | null>;
+  warningDialog: React.ReactNode;
+} {
+  const [request, setRequest] = useState<{
+    conflicts: PlanningConflict[];
+    fingerprint: string;
+  } | null>(null);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const resolverRef = useRef<((approval: PlanningApproval | null) => void) | null>(null);
+
+  const requestApproval = useCallback(
+    (conflicts: PlanningConflict[], fingerprint: string) =>
+      new Promise<PlanningApproval | null>((resolve) => {
+        resolverRef.current?.(null);
+        resolverRef.current = resolve;
+        setReason('');
+        setReasonError(null);
+        setRequest({ conflicts, fingerprint });
+      }),
+    [],
+  );
+  const finish = useCallback((approval: PlanningApproval | null) => {
+    const resolve = resolverRef.current;
+    resolverRef.current = null;
+    setRequest(null);
+    resolve?.(approval);
+  }, []);
+  useEffect(
+    () => () => {
+      resolverRef.current?.(null);
+      resolverRef.current = null;
+    },
+    [],
+  );
+
+  return {
+    requestApproval,
+    warningDialog: request ? (
+      <Dialog open onOpenChange={(open) => !open && finish(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-warning-text" />
+              Planungshinweise prüfen
+            </DialogTitle>
+            <DialogDescription>
+              Die Änderung bleibt möglich. WerkFlow dokumentiert eine bewusste Abweichung mit ihrer
+              Begründung.
+            </DialogDescription>
+          </DialogHeader>
+          <PlanningWarningList conflicts={request.conflicts} />
+          <PlanningWarningReasonField reason={reason} reasonError={reasonError} onReasonChange={setReason} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => finish(null)}>
+              Änderung zurücknehmen
+            </Button>
+            <Button
+              onClick={() => {
+                const nextReasonError = reason.trim().length < 8 ? REASON_MIN_8_MESSAGE : undefined;
+                setReasonError(nextReasonError ?? null);
+                if (focusFirstInvalidField({ 'planning-warning-reason': nextReasonError })) return;
+                finish({
+                  fingerprint: request.fingerprint,
+                  reason: reason.trim(),
+                });
+              }}
+            >
+              Mit Begründung speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    ) : null,
+  };
+}

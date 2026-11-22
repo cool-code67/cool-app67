@@ -1,0 +1,412 @@
+import { expect, type Locator } from '@playwright/test';
+import type { DialogOpenerId } from '../../../../lib/testing/selection/dialog-inventory';
+import {
+  workArtifactCreateButton,
+  workArtifactCreateDialog,
+} from '../../../golden/support/spec-helpers/work-artifact-dialog';
+import { getEmployeeRecordStateByUser } from '../../../golden/support/db/personnel';
+import { hydratedAndSettled, settled } from '../../../golden/support/steps/interaction';
+import { seedOrganizationCertification } from '../../../golden/support/db/qualifications';
+import { seedCustomer } from '../../../golden/support/db/customers';
+import {
+  seedDeclaredWorkDependency,
+  seedJob,
+  seedJobAssignment,
+  seedJobCapabilityRequirement,
+  seedJobDispatch,
+  seedJobInstructionItem,
+} from '../../../golden/support/db/work';
+import {
+  challengeDispatchButton,
+  dispatchReasonDialog,
+  jobDispatchSection,
+} from '../../../golden/support/steps/dispatch';
+import {
+  detailActionsButton,
+  employeeAssignmentButton,
+  employeeAssignmentDialog,
+  employeeAssignmentSave,
+  openEmployeeAssignmentDialog,
+  openMenuItem,
+  qualificationWarningDialog,
+  testData,
+} from '../../../golden/support/steps/shared';
+import {
+  clearPlannedDateInJobEditDialog,
+  createSiteButton,
+  createSiteDialog,
+  jobDeleteConfirmation,
+  jobDetailMenuItem,
+  jobEditDialog,
+  jobEditSave,
+  jobInstructionDetailsDialog,
+  jobPageHeading,
+  jobRelationDialog,
+  jobRelationEmptyCard,
+  lastJobInstructionDetailsButton,
+  lifecycleAction,
+  lifecycleCardAction,
+  openJobEditDialog,
+  plannedDateRemovalConfirmation,
+  projectAddJobButton,
+  projectAssignJobsButton,
+  projectCreateJobDialog,
+  projectDeleteConfirmation,
+  projectDeleteMenuItem,
+  projectEditDialog,
+  projectEditMenuItem,
+  projectJobAssignmentDialog,
+  visibleJobSearch,
+  workCreateButton,
+  workCreateDialog,
+  workDependencyApprovalAction,
+  workDependencyRow,
+  workDependencyRowAction,
+  workLifecycleDialogNamed,
+  workListFilterSheet,
+  workListFilterToggle,
+  workListRowActionsButton,
+  workListRowDeleteItem,
+  workListSection,
+  workTransitionDialog,
+} from '../../../golden/support/steps/work';
+import type { TestWorld } from '../../../golden/support/world';
+import type { DialogOpener } from '../dialog-opener';
+import { auditCheckpoint } from '../checkpoints';
+import { prepareLayoutDetails } from '../layout-fixtures';
+import { surfaceFixture, type SurfaceContext } from '../surface-fixtures';
+import { worldName } from '../../../../lib/testing/seed-world-plan';
+
+/**
+ * The jobs a dialog needs in a particular state, each seeded once per world
+ * beside the layout job so that the layout job keeps its plain state. An
+ * opener seeds its job and opens its detail page inside `trigger`.
+ */
+const AUDIT_JOB_TITLES = {
+  clientless: 'Heizkörpertausch ohne Kundenzuordnung',
+  checklist: 'Thermenwartung mit Arbeitsanweisung',
+  dated: 'Geplanter Austausch des Ausdehnungsgefäßes',
+  prerequisites: 'Kesseltausch mit offenen Voraussetzungen',
+  dispatched: 'Einsatz zur Rohrbruchreparatur',
+  qualified: 'Gasleitungsprüfung mit Qualifikationsanforderung',
+  siteless: 'Heizungscheck bei einer Kundin ohne Einsatzort',
+} as const;
+
+type AuditJob = keyof typeof AUDIT_JOB_TITLES;
+
+function auditJob(world: TestWorld, job: AuditJob): { jobNumber: string; title: string } {
+  return {
+    jobNumber: testData`AUF-${world.runId}-${job.toUpperCase()}`,
+    title: worldName(AUDIT_JOB_TITLES[job], world.runId),
+  };
+}
+
+/** The two declared prerequisites of the prerequisites job, by their descriptions. */
+function prerequisiteDescriptions(world: TestWorld): { approval: string; delivery: string } {
+  return {
+    approval: testData`Freigabe des Betreibers ${world.runId}`,
+    delivery: testData`Lieferung des neuen Kessels ${world.runId}`,
+  };
+}
+
+/**
+ * Seeds the job once per world (its rows through `seed`), then opens its
+ * detail page and waits for its title.
+ */
+async function openAuditJob(
+  { page, world }: SurfaceContext,
+  job: AuditJob,
+  seed: (jobId: string) => Promise<void>,
+  plannedDate?: string,
+): Promise<void> {
+  const { jobNumber, title } = auditJob(world, job);
+  await surfaceFixture(world, `work.${job}`, async () => {
+    const jobId = await seedJob({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      jobNumber,
+      title,
+      ...(plannedDate ? { plannedDate } : {}),
+    });
+    await seed(jobId);
+    return jobNumber;
+  });
+  await page.goto(`/auftraege/${encodeURIComponent(jobNumber)}`);
+  await expect(jobPageHeading(page, title)).toBeVisible();
+}
+
+const noRows = async (): Promise<void> => {};
+
+/** Seeds once per world a job whose customer has no work site, and opens its detail page. */
+async function openSitelessCustomerJob({ page, world }: SurfaceContext): Promise<void> {
+  const { jobNumber, title } = auditJob(world, 'siteless');
+  await surfaceFixture(world, 'work.siteless', async () => {
+    const customer = await seedCustomer({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      name: worldName('Kundin ohne Einsatzort', world.runId),
+    });
+    await seedJob({
+      orgId: world.orgId,
+      actorId: world.users.admin.id,
+      jobNumber,
+      title,
+      clientId: customer.clientId,
+    });
+    return jobNumber;
+  });
+  await page.goto(`/auftraege/${encodeURIComponent(jobNumber)}`);
+  await expect(jobPageHeading(page, title)).toBeVisible();
+}
+
+type LayoutRecord = 'job' | 'project';
+
+/**
+ * Opens the list menu of a layout record, found through the list's search: in
+ * its table row, or on its card on a phone. Returns the delete item.
+ */
+async function listRowDeleteItem(context: SurfaceContext, record: LayoutRecord): Promise<Locator> {
+  const { page, world } = context;
+  const details = await prepareLayoutDetails(world);
+  await page.reload();
+  await hydratedAndSettled(page);
+  const number = record === 'job' ? details.jobNumber : details.projectNumber;
+  await visibleJobSearch(page).fill(number);
+  // The search navigates to its URL after a debounce and re-renders the list, which closes a menu
+  // opened before it (2026-10-15, 2026-10-16): act once the URL holds the search and the page settled.
+  await expect(page).toHaveURL((url) =>
+    [...url.searchParams].some(([key, value]) => key.endsWith('_q') && value === number),
+  );
+  await settled(page);
+  return openMenuItem(workListRowActionsButton(page, number), workListRowDeleteItem(page));
+}
+
+/** The menu button that `listRowDeleteItem` opened; the trigger saved the layout details before. */
+function listRowMenuButton({ page }: SurfaceContext, record: LayoutRecord): Locator {
+  const details = auditCheckpoint('layout.details');
+  if (!details) throw new Error('The list row menu opener runs after the layout details were prepared.');
+  return workListRowActionsButton(page, record === 'job' ? details.jobNumber : details.projectNumber);
+}
+
+export const WORK_OPENERS = {
+  'work.artifact': {
+    trigger: async ({ page }) => workArtifactCreateButton(page),
+    layer: workArtifactCreateDialog,
+  },
+  'work.assign-client': {
+    trigger: async (context) => {
+      await openAuditJob(context, 'clientless', noRows);
+      return jobRelationEmptyCard(context.page, 'customer');
+    },
+    layer: (page) => jobRelationDialog(page, 'customer'),
+  },
+  'work.assign-employees': {
+    trigger: async ({ page }) => employeeAssignmentButton(page),
+    layer: employeeAssignmentDialog,
+  },
+  'work.assign-project': {
+    // The layout job has a customer and no project.
+    trigger: async ({ page }) => jobRelationEmptyCard(page, 'project'),
+    layer: (page) => jobRelationDialog(page, 'project'),
+  },
+  'work.create': {
+    trigger: async ({ page }) => workCreateButton(page),
+    layer: workCreateDialog,
+  },
+  'work.create-job-in-project': {
+    trigger: async ({ page }) => projectAddJobButton(page),
+    layer: projectCreateJobDialog,
+  },
+  'work.create-site': {
+    trigger: async (context) => {
+      await openSitelessCustomerJob(context);
+      await detailActionsButton(context.page).click();
+      await jobDetailMenuItem(context.page, 'edit').click();
+      return createSiteButton(jobEditDialog(context.page));
+    },
+    layer: createSiteDialog,
+    parents: (page) => [jobEditDialog(page)],
+  },
+  'work.delete-job': {
+    trigger: async ({ page }) => {
+      await detailActionsButton(page).click();
+      return jobDetailMenuItem(page, 'delete');
+    },
+    layer: jobDeleteConfirmation,
+    returnFocus: ({ page }) => detailActionsButton(page),
+  },
+  'work.delete-project': {
+    trigger: async ({ page }) => {
+      await detailActionsButton(page).click();
+      return projectDeleteMenuItem(page);
+    },
+    layer: projectDeleteConfirmation,
+    returnFocus: ({ page }) => detailActionsButton(page),
+  },
+  'work.dispatch-challenge': {
+    // The card lists the viewer's own dispatches, so the admin is the recipient.
+    trigger: async (context) => {
+      const { world } = context;
+      await openAuditJob(context, 'dispatched', async (jobId) => {
+        const record = await getEmployeeRecordStateByUser(world.orgId, world.users.admin.id);
+        await seedJobDispatch({
+          orgId: world.orgId,
+          actorId: world.users.admin.id,
+          jobId,
+          recipientEmployeeRecordIds: [record.id],
+        });
+      });
+      return challengeDispatchButton(jobDispatchSection(context.page));
+    },
+    layer: (page) => dispatchReasonDialog(page, 'challenge'),
+  },
+  'work.edit-job': {
+    trigger: async ({ page }) => {
+      await detailActionsButton(page).click();
+      return jobDetailMenuItem(page, 'edit');
+    },
+    layer: jobEditDialog,
+    returnFocus: ({ page }) => detailActionsButton(page),
+  },
+  'work.edit-project': {
+    trigger: async ({ page }) => {
+      await detailActionsButton(page).click();
+      return projectEditMenuItem(page);
+    },
+    layer: projectEditDialog,
+    returnFocus: ({ page }) => detailActionsButton(page),
+  },
+  'work.filter-sheet': {
+    // Below 768 px the section's filter button opens a sheet instead of the panel.
+    trigger: async ({ page }) => workListFilterToggle(workListSection(page)),
+    layer: workListFilterSheet,
+    viewport: { width: 375, height: 812 },
+  },
+  'work.instruction-details': {
+    trigger: async (context) => {
+      const { world } = context;
+      await openAuditJob(context, 'checklist', (jobId) =>
+        seedJobInstructionItem({
+          orgId: world.orgId,
+          actorId: world.users.admin.id,
+          jobId,
+          content: testData`Druck des Heizkreises prüfen ${world.runId}`,
+        }),
+      );
+      return lastJobInstructionDetailsButton(context.page);
+    },
+    layer: jobInstructionDetailsDialog,
+  },
+  'work.lifecycle-approval': {
+    trigger: async (context) => {
+      await openPrerequisitesJob(context);
+      const row = workDependencyRow(context.page, prerequisiteDescriptions(context.world).approval);
+      return workDependencyApprovalAction(row);
+    },
+    layer: (page) => workLifecycleDialogNamed(page, 'linkApproval'),
+  },
+  'work.lifecycle-blocker': {
+    trigger: async ({ page }) => lifecycleCardAction(page, 'addBlocker'),
+    layer: (page) => workLifecycleDialogNamed(page, 'addBlocker'),
+  },
+  'work.lifecycle-dependency': {
+    trigger: async ({ page }) => lifecycleCardAction(page, 'addDependency'),
+    layer: (page) => workLifecycleDialogNamed(page, 'addDependency'),
+  },
+  'work.lifecycle-reason': {
+    trigger: async (context) => {
+      await openPrerequisitesJob(context);
+      const row = workDependencyRow(context.page, prerequisiteDescriptions(context.world).delivery);
+      return workDependencyRowAction(row, 'fulfil');
+    },
+    layer: (page) => workLifecycleDialogNamed(page, 'fulfilDependency'),
+  },
+  'work.lifecycle-transition': {
+    // The layout job has not started; nothing in the audit moves it.
+    trigger: async ({ page }) => lifecycleAction(page, 'not_started', 'in_progress'),
+    layer: (page) => workTransitionDialog(page, 'not_started', 'in_progress'),
+  },
+  'work.list-delete-job': {
+    trigger: (context) => listRowDeleteItem(context, 'job'),
+    layer: jobDeleteConfirmation,
+    returnFocus: (context) => listRowMenuButton(context, 'job'),
+  },
+  'work.list-delete-project': {
+    trigger: (context) => listRowDeleteItem(context, 'project'),
+    layer: projectDeleteConfirmation,
+    returnFocus: (context) => listRowMenuButton(context, 'project'),
+  },
+  'work.park-confirm': {
+    // The job detail's actions menu offers the edit at every width. Saving
+    // the edit dialog with an emptied planned date asks first; the
+    // confirmation opens before any write.
+    trigger: async (context) => {
+      await openAuditJob(context, 'dated', noRows, context.businessDate);
+      const dialog = await openJobEditDialog(context.page);
+      await clearPlannedDateInJobEditDialog(dialog);
+      const save = jobEditSave(dialog);
+      await expect(save).toBeEnabled();
+      return save;
+    },
+    layer: plannedDateRemovalConfirmation,
+    parents: (page) => [jobEditDialog(page)],
+  },
+  'work.name-work-lead': {
+    trigger: async ({ page }) =>
+      page
+        .getByRole('main')
+        .getByTestId('work-lead-section')
+        .getByRole('button', { name: /Projektleitung benennen|Ändern oder beenden/ }),
+    layer: (page) => page.getByRole('dialog', { name: /Projektleitung (benennen|ändern)/ }),
+  },
+  'work.project-jobs': {
+    trigger: async ({ page }) => projectAssignJobsButton(page),
+    layer: projectJobAssignmentDialog,
+  },
+  'work.qualification-warning': {
+    // The assigned employee lacks the required certification, so saving the
+    // unchanged crew is refused with the warning before anything is written.
+    trigger: async (context) => {
+      const { world } = context;
+      await openAuditJob(context, 'qualified', async (jobId) => {
+        const actorId = world.users.admin.id;
+        const capabilityId = await seedOrganizationCertification(
+          world.orgId,
+          actorId,
+          worldName('Gasinstallation nach TRGI', world.runId),
+        );
+        await seedJobCapabilityRequirement({ orgId: world.orgId, actorId, jobId, capabilityId });
+        await seedJobAssignment({ orgId: world.orgId, actorId, jobId, userId: world.users.employee.id });
+      });
+      const dialog = await openEmployeeAssignmentDialog(context.page);
+      return employeeAssignmentSave(dialog);
+    },
+    layer: qualificationWarningDialog,
+    parents: (page) => [employeeAssignmentDialog(page)],
+  },
+} satisfies Partial<Record<DialogOpenerId, DialogOpener>>;
+
+/** Seeds the job with an open approval prerequisite and an open delivery prerequisite, then opens it. */
+async function openPrerequisitesJob(context: SurfaceContext): Promise<void> {
+  const { world } = context;
+  const descriptions = prerequisiteDescriptions(world);
+  await openAuditJob(context, 'prerequisites', async (jobId) => {
+    const actorId = world.users.admin.id;
+    await seedDeclaredWorkDependency({
+      orgId: world.orgId,
+      actorId,
+      jobId,
+      kind: 'approval',
+      description: descriptions.approval,
+      effect: 'blocks_completion',
+    });
+    await seedDeclaredWorkDependency({
+      orgId: world.orgId,
+      actorId,
+      jobId,
+      kind: 'delivery',
+      description: descriptions.delivery,
+      effect: 'blocks_start',
+    });
+  });
+}

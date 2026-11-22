@@ -1,0 +1,117 @@
+'use client';
+
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import type { PersonnelLifecycleView } from '@/lib/personnel/lifecycle-actions';
+
+import {
+  PersonnelLifecycleAccessBody,
+  PersonnelLifecycleEmploymentBody,
+  PersonnelLifecycleUploadBody,
+} from './personnel-lifecycle-dialog-parts';
+import { PersonnelLifecycleDocumentsList } from './personnel-lifecycle-documents-list';
+import { PersonnelLifecycleHandoverDialog } from './personnel-lifecycle-handover';
+import {
+  PersonnelLifecyclePlanDialog,
+  PersonnelLifecycleRequirementDialog,
+} from './personnel-lifecycle-onboarding-dialogs';
+import { PersonnelLifecycleOnboardingList } from './personnel-lifecycle-onboarding-list';
+import { PersonnelLifecycleHeader, PersonnelLifecycleStatusCards } from './personnel-lifecycle-overview';
+import { usePersonnelLifecycleDocuments } from './use-personnel-lifecycle-documents';
+import {
+  usePersonnelLifecyclePlan,
+  usePersonnelLifecycleRequirements,
+} from './use-personnel-lifecycle-onboarding';
+import { usePersonnelLifecycleHandover } from './use-personnel-lifecycle-handover';
+import { usePersonnelLifecycleTransitions } from './use-personnel-lifecycle-transitions';
+import { usePersonnelLifecycleView } from './use-personnel-lifecycle-view';
+
+type PersonnelLifecycleSectionProps = {
+  data: PersonnelLifecycleView;
+  canManage: boolean;
+  canAdministerAccess: boolean;
+};
+
+export function PersonnelLifecycleSection({
+  data: initialData,
+  canManage,
+  canAdministerAccess,
+}: PersonnelLifecycleSectionProps) {
+  const lifecycle = usePersonnelLifecycleView(initialData);
+  const plan = usePersonnelLifecyclePlan(lifecycle);
+  const requirements = usePersonnelLifecycleRequirements(lifecycle);
+  const documents = usePersonnelLifecycleDocuments(lifecycle);
+  const handover = usePersonnelLifecycleHandover(lifecycle);
+  const transitions = usePersonnelLifecycleTransitions(lifecycle, handover.openHandover);
+  const { isPending } = lifecycle;
+  const { accessOpen, setAccessOpen, employmentOpen, setEmploymentOpen } = transitions;
+  const { uploadOpen, setUploadOpen } = documents;
+
+  return (
+    <section
+      className="min-w-0 space-y-4 rounded-lg border bg-card p-4 shadow-xs @[70rem]/detail:col-span-2 @7xl/detail:col-span-1"
+      aria-labelledby="personnel-lifecycle-title"
+      data-testid="personnel-lifecycle"
+    >
+      <PersonnelLifecycleHeader lifecycle={lifecycle} canAdministerAccess={canAdministerAccess} />
+
+      <PersonnelLifecycleStatusCards
+        lifecycle={lifecycle}
+        transitions={transitions}
+        canAdministerAccess={canAdministerAccess}
+        canManage={canManage}
+      />
+
+      <PersonnelLifecycleOnboardingList
+        lifecycle={lifecycle}
+        plan={plan}
+        requirements={requirements}
+        canManage={canManage}
+      />
+
+      <PersonnelLifecycleDocumentsList lifecycle={lifecycle} documents={documents} canManage={canManage} />
+
+      <Dialog open={accessOpen} onOpenChange={setAccessOpen} pending={isPending}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Organisationszugang steuern</DialogTitle>
+            <DialogDescription>
+              Die Änderung gilt nur für diese Organisation. Das globale Konto bleibt unberührt.
+            </DialogDescription>
+          </DialogHeader>
+          <PersonnelLifecycleAccessBody lifecycle={lifecycle} transitions={transitions} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={employmentOpen} onOpenChange={setEmploymentOpen} pending={isPending}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Beschäftigungsübergang erfassen</DialogTitle>
+            <DialogDescription>
+              Historische Zuordnungen bleiben erhalten. Offene Arbeit übergibst du über „Arbeit übergeben“.
+            </DialogDescription>
+          </DialogHeader>
+          <PersonnelLifecycleEmploymentBody lifecycle={lifecycle} transitions={transitions} />
+        </DialogContent>
+      </Dialog>
+
+      <PersonnelLifecycleHandoverDialog lifecycle={lifecycle} handover={handover} />
+
+      <PersonnelLifecyclePlanDialog lifecycle={lifecycle} plan={plan} />
+
+      <PersonnelLifecycleRequirementDialog lifecycle={lifecycle} requirements={requirements} />
+
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen} pending={isPending}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Geschützte Personalunterlage</DialogTitle>
+            <DialogDescription>
+              Die Datei wird direkt in den privaten Speicher geladen. Sie erscheint nicht in der normalen
+              Dokumentenbibliothek.
+            </DialogDescription>
+          </DialogHeader>
+          <PersonnelLifecycleUploadBody lifecycle={lifecycle} documents={documents} />
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}

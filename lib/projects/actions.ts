@@ -1,0 +1,414 @@
+'use server';
+
+import type { ActionResult } from '@/lib/action-result';
+import { revalidatePath, updateTag } from 'next/cache';
+import { readCompleteRows, LIST_ROW_CAP } from '@/lib/supabase/query-batches';
+import { createSupabaseAdminClient, type AdminClient } from '@/lib/supabase/admin';
+import { authenticateAndAuthorize } from '@/lib/jobs/auth';
+import { CACHE_TAGS } from '@/lib/data/cached';
+import { logReadFailure, logReadErrors } from '@/lib/data/read-request-cache';
+import {
+  type Project,
+  type ProjectRow,
+  type DerivedProjectStatus,
+  type CreateProjectResult,
+  type UpdateProjectResult,
+  type DeleteProjectResult,
+  toProject,
+  toClient,
+  toJob,
+  calculateProjectProgress,
+  calculateTrafficLight,
+  getEffectiveProjectStatus,
+} from '@/lib/jobs/types';
+import {
+  hasMaterialHistory,
+  isMaterialHistoryRefusal,
+  MATERIAL_HISTORY_EXISTS,
+} from '@/lib/inventory/material-history';
+import { logError } from '@/lib/logging';
+import { uuidSchema } from '@/lib/validation/uuid';
+import { z } from '@/lib/zod';
+import { createProjectInputSchema, updateProjectArgumentsSchema } from './action-schemas';
+import { projectFieldClient } from '@/lib/jobs/field-work-pack';
+import { PROJECT_CREATION_REFUSALS, projectCreationColumns } from './creation';
+import { prepareProjectUpdate } from './update-preparation';
+import { rpcArgs } from '@/lib/supabase/rpc-args';
+import { toJson } from '@/lib/supabase/json';
+import { CUSTOMER_REFERENCE_REFUSALS, workWriteFailure } from '@/lib/jobs/write-refusals';
+
+const PROJECT_UPDATE_REFUSALS = [
+  'project_not_found',
+  'name_or_description_required',
+  'project_number_taken',
+  ...CUSTOMER_REFERENCE_REFUSALS,
+];
+
+// ============================================
+// Input Types
+// ============================================
+
+export type CreateProjectInput = {
+  name: string;
+  description?: string;
+  clientId?: string;
+  projectNumber?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  // Default site/contact for the project's jobs; each job may override.
+  siteId?: string;
+  contactId?: string;
+  templateVersionId?: string;
+};
+
+export type UpdateProjectInput = Partial<Omit<CreateProjectInput, 'templateVersionId'>>;
+
+// ============================================
+// Result Types
+// ============================================
+
+export type ProjectDetailsResult = {
+  project: Project;
+  client: ReturnType<typeof toClient> | null;
+  jobs: ReturnType<typeof toJob>[];
+  derivedStatus: DerivedProjectStatus;
+};
+
+// ============================================
+// Actions
+// ============================================
+
+export async function createProject(rawInput: CreateProjectInput): Promise<CreateProjectResult> {
+  const parsedInput = createProjectInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) return { success: false, error: 'invalid_input' };
+  const input = parsedInput.data;
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { userId, orgId, isManagerOrAbove } = auth.context;
+
+    if (!isManagerOrAbove) {
+      return { success: false, error: 'not_authorized' };
+    }
+
+    // One transaction: the project and its work template, or nothing.
+    const { data, error } = await createSupabaseAdminClient().rpc(
+      'create_project_with_template',
+      rpcArgs('create_project_with_template', {
+        p_organization_id: orgId,
+        p_actor_id: userId,
+        p_project: projectCreationColumns(input),
+        p_template_version_id: input.templateVersionId || null,
+      }),
+    );
+    if (error) {
+      return workWriteFailure('Error creating project:', error, PROJECT_CREATION_REFUSALS, 'create_failed');
+    }
+
+    updateTag(CACHE_TAGS.workTemplates(orgId));
+
+    return { success: true, project: toProject(data) };
+  } catch (error) {
+    logError('Unexpected error in createProject:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+export async function updateProject(
+  rawProjectId: string,
+  rawInput: UpdateProjectInput,
+): Promise<UpdateProjectResult> {
+  const parsedArguments = updateProjectArgumentsSchema.safeParse({
+    projectId: rawProjectId,
+    input: rawInput,
+  });
+  if (!parsedArguments.success) return { success: false, error: 'invalid_input' };
+  const { projectId, input } = parsedArguments.data;
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId, isManagerOrAbove } = auth.context;
+
+    if (!isManagerOrAbove) {
+      return { success: false, error: 'not_authorized' };
+    }
+
+    const admin = createSupabaseAdminClient();
+
+    const prepared = await prepareProjectUpdate(admin, orgId, projectId, input);
+    if (!prepared.success) return prepared;
+
+    // One transaction: the project and, on a customer change, its jobs, which
+    // lose the previous customer's site and contact.
+    const { data, error } = await admin.rpc(
+      'update_project_with_jobs',
+      rpcArgs('update_project_with_jobs', {
+        p_organization_id: orgId,
+        p_project_id: projectId,
+        p_changes: toJson(prepared.changes),
+      }),
+    );
+
+    if (error) {
+      return workWriteFailure('Error updating project:', error, PROJECT_UPDATE_REFUSALS, 'update_failed');
+    }
+
+    // Like updateJob: the response renders the acting page, so no client refresh follows a save.
+    revalidatePath('/auftraege', 'layout');
+
+    return { success: true, project: toProject(data) };
+  } catch (error) {
+    logError('Unexpected error in updateProject:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+export async function deleteProject(rawProjectId: string): Promise<DeleteProjectResult> {
+  const parsedProjectId = uuidSchema.safeParse(rawProjectId);
+  if (!parsedProjectId.success) return { success: false, error: 'project_not_found' };
+  const projectId = parsedProjectId.data;
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId, isManagerOrAbove } = auth.context;
+
+    if (!isManagerOrAbove) {
+      return { success: false, error: 'not_authorized' };
+    }
+
+    const admin = createSupabaseAdminClient();
+
+    const { data: existing, error: fetchError } = await admin
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('organization_id', orgId)
+      .single();
+
+    if (fetchError || !existing) {
+      return { success: false, error: 'project_not_found' };
+    }
+
+    // Deleting a project deletes the material lines it and its jobs carry.
+    const materialHistory = await hasMaterialHistory(admin, orgId, { projectId });
+    if (materialHistory.error) return { success: false, error: 'delete_failed' };
+    if (materialHistory.exists) return { success: false, error: MATERIAL_HISTORY_EXISTS };
+
+    const { error } = await admin.from('projects').delete().eq('id', projectId).eq('organization_id', orgId);
+
+    if (error) {
+      // A take booked after the check: the ledger keeps it, so the delete is refused.
+      if (isMaterialHistoryRefusal(error)) return { success: false, error: MATERIAL_HISTORY_EXISTS };
+      // Lifecycle events, blockers, dependencies, Arbeitsnachweise, requests or a Projektleitung
+      // (app_private.prevent_historic_work_delete): the history stays, so the project does.
+      if (error.message === 'work_with_history_cannot_be_deleted') {
+        return { success: false, error: 'work_history_exists' };
+      }
+      logError('Error deleting project:', error);
+      return { success: false, error: 'delete_failed' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    logError('Unexpected error in deleteProject:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+/**
+ * The shared tail of the project detail readers: an employee reads only a
+ * project with one of their assigned jobs; the project comes back with its
+ * customer, its jobs and the derived status. An employee gets only their own
+ * jobs and the field projection of the customer; the derived status still
+ * covers every job.
+ */
+async function readProjectDetails(input: {
+  admin: AdminClient;
+  context: { userId: string; orgId: string; isManagerOrAbove: boolean };
+  projectData: ProjectRow;
+  operation: string;
+}): Promise<ActionResult<{ details: ProjectDetailsResult }>> {
+  const { admin, projectData } = input;
+  const { userId, orgId, isManagerOrAbove } = input.context;
+
+  let assignedJobIds: Set<string> | null = null;
+  if (!isManagerOrAbove) {
+    const assigned = await readAssignedJobIdsInProject(admin, { orgId, userId, projectId: projectData.id });
+    if (assigned.error) {
+      logReadFailure(`${input.operation}: project access check failed`, assigned.error);
+      return { success: false, error: 'fetch_failed' };
+    }
+    if (assigned.jobIds.size === 0) {
+      return { success: false, error: 'not_authorized' };
+    }
+    assignedJobIds = assigned.jobIds;
+  }
+
+  const [jobsResult, clientResult] = await Promise.all([
+    readCompleteRows(
+      (from, to) =>
+        admin
+          .from('jobs')
+          .select('*')
+          .eq('project_id', projectData.id)
+          .eq('organization_id', orgId)
+          .order('planned_date', { ascending: true, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+      LIST_ROW_CAP,
+    ),
+    projectData.client_id
+      ? admin
+          .from('clients')
+          .select('*')
+          .eq('organization_id', orgId)
+          .eq('id', projectData.client_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (jobsResult.error || clientResult.error) {
+    logError('Error fetching project jobs or customer:', jobsResult.error ?? clientResult.error);
+    return { success: false, error: 'fetch_failed' };
+  }
+  const allJobs = jobsResult.data.map(toJob);
+
+  const project = toProject(projectData);
+  const derivedStatus: DerivedProjectStatus = {
+    status: getEffectiveProjectStatus(project, allJobs),
+    progress: calculateProjectProgress(allJobs),
+    trafficLight: calculateTrafficLight(project, allJobs),
+  };
+
+  const client = clientResult.data ? toClient(clientResult.data) : null;
+  if (!assignedJobIds) {
+    return { success: true, details: { project, client, jobs: allJobs, derivedStatus } };
+  }
+  return {
+    success: true,
+    details: {
+      project,
+      client: client ? projectFieldClient(client) : null,
+      jobs: allJobs.filter((job) => assignedJobIds.has(job.id)),
+      derivedStatus,
+    },
+  };
+}
+
+/** The caller's assigned jobs in one project. */
+async function readAssignedJobIdsInProject(
+  admin: AdminClient,
+  scope: { orgId: string; userId: string; projectId: string },
+): Promise<{ jobIds: Set<string>; error: null } | { jobIds: null; error: { message: string } }> {
+  const { data, error } = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('job_assignments')
+        .select('job_id, jobs!inner(project_id)')
+        .eq('organization_id', scope.orgId)
+        .eq('user_id', scope.userId)
+        .eq('jobs.project_id', scope.projectId)
+        .order('job_id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (error) return { jobIds: null, error };
+  return { jobIds: new Set(data.map((assignment) => assignment.job_id)), error: null };
+}
+
+export async function getProjectDetails(
+  rawProjectId: string,
+): Promise<ActionResult<{ details: ProjectDetailsResult }>> {
+  const parsedProjectId = uuidSchema.safeParse(rawProjectId);
+  if (!parsedProjectId.success) return { success: false, error: 'project_not_found' };
+  const projectId = parsedProjectId.data;
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId } = auth.context;
+
+    const admin = createSupabaseAdminClient();
+
+    const { data: projectData, error: projectError } = await admin
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .eq('organization_id', orgId)
+      .single();
+
+    if (projectError || !projectData) {
+      logReadErrors('getProjectDetails: read failed', projectError);
+      return { success: false, error: 'project_not_found' };
+    }
+
+    return await readProjectDetails({
+      admin,
+      context: auth.context,
+      projectData,
+      operation: 'getProjectDetails',
+    });
+  } catch (error) {
+    logError('Unexpected error in getProjectDetails:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+
+export async function getProjectByNumber(
+  rawProjectNumber: string,
+): Promise<ActionResult<{ details: ProjectDetailsResult }>> {
+  const parsedProjectNumber = z.string().max(300).safeParse(rawProjectNumber);
+  if (!parsedProjectNumber.success) return { success: false, error: 'project_not_found' };
+  const projectNumber = parsedProjectNumber.data;
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId } = auth.context;
+
+    const admin = createSupabaseAdminClient();
+
+    const { data: projectData, error: projectError } = await admin
+      .from('projects')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('project_number', decodeURIComponent(projectNumber))
+      .single();
+
+    // `.single()` reports a missing row as PGRST116; any other error is a failed read, not a missing project.
+    if (projectError && projectError.code !== 'PGRST116') {
+      logReadErrors('getProjectByNumber: read failed', projectError);
+      return { success: false, error: 'load_failed' };
+    }
+    if (!projectData) return { success: false, error: 'project_not_found' };
+
+    return await readProjectDetails({
+      admin,
+      context: auth.context,
+      projectData,
+      operation: 'getProjectByNumber',
+    });
+  } catch (error) {
+    logError('Unexpected error in getProjectByNumber:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+
+export async function getNextProjectNumber(): Promise<ActionResult<{ projectNumber: string }>> {
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId } = auth.context;
+
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin.rpc('generate_project_number', {
+      p_org_id: orgId,
+    });
+
+    if (error || !data) {
+      logError('Error generating project number:', error);
+      return { success: false, error: 'generation_failed' };
+    }
+
+    return { success: true, projectNumber: data };
+  } catch (error) {
+    logError('Unexpected error in getNextProjectNumber:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}

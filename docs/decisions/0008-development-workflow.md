@@ -1,0 +1,82 @@
+# 0008 — Development Workflow
+
+- **Status:** accepted (2026-09-18) — adopted in pre-Wave-3 step 5 with the beta rollout of 2026-09-18 (first release under this flow: preview on DEV from `partner-preview`, production from `origin/main` at `0abbaf8`); the Vercel preview change was the one configuration step
+- **Date:** 2026-09-18
+- **Owner:** Product owner (Tamay), decided with the agent after the workflow research of 2026-09-17 ([pre-Wave-3 step 4](../plans/phase-1/pre-wave-3/04-wave-3-4-and-phase-2-planning.md))
+- **Affects:** every publish and release; [environments.md](../technical/environments.md) carries the live configuration, `AGENTS.md` the always-on rules
+
+## Decision
+
+One developer with coding agents works on local `main`, verifies locally, previews for the business partner on synthetic data, and releases to production by pushing `main`. No feature branches, no pull requests, no worktrees, no branch protection, no GitHub Actions, no GitHub paid plan, no Supabase Branching, no third environment.
+
+| Environment | Where | Database | Who sees it | How it gets there |
+| --- | --- | --- | --- | --- |
+| Local | the developer's machine | the local Supabase test stack (tests) and the DEV cloud project (`bun run env:dev`, canary) | the developer and the agents | every edit |
+| Preview | Vercel preview deployments, the `partner-preview` branch | the DEV cloud project (`mbkkzuqjbdvzelqvuzcn`) with synthetic data | the owner and the business partner, behind Vercel's login | `git push origin main:partner-preview` |
+| Production | Vercel production deployment, `origin/main` | the PROD cloud project (`jbgaqpdjauzoocplgdsn`) | every customer | `git push origin main`, on the owner's release decision |
+
+The preview on DEV data is the staging environment. There is no other.
+
+## The flow
+
+1. Write code on local `main`. Migrations reach DEV as they are written (the dev-first rule of [decision 0003](0003-dev-prod-environment-split.md)); the local stack is where the tests run.
+2. When a unit of work is done, run the gates locally: `bun run test:plan` and `bun run test:verify` for the selected change, the full release mode at a wave end and before a release, the cloud canary against DEV. Commit on local `main` when they pass. The protocol's slice acceptance owns the evidence, and the commit is the boundary the campaign budget counts from (`bun run test:campaign`).
+3. Push `main` to `partner-preview`. Vercel builds a preview against DEV. Nobody outside sees it. The partner reviews it behind the Vercel login.
+4. Release, on the owner's decision: apply the pending migrations to PROD inside a short maintenance window in the compatibility order the [migration rule](../technical/environments.md#the-migration-rule) sets, deploy the edge functions, then push `origin/main`. Vercel builds production against PROD. `origin/main` is the same commit the preview showed, so nothing is merged or caught up.
+5. Hotfix: steps 1, 2 and 4 without step 3. Vercel's instant rollback is the undo when a production deployment misbehaves; undo the rollback afterwards so automatic assignment resumes.
+
+Migrations reach PROD only in step 4, never earlier. Being "behind" on PROD between releases is the intended state, not drift.
+
+## Pilot customers
+
+During the beta there is one customer, so production is the pilot and nothing is built for it. From the second paying customer on, a feature that should be piloted ships to production hidden behind a per-organization switch that only WerkFlow staff set; the pilot organization gets it first, the switch is turned on for everyone when the pilot is over, and the switch is removed from the code afterwards. Only features the owner wants piloted get a switch. This is an organization-scoped boolean in Postgres checked server-side, not a vendor product.
+
+## What was considered and rejected
+
+- Feature branches with pull requests, squash merges and a ruleset on `main`: a second review surface with a GitHub Team seat (rulesets on a private organization repository need a paid plan); too much ceremony for one developer whose review is CodeRabbit on the CLI before the push.
+- GitHub Actions running the static and unit gates on every push, with Vercel Deployment Checks holding a production deployment until they pass: the checks already run locally by rule; the robot would only guard against forgetting. Blacksmith and Depot only accelerate that robot and Docker image builds, of which WerkFlow has neither.
+- Supabase Branching: per-hour cost, schema drift between branches and a Vercel integration for one developer; DEV is the shared non-production database and is seeded synthetically, never from PROD (the DSGVO forbids copying customer data into a test system).
+- A separate staging environment or Vercel custom environment: the partner preview on DEV data is that environment.
+- Vercel Pro now: the Hobby plan carries the beta; Pro is required when the first customer pays, because Hobby is for non-commercial use, and it adds the partner's own seat and an optional preview password then.
+- Point-in-time recovery: at the first paying customer, with Pro.
+
+## Configuration this decision needs
+
+Correction recorded 2026-09-25: the setup below was completed with the September 18 release; the previous future-tense description was stale.
+
+- Vercel: the Supabase URL, publishable key and every other Supabase and R2 variable scoped per environment, Preview to DEV and Production to PROD (applied by the owner on 2026-09-18 and verified in the linked release record). Preview uses DEV; Production uses PROD. Recheck scopes when deployment configuration changes.
+- Nothing on GitHub, nothing on Supabase.
+
+## Revisit triggers
+
+- A second developer joins: reconsider branches and pull requests.
+- A production incident caused by a push that skipped the gates: reconsider GitHub Actions as the enforcing robot.
+- The first paying customer: Vercel Pro, PITR, and the preview password.
+- The second paying customer: the per-organization pilot switch.
+
+## Related Docs
+
+- [environments.md](../technical/environments.md) — the live configuration, project IDs, the migration rule and the publishing commands.
+- [Decision 0003](0003-dev-prod-environment-split.md) — the two-project model this flow runs on.
+- [Decision 0001](0001-infrastructure-stack.md) — the stack.
+- The pre-Wave-3 step 5 record, kept in Git history, holds the release that adopted this flow.
+
+## Amendment 2026-10-17: accepted text restored
+
+A decision record is immutable once accepted. The overhaul commit `20c9ca8` of 2026-10-05 rewrote two accepted lines of this record in place: the Vercel line after the 2026-09-18 release made it stale, and a link to a record that Git alone keeps. The rewritten lines above supersede them; the accepted text was, with the dead link target in backticks:
+
+> - Vercel: the Supabase URL, publishable key and every other Supabase and R2 variable scoped per environment, Preview to DEV and Production to PROD (the owner does this in the Vercel dashboard before the step 5 preview). Today every environment points at PROD.
+
+> - Pre-Wave-3 step 5 (`../plans/phase-1/pre-wave-3/05-beta-acceptance-and-production-rollout.md`) — the release that adopts this flow.
+
+## Amendment 2026-10-26: superseded by decision 0009
+
+[Decision 0009](0009-pull-requests-and-ci.md) supersedes this decision. Its revisit trigger fired: the first push from Linux skipped the pre-push gate when the hook lost its executable bit, and parallel agents in worktrees outgrew one local `main`. Work now runs as a worktree, a branch and a pull request per task, CI's `Check` is the gate, `main` is staging on DEV, and the `production` branch is production, advanced only by the owner's `release` workflow. The `partner-preview` branch is retired.
+
+## Amendment 2026-11-05: Vercel Pro came before the first payment
+
+The team moved to Vercel Pro on 2026-11-05, ahead of the first paying customer, so that Vercel's data processing agreement applies before Willert's first real data. The first paying customer now triggers only point-in-time recovery and the preview password.
+
+## Amendment 2026-11-07: point-in-time recovery waits for a larger customer
+
+The owner moved the point-in-time recovery trigger. It turns on with the first customer who pays about $1000 a month, after Willert, not with the first paying customer. Supabase gets no further spend before Willert pays. This supersedes point-in-time recovery in "What was considered and rejected", in the first paying customer's revisit trigger and in the 2026-11-05 amendment. The first paying customer still triggers the preview password. Once point-in-time recovery is on, the provider restore drill repeats quarterly, automated where the provider allows (werk-flow/werkflow-planning#271).

@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Reviews a level 2 pull request to main once, on request (docs/technical/coderabbit.md). Each rule lives in its owner doc;
+# the path instructions only point there. AGENTS.md is read as a guideline file.
+
+language: "en-US"
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: false
+  poem: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: false
+    drafts: false
+  path_filters:
+    - "!bun.lock"
+    - "!package-lock.json"
+    - "!lib/supabase/database.types.ts"
+    - "!tests/audit/visual/**-snapshots/**"
+    - "!.agents/**"
+  path_instructions:
+    - path: "{app,components,hooks}/**"
+      instructions: "Hold UI code to .claude/skills/werkflow-design/SKILL.md and docs/technical/realtime-and-caching.md. User-visible copy is natural German with du."
+    - path: "{app/**,lib/**,proxy.ts}"
+      instructions: "Hold server code to docs/technical/security.md and docs/technical/code-quality.md."
+    - path: "supabase/**"
+      instructions: "Hold SQL to docs/technical/security.md and the migration rule in docs/technical/environments.md: expand-only, at most one migration per PR."
+    - path: "{tests,lib/testing,scripts,.github}/**"
+      instructions: "Hold test and CI code to docs/technical/testing.md."
+    - path: "{docs/**,AGENTS.md}"
+      instructions: "Hold documentation to docs/README.md: one home per fact, nothing the code already says."
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "docs/technical/*.md"
+      - ".claude/skills/werkflow-design/SKILL.md"

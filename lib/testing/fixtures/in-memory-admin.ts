@@ -1,0 +1,395 @@
+// A minimal in-memory stand-in for the service-role client: it evaluates the
+// filters a query really sends, so a write that omits an ownership filter
+// changes the rows it would change in Postgres. Only the builder calls the
+// boundary fixtures use are implemented.
+type Row = Record<string, unknown>;
+export type InMemoryTables = Record<string, Row[]>;
+type QueryResult = { data: unknown; error: { code: string; message?: string } | null; count: number | null };
+/**
+ * Runs right before an update or delete selects its rows, so a test can
+ * change or remove a row between an action's read and its write.
+ */
+export type BeforeWrite = (table: string) => void;
+
+const comparators: Readonly<Record<string, (left: number | string, right: number | string) => boolean>> = {
+  eq: (left, right) => left === right,
+  neq: (left, right) => left !== right,
+  gt: (left, right) => left > right,
+  gte: (left, right) => left >= right,
+  lt: (left, right) => left < right,
+  lte: (left, right) => left <= right,
+};
+
+/** Numbers compare as numbers, everything else as text, as PostgREST filter values arrive. */
+function comparable(value: unknown, filterValue: string): [number | string, number | string] {
+  const number = Number(filterValue);
+  return typeof value === 'number' && filterValue.trim() !== '' && Number.isFinite(number)
+    ? [value, number]
+    : [String(value ?? ''), filterValue];
+}
+
+/** SQL `ilike` with `%` as its only wildcard: case-insensitive, anchored at both ends. */
+function ilikeMatcher(pattern: string): (text: string) => boolean {
+  const escaped = pattern
+    .split('%')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  const expression = new RegExp(`^${escaped}$`, 'isu');
+  return (text) => expression.test(text);
+}
+
+/** One `column.operator.value` term of a PostgREST `or` filter; `is` takes `null` only. */
+function orTerm(term: string): (row: Row) => boolean {
+  const [column = '', operator = '', ...rest] = term.split('.');
+  const value = rest.join('.');
+  if (operator === 'is' && value === 'null') return (row) => (row[column] ?? null) === null;
+  if (operator === 'ilike') {
+    const matches = ilikeMatcher(value);
+    return (row) => typeof row[column] === 'string' && matches(row[column]);
+  }
+  const compare = comparators[operator];
+  if (!compare) throw new Error(`The in-memory admin does not implement the "${operator}" or-filter.`);
+  return (row) => compare(...comparable(row[column], value));
+}
+
+/** The comma-separated terms of a PostgREST filter list, keeping each `and(…)` group whole. */
+function topLevelTerms(filter: string): string[] {
+  const terms: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < filter.length; index++) {
+    const character = filter[index];
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (character === ',' && depth === 0) {
+      terms.push(filter.slice(start, index));
+      start = index + 1;
+    }
+  }
+  terms.push(filter.slice(start));
+  return terms;
+}
+
+/** One term of an `or` filter: a comparison, or an `and(…)` group whose every comparison holds. */
+function orGroupTerm(term: string): (row: Row) => boolean {
+  const group = /^and\((.*)\)$/.exec(term);
+  if (!group) return orTerm(term);
+  const terms = topLevelTerms(group[1] ?? '').map(orTerm);
+  return (row) => terms.every((test) => test(row));
+}
+
+class InMemoryQuery implements PromiseLike<QueryResult> {
+  private operation: 'select' | 'update' | 'delete' | 'insert' | 'upsert' | null = null;
+  private payload: Row | Row[] = {};
+  private conflictColumns: string[] = [];
+  private predicates: Array<(row: Row) => boolean> = [];
+  private cardinality: 'many' | 'single' | 'maybeSingle' = 'many';
+  private headOnly = false;
+  private page: { from: number; to: number } | null = null;
+  /** Embeds the select joins with `!inner`, by alias or table name. */
+  private readonly innerEmbeds = new Set<string>();
+  /** Filters on a seeded embedded array: they drop its items, never its parent row (PostgREST). */
+  private readonly embedFilters = new Map<string, Array<(item: Row) => boolean>>();
+
+  constructor(
+    private readonly tables: InMemoryTables,
+    private readonly table: string,
+    private readonly columnDefaults: () => Row,
+    private readonly beforeWrite: BeforeWrite = () => {},
+  ) {}
+
+  select(columns?: string, options?: { head?: boolean }): this {
+    this.operation ??= 'select';
+    for (const [, alias, table = ''] of columns?.matchAll(/(?:(\w+):)?(\w+)!inner\(/g) ?? [])
+      this.innerEmbeds.add(alias ?? table);
+    this.headOnly = options?.head ?? false;
+    return this;
+  }
+  update(payload: Row): this {
+    this.operation = 'update';
+    this.payload = payload;
+    return this;
+  }
+  delete(): this {
+    this.operation = 'delete';
+    return this;
+  }
+  insert(payload: Row | Row[]): this {
+    this.operation = 'insert';
+    this.payload = payload;
+    return this;
+  }
+  /** Updates the row whose `onConflict` columns match each payload row, or inserts it. */
+  upsert(payload: Row | Row[], options: { onConflict: string }): this {
+    this.operation = 'upsert';
+    this.payload = payload;
+    this.conflictColumns = options.onConflict.split(',');
+    return this;
+  }
+  private where(predicate: (row: Row) => boolean): this {
+    this.predicates.push(predicate);
+    return this;
+  }
+  eq(column: string, value: unknown): this {
+    return this.compare(column, (field) => field === value);
+  }
+  neq(column: string, value: unknown): this {
+    return this.where((row) => row[column] !== value);
+  }
+  is(column: string, value: unknown): this {
+    return this.where((row) => (row[column] ?? null) === value);
+  }
+  in(column: string, values: readonly unknown[]): this {
+    return this.compare(column, (field) => values.includes(field));
+  }
+  /** A null column fails the comparison, as in SQL; as text, `null` would sort after every date. */
+  gte(column: string, value: string): this {
+    return this.compare(column, (field) => (field ?? null) !== null && String(field) >= value);
+  }
+  lte(column: string, value: string): this {
+    return this.compare(column, (field) => String(field) <= value);
+  }
+  /** A dotted column on a seeded embedded array filters that embed's items; any other column, the row. */
+  private compare(column: string, test: (field: unknown) => boolean): this {
+    const dot = column.indexOf('.');
+    if (dot !== -1) {
+      const embedded = column.slice(0, dot);
+      const field = column.slice(dot + 1);
+      this.filterEmbed(embedded, (item) => test(item[field]));
+      return this.where((row) => Array.isArray(row[embedded]) || test(row[column]));
+    }
+    return this.where((row) => test(row[column]));
+  }
+  private filterEmbed(embedded: string, keep: (item: Row) => boolean): void {
+    this.embedFilters.set(embedded, [...(this.embedFilters.get(embedded) ?? []), keep]);
+  }
+  lt(column: string, value: string): this {
+    return this.where((row) => String(row[column]) < value);
+  }
+  gt(column: string, value: string): this {
+    return this.where((row) => String(row[column]) > value);
+  }
+  /** SQL `like` with `%` as its only wildcard. */
+  like(column: string, pattern: string): this {
+    const parts = pattern.split('%');
+    return this.where((row) => {
+      const text = String(row[column] ?? '');
+      if (parts.length === 1) return text === pattern;
+      let position = 0;
+      return parts.every((part, index) => {
+        if (index === 0) {
+          position = part.length;
+          return text.startsWith(part);
+        }
+        if (index === parts.length - 1) return text.length - part.length >= position && text.endsWith(part);
+        const found = text.indexOf(part, position);
+        position = found + part.length;
+        return found !== -1;
+      });
+    });
+  }
+  order(): this {
+    return this;
+  }
+  /** The first selected rows in table order, as `range` pages them; a limit on an embed is not modeled. */
+  limit(count: number, options?: { referencedTable?: string }): this {
+    if (!options?.referencedTable) this.page = { from: 0, to: count - 1 };
+    return this;
+  }
+  /** One page of the selected rows in table order, as PostgREST pages an ordered read. */
+  range(from: number, to: number): this {
+    this.page = { from, to };
+    return this;
+  }
+  not(): this {
+    return this;
+  }
+  /**
+   * Comparison terms, `is.null` and `and(…)` groups of them
+   * (`taken_quantity.gt.0,ended_at.is.null`); anything else throws. A filter on a referenced table filters that embed, never the parent row.
+   */
+  or(filter: string, options?: { referencedTable?: string }): this {
+    const terms = topLevelTerms(filter).map(orGroupTerm);
+    if (options?.referencedTable) {
+      this.filterEmbed(options.referencedTable, (item) => terms.some((term) => term(item)));
+      return this;
+    }
+    return this.where((row) => terms.some((term) => term(row)));
+  }
+  single(): this {
+    this.cardinality = 'single';
+    return this;
+  }
+  maybeSingle(): this {
+    this.cardinality = 'maybeSingle';
+    return this;
+  }
+
+  private run(): QueryResult {
+    if (this.operation === 'update' || this.operation === 'delete') this.beforeWrite(this.table);
+    const rows = this.tables[this.table] ?? [];
+    let affected: Row[];
+    if (this.operation === 'insert') {
+      affected = (Array.isArray(this.payload) ? this.payload : [this.payload]).map((row) => ({
+        id: crypto.randomUUID(),
+        ...this.columnDefaults(),
+        ...row,
+      }));
+      this.tables[this.table] = [...rows, ...affected];
+    } else if (this.operation === 'upsert') {
+      affected = (Array.isArray(this.payload) ? this.payload : [this.payload]).map((payload) => {
+        const existing = rows.find((row) =>
+          this.conflictColumns.every((column) => row[column] === payload[column]),
+        );
+        if (existing) return Object.assign(existing, payload);
+        const inserted = { id: crypto.randomUUID(), ...this.columnDefaults(), ...payload };
+        rows.push(inserted);
+        return inserted;
+      });
+      this.tables[this.table] = rows;
+    } else {
+      affected = rows.filter((row) => this.predicates.every((predicate) => predicate(row)));
+      if (this.operation === 'update') for (const row of affected) Object.assign(row, this.payload);
+      if (this.operation === 'delete')
+        this.tables[this.table] = rows.filter((row) => !affected.includes(row));
+    }
+    if (this.operation === 'select' && (this.embedFilters.size > 0 || this.innerEmbeds.size > 0))
+      affected = affected
+        .map((row) => this.withFilteredEmbeds(row))
+        .filter((row) => this.keepsInnerEmbeds(row));
+    if (this.headOnly) return { data: null, error: null, count: affected.length };
+    if (this.cardinality === 'many')
+      return {
+        data: this.page ? affected.slice(this.page.from, this.page.to + 1) : affected,
+        error: null,
+        count: affected.length,
+      };
+    if (this.cardinality === 'single' && affected.length !== 1)
+      // PostgREST's own answer to a `.single()` that matched no row or several.
+      return {
+        data: null,
+        error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' },
+        count: null,
+      };
+    return { data: affected[0] ?? null, error: null, count: null };
+  }
+
+  /** A `!inner` embed keeps its parent only while one embedded row passes every filter on it (PostgREST). */
+  private keepsInnerEmbeds(row: Row): boolean {
+    return [...this.innerEmbeds].every((embedded) => {
+      const items = row[embedded];
+      return !Array.isArray(items) || items.length > 0;
+    });
+  }
+
+  /** A copy of a selected row whose embedded arrays keep only the items every embed filter keeps. */
+  private withFilteredEmbeds(row: Row): Row {
+    const copy: Row = { ...row };
+    for (const [embedded, filters] of this.embedFilters) {
+      const items = row[embedded];
+      if (Array.isArray(items))
+        copy[embedded] = items.filter((item: Row) => filters.every((keep) => keep(item)));
+    }
+    return copy;
+  }
+
+  then<Fulfilled = QueryResult, Rejected = never>(
+    onFulfilled?: ((value: QueryResult) => Fulfilled | PromiseLike<Fulfilled>) | null,
+    onRejected?: ((reason: unknown) => Rejected | PromiseLike<Rejected>) | null,
+  ): Promise<Fulfilled | Rejected> {
+    return Promise.resolve()
+      .then(() => this.run())
+      .then(onFulfilled, onRejected);
+  }
+}
+
+// The batched time-entry functions write every named entry of the
+// organization. Their refusals run in SQL: supabase/tests/closed_period_writes.sql
+// and, for a withdrawal, supabase/tests/pending_entry_withdrawals.sql.
+async function runTimeEntryBatch(tables: InMemoryTables, name: string, args: Row): Promise<QueryResult> {
+  const query = new InMemoryQuery(tables, 'time_entries', () => ({}));
+  const write =
+    name === 'review_time_entries'
+      ? query.update({
+          status: args.p_decision,
+          reviewed_by: args.p_actor_id,
+          reviewed_at: new Date().toISOString(),
+        })
+      : query.delete();
+  const ids = Array.isArray(args.p_entry_ids) ? args.p_entry_ids : [];
+  const { count } = await write.eq('organization_id', args.p_organization_id).in('id', ids);
+  return { data: count, error: null, count: null };
+}
+
+// update_time_entry applies the named fields of one entry of the
+// organization. Its own-entry refusal and its audit event run in SQL:
+// supabase/tests/own_time_entry_changes.sql.
+async function updateTimeEntry(tables: InMemoryTables, args: Row): Promise<QueryResult> {
+  const changes = typeof args.p_changes === 'object' && args.p_changes !== null ? args.p_changes : {};
+  const fields = Object.fromEntries(
+    Object.entries(changes).filter(([key]) => ['timestamp', 'entry_type', 'job_id'].includes(key)),
+  );
+  const { data } = await new InMemoryQuery(tables, 'time_entries', () => ({}))
+    .update(fields)
+    .eq('organization_id', args.p_organization_id)
+    .eq('id', args.p_entry_id)
+    .select()
+    .maybeSingle();
+  if (!data) return { data: null, error: { code: 'P0001', message: 'entry_not_found' }, count: null };
+  return { data, error: null, count: null };
+}
+
+// decide_entry_change_request records the decision of a pending request of
+// the organization and applies it to the entries. Its refusals and its
+// all-or-nothing rule run in SQL: supabase/tests/entry_change_request_decisions.sql.
+async function decideEntryChangeRequest(tables: InMemoryTables, args: Row): Promise<QueryResult> {
+  const request = (tables.entry_change_requests ?? []).find(
+    (row) => row.id === args.p_request_id && row.organization_id === args.p_organization_id,
+  );
+  if (!request) return { data: null, error: { code: 'P0001', message: 'request_not_found' }, count: null };
+  if (request.status !== 'pending')
+    return { data: null, error: { code: 'P0001', message: 'request_already_reviewed' }, count: null };
+  const approve = args.p_decision === 'approve';
+  Object.assign(request, {
+    status: approve ? 'approved' : 'rejected',
+    reviewed_by: args.p_actor_id,
+    reviewed_at: new Date().toISOString(),
+  });
+  const decided = structuredClone(request);
+  const entries = new InMemoryQuery(tables, 'time_entries', () => ({}));
+  const pair = [request.entry_id, request.paired_entry_id ?? request.entry_id];
+  if (approve && request.change_type === 'delete') {
+    await entries.delete().eq('organization_id', args.p_organization_id).in('id', pair);
+    tables.entry_change_requests = (tables.entry_change_requests ?? []).filter((row) => row !== request);
+  } else if (!approve && request.change_type === 'edit' && request.original_timestamp) {
+    await entries
+      .update({ timestamp: request.original_timestamp })
+      .eq('organization_id', args.p_organization_id)
+      .eq('id', request.entry_id);
+  } else if (!approve && request.change_type === 'delete') {
+    await entries.update({ status: 'approved' }).eq('organization_id', args.p_organization_id).in('id', pair);
+  }
+  return { data: decided, error: null, count: null };
+}
+
+/** `columnDefaults` stands in for database column defaults on insert, per table. */
+export function createInMemoryAdmin(
+  tables: InMemoryTables,
+  columnDefaults: Record<string, () => Row> = {},
+  beforeWrite?: BeforeWrite,
+): { from: (table: string) => InMemoryQuery; rpc: (name: string, args?: Row) => Promise<QueryResult> } {
+  return {
+    from: (table) => new InMemoryQuery(tables, table, columnDefaults[table] ?? (() => ({})), beforeWrite),
+    rpc: async (name, args = {}) => {
+      if (
+        name === 'review_time_entries' ||
+        name === 'delete_time_entries' ||
+        name === 'withdraw_pending_time_entries'
+      )
+        return runTimeEntryBatch(tables, name, args);
+      if (name === 'decide_entry_change_request') return decideEntryChangeRequest(tables, args);
+      if (name === 'update_time_entry') return updateTimeEntry(tables, args);
+      return { data: [], error: null, count: null };
+    },
+  };
+}

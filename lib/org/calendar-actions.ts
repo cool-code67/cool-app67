@@ -1,0 +1,215 @@
+'use server';
+
+import { updateTag } from 'next/cache';
+import { z } from '@/lib/zod';
+
+import type { ActionResult } from '@/lib/action-result';
+import { CACHE_TAGS } from '@/lib/data/cached';
+import { authenticateAndAuthorize } from '@/lib/jobs/auth';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { isHolidayRegion } from '@/lib/personnel/holidays';
+import { getBusinessTodayIso } from '@/lib/date-time/berlin';
+import { parseHolidayRegionHistory, type HolidayRegionHistoryEntry } from '@/lib/personnel/targets';
+import { logError } from '@/lib/logging';
+import { uuidSchema } from '@/lib/validation/uuid';
+
+// Organization holiday/closure configuration (P1-04).
+// - Holiday region: admin-only (structural policy, break-settings precedent),
+//   recorded with an effective-from history so historical days keep the region
+//   effective then. Selecting a region never applies holidays retroactively.
+// - Closure days (Betriebsruhe): admin + Büro (operational planning), only for
+//   today/future dates so past targets are never silently rewritten.
+
+export type CalendarActionResult = ActionResult;
+
+const holidayRegionInputSchema = z.string().refine(isHolidayRegion).nullable();
+
+export async function setHolidayRegion(region: string | null): Promise<CalendarActionResult> {
+  const parsedRegion = holidayRegionInputSchema.safeParse(region);
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId, userId } = auth.context;
+
+    if (!parsedRegion.success) {
+      return { success: false, error: 'invalid_region' };
+    }
+    const selectedRegion = parsedRegion.data;
+
+    const admin = createSupabaseAdminClient();
+    const { data: organization, error: orgError } = await admin
+      .from('organizations')
+      .select('id, admin_id')
+      .eq('id', orgId)
+      .single();
+
+    if (orgError || !organization) {
+      return { success: false, error: 'org_not_found' };
+    }
+    if (organization.admin_id !== userId) {
+      return { success: false, error: 'not_authorized' };
+    }
+
+    // Append onto the stored history, never onto the cross-request cache: a
+    // stale cached copy could silently drop earlier history entries and with
+    // them the effective-dated meaning of past days.
+    const { data: settingsRow, error: settingsError } = await admin
+      .from('organization_settings')
+      .select('holiday_region, holiday_region_history')
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
+    if (settingsError) {
+      logError('setHolidayRegion: settings read failed', settingsError);
+      return { success: false, error: 'update_failed' };
+    }
+
+    if ((settingsRow?.holiday_region ?? null) === selectedRegion) {
+      // Nothing to write, but the caller saw a stale region: its response must still render the route.
+      updateTag(CACHE_TAGS.organizationSettings(orgId));
+      return { success: true };
+    }
+
+    const nextEntry: HolidayRegionHistoryEntry = {
+      // Empty string marks an explicit deselection in the history.
+      region: selectedRegion ?? '',
+      effectiveFrom: new Date().toISOString(),
+    };
+    const nextHistory = [...parseHolidayRegionHistory(settingsRow?.holiday_region_history), nextEntry];
+
+    const { error: updateError } = await admin.from('organization_settings').upsert(
+      {
+        organization_id: orgId,
+        holiday_region: selectedRegion,
+        holiday_region_history: nextHistory,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'organization_id' },
+    );
+
+    if (updateError) {
+      logError('setHolidayRegion: settings write failed', updateError);
+      return { success: false, error: 'update_failed' };
+    }
+
+    updateTag(CACHE_TAGS.organizationSettings(orgId));
+    updateTag(CACHE_TAGS.organizationCalendar(orgId));
+
+    return { success: true };
+  } catch (error) {
+    logError('setHolidayRegion: unexpected failure', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const closureDayInputSchema = z.object({
+  closureDate: z
+    .string()
+    .regex(ISO_DATE_PATTERN)
+    .refine((value) => !Number.isNaN(Date.parse(value))),
+  label: z.string().nullish(),
+});
+
+export async function addClosureDay(input: {
+  closureDate: string;
+  label?: string | null;
+}): Promise<CalendarActionResult> {
+  const parsedInput = closureDayInputSchema.safeParse(input);
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId, userId, isManagerOrAbove } = auth.context;
+
+    if (!isManagerOrAbove) {
+      return { success: false, error: 'not_authorized' };
+    }
+
+    if (!parsedInput.success) {
+      return { success: false, error: 'invalid_date' };
+    }
+    const { closureDate } = parsedInput.data;
+
+    // V1 rule: no past dates — a historical day's target must never be
+    // silently rewritten by adding a closure day after the fact.
+    if (closureDate < getBusinessTodayIso()) {
+      return { success: false, error: 'date_in_past' };
+    }
+
+    const label = parsedInput.data.label?.trim();
+    const admin = createSupabaseAdminClient();
+    const { error } = await admin.from('organization_closure_days').insert({
+      organization_id: orgId,
+      closure_date: closureDate,
+      label: label && label.length > 0 ? label : null,
+      created_by: userId,
+    });
+
+    if (error) {
+      if (error.code === '23505') {
+        return { success: false, error: 'duplicate_date' };
+      }
+      logError('addClosureDay: closure day write failed', error);
+      return { success: false, error: 'create_failed' };
+    }
+
+    updateTag(CACHE_TAGS.organizationCalendar(orgId));
+
+    return { success: true };
+  } catch (error) {
+    logError('addClosureDay: unexpected failure', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+
+export async function removeClosureDay(closureDayId: string): Promise<CalendarActionResult> {
+  const parsedId = uuidSchema.safeParse(closureDayId);
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId, isManagerOrAbove } = auth.context;
+
+    if (!isManagerOrAbove) {
+      return { success: false, error: 'not_authorized' };
+    }
+    if (!parsedId.success) {
+      return { success: false, error: 'closure_day_not_found' };
+    }
+
+    const admin = createSupabaseAdminClient();
+    const { data: closureDay, error: loadError } = await admin
+      .from('organization_closure_days')
+      .select('id, closure_date')
+      .eq('id', parsedId.data)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
+    if (loadError || !closureDay) {
+      return { success: false, error: 'closure_day_not_found' };
+    }
+
+    // Same historical-meaning rule as adding: past closure days stay.
+    if (closureDay.closure_date < getBusinessTodayIso()) {
+      return { success: false, error: 'date_in_past' };
+    }
+
+    const { error } = await admin
+      .from('organization_closure_days')
+      .delete()
+      .eq('id', parsedId.data)
+      .eq('organization_id', orgId);
+
+    if (error) {
+      logError('removeClosureDay: closure day delete failed', error);
+      return { success: false, error: 'delete_failed' };
+    }
+
+    updateTag(CACHE_TAGS.organizationCalendar(orgId));
+
+    return { success: true };
+  } catch (error) {
+    logError('removeClosureDay: unexpected failure', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}

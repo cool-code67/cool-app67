@@ -1,0 +1,23 @@
+Menü öffnen
+Zeiterfassung
+Zeit nachtragen
+Zeiterfassung
+Zeitkonto
+Übersicht
+Verlauf
+08:00:00
+Gesamtzeit
+Du bist nicht eingestempelt.
+Tagesziel:
+8 Std.
+Arbeitszeit
+(0% erreicht)
+Arbeitszeit
+0 Min.
+Pause
+0 Min.
+Überstunden heute
+0 Min.
+Schnellzugriff
+Arbeit starten
+Nicht eingestempelt

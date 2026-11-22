@@ -1,0 +1,517 @@
+import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { parseRunnerArguments } from '../lib/testing/runner/runner-arguments';
+import { withStackLock } from '../lib/testing/runner/stack-lock';
+import { selectsVisualBrowser, startVisualBrowser } from '../lib/testing/runner/visual-browser';
+import { withWorkspaceTestLock } from '../lib/testing/runner/workspace-test-lock';
+import {
+  validateDiagnosticProvenance,
+  validateExecutedSelection,
+} from '../lib/testing/evidence/test-evidence';
+import { recordedBuildInputs } from '../lib/testing/evidence/build-identity';
+import { calculateCandidateFingerprint } from '../lib/testing/evidence/candidate-identity';
+import { runSessionCommand, withTestSession } from '../lib/testing/local-stack/test-session';
+import { resolveBusinessDate } from '../lib/testing/runner/business-date';
+import { runWithLogCleanup } from '../lib/testing/runner/command-log';
+import {
+  getTestGroups,
+  getGroupTimingRequirements,
+  isPerformanceSpec,
+} from '../lib/testing/selection/test-groups';
+import { checkLatencyEvidence } from '../lib/testing/latency-evidence';
+import { freshDiagnosisProblem, recoveredEnvironmentRuns } from '../lib/testing/runner/group-recovery';
+import { captureInputSnapshot } from '../lib/testing/evidence/group-evidence';
+import {
+  createGroupQualification,
+  directGroupRetryProblem,
+} from '../lib/testing/evidence/group-qualification';
+import { browserStorageProblem } from '../lib/testing/runs/run-retention';
+import {
+  discoverPlaywrightSelection,
+  selectionForFiles,
+  SUITE_CONFIG,
+} from '../lib/testing/runner/playwright-discovery';
+import { preparedGroupRun, readPreparedPlan } from '../lib/testing/runner/prepared-plan';
+
+import {
+  PLAYWRIGHT_LANES,
+  PLAYWRIGHT_SUITES,
+  PLAYWRIGHT_TARGETS,
+  RUNNABLE_LANES,
+  defaultTargetForSuite,
+  evaluateFocusedIterationRerun,
+  focusedIterationAttemptsSinceLastPass,
+  validateFocusedSelection,
+  validateRunRequest,
+} from '../lib/testing/runner/run-policy';
+import { runPlaywrightPreflight } from './playwright-preflight';
+import { focusedOnBoat, focusedUnavailableNotice } from '../lib/testing/boat/focused-on-boat';
+import { loadEnvLocal } from '../tests/golden/support/env';
+import { finalizeQualifiedWorld } from '../tests/golden/global-teardown';
+import {
+  archiveRunOutputs,
+  currentBackendProvenance,
+  configureRunEnvironment,
+  createRunKey,
+  createRunManifest,
+  listRunManifests,
+  manifestPath,
+  readRunManifest,
+  runDirectory,
+  updateRunManifest,
+} from '../tests/golden/support/run-state';
+import { browserRunPaths } from '../lib/testing/runs/run-paths';
+import {
+  repeatedReplayProblem,
+  replayStageNotice,
+  retainedTestStages,
+} from '../lib/testing/runs/replay-checkpoint';
+import {
+  visualReferenceUpdateCommand,
+  visualReferenceUpdateMode,
+} from '../lib/testing/runner/visual-reference-updates';
+
+async function main(signal: AbortSignal): Promise<number> {
+  signal.throwIfAborted();
+  loadEnvLocal();
+  const lane = RUNNABLE_LANES.find((candidate) => candidate === process.argv[2]);
+  const suite = PLAYWRIGHT_SUITES.find((candidate) => candidate === process.argv[3]);
+  if (!lane) {
+    throw new Error(
+      'Usage: bun scripts/run-playwright.ts <group|iteration|diagnostic> <golden|audit|canary> [--target local|cloud] [--group <id> | --grep <pattern> [--reuse-run <run-key>] | --fresh-for <run-key>]',
+    );
+  }
+  if (!suite) {
+    throw new Error('Suite must be golden, audit, or canary.');
+  }
+
+  const argumentsByName = parseRunnerArguments(lane, process.argv.slice(4));
+  const repositoryRoot = resolve(import.meta.dir, '..');
+  const groupId = argumentsByName['--group'];
+  // A fresh-world diagnostic repeats the whole group of the failed run it names (group-recovery.ts).
+  const freshForRunKey = argumentsByName['--fresh-for'] ?? null;
+  const freshSource = freshForRunKey ? readRunManifest(freshForRunKey) : null;
+  const groups = groupId || freshSource ? getTestGroups(repositoryRoot) : [];
+  const group = groupId ? groups.find((entry) => entry.id === groupId) : undefined;
+  if (groupId && (!group || group.kind !== suite))
+    throw new Error(`Group ${groupId} does not belong to suite ${suite}.`);
+  const diagnosedGroup = freshSource ? groups.find((entry) => entry.id === freshSource.groupId) : undefined;
+  if (freshSource && (!diagnosedGroup || diagnosedGroup.kind !== suite))
+    throw new Error(
+      `${freshForRunKey} is no run of a registered ${suite} group (group ${freshSource.groupId ?? 'none'}).`,
+    );
+  const selectedGroup = group ?? diagnosedGroup;
+  // A verification run prepared the shared work (preflight, discovery, qualification, the run
+  // identity) once for every group it starts; a direct lane does that work here.
+  const preparedPlan = lane === 'group' ? readPreparedPlan() : null;
+  if (!preparedPlan) {
+    const archiveProblem = browserStorageProblem(repositoryRoot);
+    if (archiveProblem) throw new Error(archiveProblem);
+  }
+  const groupFiles = selectedGroup ? selectedGroup.files : [];
+  // A diagnostic never records a group id: it is no attempt of the group's retry rule.
+  if (groupId) process.env.WERKFLOW_TEST_GROUP = groupId;
+  else delete process.env.WERKFLOW_TEST_GROUP;
+  if (freshForRunKey) process.env.WERKFLOW_FRESH_FOR_RUN_KEY = freshForRunKey;
+  else delete process.env.WERKFLOW_FRESH_FOR_RUN_KEY;
+  // Baseline validation runs after Playwright exits. Keep traces even when its
+  // assertions pass, otherwise a later comparison failure loses its diagnosis.
+  process.env.WERKFLOW_RETAIN_PERFORMANCE_TRACE =
+    lane === 'diagnostic' || Boolean(group?.timing.requiredScenarios?.length) ? '1' : '0';
+  const reuseRunKey = argumentsByName['--reuse-run'] ?? null;
+  const targetArgument = argumentsByName['--target'] ?? null;
+  const requestedTarget = PLAYWRIGHT_TARGETS.find((candidate) => candidate === targetArgument);
+  if (targetArgument && !requestedTarget) {
+    throw new Error(`--target must be one of ${PLAYWRIGHT_TARGETS.join(', ')}.`);
+  }
+  const target = requestedTarget ?? defaultTargetForSuite(suite);
+  const preparedRun =
+    preparedPlan && group ? preparedGroupRun(preparedPlan, { groupId: group.id, suite, target }) : null;
+  const grep = argumentsByName['--grep'] ?? null;
+  const playwrightArgs = selectedGroup
+    ? groupFiles.map((file) => file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')
+    : grep
+      ? ['--grep', grep]
+      : [];
+  const requestErrors = validateRunRequest({
+    lane,
+    suite,
+    target,
+    grep,
+    reuseRunKey,
+    freshForRunKey,
+  });
+  if (requestErrors.length > 0) throw new Error(requestErrors.join('\n'));
+
+  process.env.WERKFLOW_TEST_SUITE = suite;
+  process.env.WERKFLOW_TEST_TARGET = target;
+  process.env.WERKFLOW_TEST_LANE = lane;
+  const retainedSource = reuseRunKey ? readRunManifest(reuseRunKey) : null;
+  if (lane === 'diagnostic' && retainedSource) {
+    // A replay on another build still explains a failure, but only a replay on
+    // the failed run's build can count as environment recovery (group-recovery.ts).
+    const served = servedBuildId();
+    if (!retainedSource.buildId || retainedSource.buildId !== served) {
+      console.warn(
+        `[werkflow-test] ${reuseRunKey} was recorded on build ${retainedSource.buildId ?? 'unknown'}; the served build is ${served ?? 'unknown'}. This diagnostic cannot count as environment recovery for that run.`,
+      );
+    }
+  }
+  if (retainedSource) {
+    const errors = validateDiagnosticProvenance(
+      retainedSource.backendProvenance,
+      currentBackendProvenance(suite),
+    );
+    if (!retainedSource.retainedAt || retainedSource.cleanedAt)
+      errors.push('Diagnostic source has no live retained world.');
+    if (!retainedSource.businessDate) errors.push('Diagnostic source has no recorded business date.');
+    if (errors.length) throw new Error(errors.join('\n'));
+  }
+  const businessDate = resolveBusinessDate(retainedSource?.businessDate);
+  process.env.WERKFLOW_TEST_BUSINESS_DATE = businessDate;
+
+  const fullSelection =
+    preparedRun?.selection ??
+    (await discoverPlaywrightSelection({ suite, playwrightArgs: [], repositoryRoot, signal }));
+  if (!fullSelection.total)
+    throw new Error(`The ${suite} suite contains no tests. Refusing to create a world.`);
+  // A group's selection is its registered files; only a grep needs Playwright's own filtering.
+  const requestedSelection = selectedGroup
+    ? selectionForFiles(fullSelection, groupFiles)
+    : grep
+      ? await discoverPlaywrightSelection({ suite, playwrightArgs, repositoryRoot, signal })
+      : fullSelection;
+  const selectionErrors = [
+    ...validateFocusedSelection({
+      lane,
+      suite,
+      selectedFiles: requestedSelection.tests.map((test) => test.file),
+      selectedTestCount: requestedSelection.total,
+      fullSuiteTestCount: fullSelection.total,
+    }),
+  ];
+  if (selectionErrors.length > 0) throw new Error(selectionErrors.join('\n'));
+  if (
+    !requestedSelection.total ||
+    (selectedGroup && requestedSelection.tests.some((test) => !groupFiles.includes(test.file)))
+  )
+    throw new Error('Group discovery did not match its registered files.');
+  if (freshSource) {
+    const problem = freshDiagnosisProblem({
+      source: freshSource,
+      servedBuildId: servedBuildId(),
+      servedBuildInputs: recordedBuildInputs(repositoryRoot),
+      runs: listRunManifests(),
+      failedTestStages: failedTestStages(repositoryRoot, freshSource),
+    });
+    if (problem) throw new Error(`Fresh-world diagnostic refused: ${problem}`);
+    console.log(
+      `[werkflow-test] Fresh-world diagnostic of ${freshSource.groupId ?? 'its group'} for ${freshSource.runKey}: ${freshSource.ranOnBoat ? 'its world died with its Boat machine' : 'its failed test wrote to its world'}, so it runs the whole group on a new world on the same build or one of equal inputs. A pass qualifies one retry of the group after the cleanup.`,
+    );
+  }
+  if (lane === 'diagnostic' && retainedSource && reuseRunKey) {
+    const problem = repeatedReplayProblem({
+      sourceRunKey: reuseRunKey,
+      selectedTestIds: requestedSelection.titles,
+      suite,
+      grep: grep ?? '',
+      runs: listRunManifests(),
+    });
+    if (problem) throw new Error(problem);
+    const sourceOutcomes = retainedSource.outcomes ?? [];
+    const failedTestIds = sourceOutcomes
+      .filter((outcome) => !['passed', 'skipped'].includes(outcome.status))
+      .map((outcome) => outcome.id);
+    for (const testId of requestedSelection.titles)
+      console.log(
+        `[werkflow-test] ${replayStageNotice({
+          sourceRunKey: reuseRunKey,
+          testId,
+          sourceStatus: sourceOutcomes.find((outcome) => outcome.id === testId)?.status,
+          stages: retainedTestStages({
+            resultsDirectory: browserRunPaths(repositoryRoot, reuseRunKey).results,
+            testId,
+            failedTestIds,
+          }),
+        })}`,
+      );
+  }
+
+  const candidateFingerprint = calculateCandidateFingerprint(repositoryRoot);
+  let groupFingerprint: string | undefined = preparedRun?.fingerprint;
+  if (group && !preparedRun) {
+    const manifests = listRunManifests();
+    const snapshot = captureInputSnapshot(repositoryRoot);
+    groupFingerprint = createGroupQualification(repositoryRoot, groups, snapshot).qualify(group).fingerprint;
+    const problem = directGroupRetryProblem({
+      groupId: group.id,
+      target,
+      candidateFingerprint,
+      runs: manifests,
+      recoveredRunKeys: recoveredEnvironmentRuns(manifests),
+    });
+    if (problem) throw new Error(problem);
+  }
+  // A reference update run certifies nothing and is no attempt of the repeat rule (run-policy.ts).
+  const referenceUpdate = visualReferenceUpdateMode(process.env) === 'changed';
+  if (lane === 'iteration' && grep && !referenceUpdate) {
+    const policy = evaluateFocusedIterationRerun({
+      attemptsSinceLastPass: focusedIterationAttemptsSinceLastPass(listRunManifests(), {
+        suite,
+        target,
+        selectedTestIds: requestedSelection.titles,
+      }),
+    });
+    if (!policy.allowed) throw new Error(policy.reason ?? 'Focused iteration rerun blocked.');
+  }
+
+  if (!preparedRun) await runPlaywrightPreflight({ lane, target, repositoryRoot });
+  signal.throwIfAborted();
+  const runKey = preparedRun?.runKey ?? createRunKey();
+  process.env.WERKFLOW_RUN_KEY = runKey;
+  process.env.WERKFLOW_TEST_LANE = lane;
+  process.env.WERKFLOW_TEST_SUITE = suite;
+  process.env.WERKFLOW_TEST_TARGET = target;
+  process.env.WERKFLOW_TEST_GREP = grep ?? '';
+  if (reuseRunKey) process.env.WERKFLOW_REUSE_RUN_KEY = reuseRunKey;
+  else delete process.env.WERKFLOW_REUSE_RUN_KEY;
+  process.env.WERKFLOW_QUIET_REPORTER = '1';
+  const commandArgs = ['x', 'playwright', 'test', ...SUITE_CONFIG[suite], ...playwrightArgs];
+  process.env.WERKFLOW_TEST_COMMAND = referenceUpdate
+    ? visualReferenceUpdateCommand(`bun ${commandArgs.join(' ')}`)
+    : `bun ${commandArgs.join(' ')}`;
+  configureRunEnvironment(suite);
+  createRunManifest({
+    command: process.env.WERKFLOW_TEST_COMMAND,
+    grep,
+    selectedTestIds: requestedSelection.titles,
+    candidateFingerprint,
+    ...(groupFingerprint !== undefined ? { groupFingerprint } : {}),
+  });
+
+  // Started before the log and the progress timer, so a container that fails to start leaks neither.
+  const visualBrowser = selectsVisualBrowser(requestedSelection.tests.map((test) => test.file))
+    ? await startVisualBrowser(repositoryRoot)
+    : null;
+  const logPath = resolve(runDirectory(runKey), 'runner.log');
+  const log = createWriteStream(logPath, { flags: 'a' });
+  log.on('error', () => undefined);
+  console.log(
+    `[werkflow-test] started ${lane} ${suite} run ${runKey} (target ${target}); output: ${logPath}`,
+  );
+  const progress = setInterval(() => {
+    try {
+      const current = readRunManifest(runKey);
+      console.log(
+        `[werkflow-test] ${current.passed}/${current.total} passed; ${(Math.max(0, Date.now() - Date.parse(current.startedAt)) / 60_000).toFixed(1)} min; ${current.currentTestId ?? 'setup or teardown'}`,
+      );
+    } catch {
+      /* Manifest publication can race the first status tick. */
+    }
+  }, 60_000);
+  const exitCode = await runWithLogCleanup({
+    command: () =>
+      runSessionCommand([process.execPath, ...commandArgs], {
+        signal,
+        cwd: repositoryRoot,
+        env: { ...process.env, ...visualBrowser?.environment },
+        onStdout: (chunk) => {
+          log.write(chunk);
+        },
+        onStderr: (chunk) => {
+          log.write(chunk);
+        },
+      }),
+    closeLog: async () => {
+      clearInterval(progress);
+      await new Promise<void>((resolveLog, rejectLog) => {
+        log.end((error?: Error | null) => {
+          if (error) rejectLog(error);
+          else resolveLog();
+        });
+      });
+    },
+    reportSecondaryFailure: (error) => {
+      console.error(
+        `[werkflow-test] Log cleanup also failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    },
+  }).finally(() => visualBrowser?.stop());
+
+  let manifest;
+  try {
+    manifest = readRunManifest(runKey);
+  } catch {
+    throw new Error(`Playwright exited ${exitCode} without manifest ${manifestPath(runKey)}.`);
+  }
+  const timing = selectedGroup
+    ? getGroupTimingRequirements(selectedGroup, repositoryRoot)
+    : {
+        requireFreshness: requestedSelection.titles.some((title) => title.includes('@FRESHNESS')),
+        requireReadiness: requestedSelection.titles.some((title) => title.includes('@READINESS')),
+      };
+  // Deadlines fail a run in release verification and for measured performance specs; elsewhere they are recorded.
+  const enforceDeadlines =
+    preparedRun?.enforceDeadlines ?? requestedSelection.tests.some((test) => isPerformanceSpec(test.file));
+  const latencyEvidence = checkLatencyEvidence({
+    directory: runDirectory(runKey),
+    ...timing,
+    enforceDeadlines,
+  });
+  writeFileSync(
+    resolve(runDirectory(runKey), 'latency-summary.json'),
+    JSON.stringify(latencyEvidence, null, 2),
+  );
+  for (const measured of latencyEvidence.comparisons)
+    console.log(
+      `[werkflow-test] ${measured.scenarioId} ${measured.basis === 'median' ? `median of ${measured.samples.length} samples` : `sample ${measured.sample}`}: correctness=${measured.correctness}; responsiveness=${measured.responsiveness}; baseline=${measured.comparison.status}`,
+    );
+  if (['passed', 'diagnostic_passed'].includes(manifest.status)) {
+    const evidenceErrors = validateExecutedSelection({
+      selectedTestIds: requestedSelection.titles,
+      outcomes: manifest.outcomes ?? [],
+      candidateBefore: candidateFingerprint,
+      // A reference update run writes the reference images it fingerprints, so
+      // its own writes are not drift. It is an iteration run and certifies nothing.
+      candidateAfter: referenceUpdate ? candidateFingerprint : calculateCandidateFingerprint(repositoryRoot),
+    });
+    evidenceErrors.push(...latencyEvidence.problems);
+    if (evidenceErrors.length)
+      manifest = updateRunManifest(runKey, (current) => ({
+        status: 'failed',
+        failures: [
+          ...current.failures,
+          { title: 'Execution evidence', file: null, message: evidenceErrors.join('\n') },
+        ],
+      }));
+  }
+  if (
+    ['starting', 'running'].includes(manifest.status) ||
+    (exitCode !== 0 && ['passed', 'diagnostic_passed'].includes(manifest.status))
+  ) {
+    recordRunnerFailure(
+      new Error(`Playwright exited with code ${exitCode} and run status ${manifest.status}.`),
+    );
+    manifest = readRunManifest(runKey);
+  }
+  signal.throwIfAborted();
+  await finalizeQualifiedWorld();
+  manifest = readRunManifest(runKey);
+  console.log(
+    `[werkflow-test] ${manifest.status}; ${manifest.passed}/${manifest.total} passed; run ${runKey}`,
+  );
+  if (manifest.failures[0]) console.log(`[werkflow-test] failure: ${manifest.failures[0].message}`);
+  return ['passed', 'diagnostic_passed'].includes(manifest.status) ? exitCode : 1;
+}
+
+/** Where each failed test of a run stopped, from its traces; null where no trace is readable. */
+function failedTestStages(
+  repositoryRoot: string,
+  run: { runKey: string; outcomes?: readonly { id: string; status: string }[] | undefined },
+) {
+  const failedTestIds = (run.outcomes ?? [])
+    .filter((outcome) => !['passed', 'skipped'].includes(outcome.status))
+    .map((outcome) => outcome.id);
+  const resultsDirectory = browserRunPaths(repositoryRoot, run.runKey).results;
+  return failedTestIds.map((testId) => retainedTestStages({ resultsDirectory, testId, failedTestIds }));
+}
+
+/**
+ * A fresh-world replay is checked here before Boat may run it: the machine gets the run's manifest
+ * but not its traces, which decide whether a local run's failed test wrote to its world. The build
+ * is the one check left to the machine, which builds the tree and compares its inputs itself.
+ */
+function freshReplayProblemHere(argv: readonly string[], repositoryRoot: string): string | undefined {
+  const [lane, , ...args] = argv;
+  if (lane !== 'diagnostic') return undefined;
+  const freshFor = parseRunnerArguments(lane, args)['--fresh-for'];
+  if (!freshFor) return undefined;
+  const source = readRunManifest(freshFor);
+  return freshDiagnosisProblem({
+    source,
+    servedBuildId: source.buildId,
+    servedBuildInputs: source.buildInputs ?? null,
+    runs: listRunManifests(),
+    failedTestStages: failedTestStages(repositoryRoot, source),
+  });
+}
+
+/** The build the test server serves: .next/BUILD_ID of the recorded build. */
+function servedBuildId(): string | null {
+  const buildIdPath = resolve(import.meta.dir, '../.next/BUILD_ID');
+  return existsSync(buildIdPath) ? readFileSync(buildIdPath, 'utf8').trim() : null;
+}
+
+function recordRunnerFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const runKey = process.env.WERKFLOW_RUN_KEY;
+  if (runKey && existsSync(manifestPath(runKey))) {
+    try {
+      updateRunManifest(runKey, (current) => ({
+        status: current.world && !current.cleanedAt ? 'failed_retained' : 'failed',
+        retainedAt:
+          current.world && !current.cleanedAt
+            ? (current.retainedAt ?? new Date().toISOString())
+            : current.retainedAt,
+        completedAt: new Date().toISOString(),
+        failures: [
+          ...current.failures,
+          {
+            title: 'Test runner',
+            file: current.currentTestId?.split(' › ')[0] ?? 'scripts/run-playwright.ts',
+            ...(current.currentTestId ? { testId: current.currentTestId } : {}),
+            message,
+          },
+        ],
+      }));
+      archiveRunOutputs(runKey);
+    } catch (manifestError) {
+      console.error(`Could not record runner failure: ${String(manifestError)}`);
+    }
+  }
+}
+
+// A focused run goes to Boat when it needs the app built at this tree's migrations: a capture or a
+// reference update always, any other focused run under migration drift
+// (lib/testing/boat/focused-on-boat.ts). An unavailable Boat never turns it into a local build.
+{
+  const replayProblem = freshReplayProblemHere(process.argv.slice(2), resolve(import.meta.dir, '..'));
+  if (replayProblem) {
+    console.error(`Fresh-world diagnostic refused: ${replayProblem}`);
+    process.exit(1);
+  }
+  const boat = await focusedOnBoat(process.argv.slice(2), resolve(import.meta.dir, '..'));
+  if (typeof boat === 'number') process.exit(boat);
+  if (boat) {
+    for (const line of focusedUnavailableNotice(boat.unavailable, process.argv.slice(2), process.env))
+      console.error(line);
+    process.exit(1);
+  }
+}
+
+try {
+  // Only the group lane parses differently; main() refuses an unknown lane with its usage.
+  const requestedLane = PLAYWRIGHT_LANES.find((candidate) => candidate === process.argv[2]) ?? 'direct';
+  const requestedOptions = parseRunnerArguments(requestedLane, process.argv.slice(4));
+  const localTarget = process.argv[3] !== 'canary' && requestedOptions['--target'] !== 'cloud';
+  const operation = `Playwright ${process.argv.slice(2, 4).join(' ')}`;
+  process.exitCode = await withWorkspaceTestLock({ operation }, async () => {
+    try {
+      // A run from test:verify inherits the runner's hold; a focused run shares the stack (stack-lock.ts).
+      return await withTestSession((signal) =>
+        localTarget
+          ? withStackLock(
+              { mode: 'shared', operation, repositoryRoot: resolve(import.meta.dir, '..'), signal },
+              () => main(signal),
+            )
+          : main(signal),
+      );
+    } catch (error) {
+      recordRunnerFailure(error);
+      throw error;
+    }
+  });
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}

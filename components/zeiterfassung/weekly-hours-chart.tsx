@@ -1,0 +1,268 @@
+'use client';
+
+import { useMemo } from 'react';
+import { cn, formatBerlin } from '@/lib/utils';
+import { computeBreakdownForSettings } from '@/lib/time-tracking/settings';
+import { formatDuration } from '@/lib/time-tracking/helpers';
+import { sumTargetMinutes, type DailyTarget } from '@/lib/personnel/targets';
+import type { DayData } from '@/hooks/use-weekly-time-data';
+import type { BreakPolicyValues } from '@/lib/time-tracking/settings';
+
+interface WeeklyHoursChartProps {
+  weekData: DayData[];
+  todayIndex: number;
+  liveTodayMinutes?: number;
+  liveTodayBreakMinutes?: number;
+  /** Today's break rule; without one, today counts as manual breaks. */
+  liveTodayBreakPolicy?: BreakPolicyValues;
+  narrowBars?: boolean;
+  weekLabel?: { dateRange: string; kw: string };
+  /** Monday-first resolved daily targets (P1-04) for the shown week. */
+  weekTargets?: DailyTarget[] | undefined;
+  className?: string;
+}
+
+const GRID_HOURS = [2, 4, 6, 8, 10, 12];
+// The value axis always reaches at least eight hours, however short the week.
+const MIN_AXIS_CEILING_MINUTES = 8 * 60;
+const BAR_HEIGHT = 180;
+const LABEL_AREA = 24;
+
+type WeeklyHoursChartBarsProps = {
+  data: DayData[];
+  todayIndex: number;
+  narrowBars: boolean;
+  minutesToPx: (mins: number) => number;
+};
+
+/* Bar columns */
+function WeeklyHoursChartBars({ data, todayIndex, narrowBars, minutesToPx }: WeeklyHoursChartBarsProps) {
+  return (
+    <div
+      className="absolute flex items-end gap-1 sm:gap-1.5"
+      style={{ top: 0, bottom: LABEL_AREA, left: 28, right: 0 }}
+    >
+      {data.map((day, i) => {
+        const isToday = i === todayIndex;
+        const workPx = minutesToPx(day.workMinutes);
+        const breakPx = minutesToPx(day.breakMinutes);
+        const overtimePx = minutesToPx(day.overtimeMinutes);
+        const detailsLabel =
+          `${day.label}: Anwesenheit ${formatDuration(day.totalMinutes)}, ` +
+          `Arbeitszeit ${formatDuration(day.workMinutes)}, ` +
+          `Pause ${formatDuration(day.breakMinutes)}, ` +
+          `Überstunden ${formatDuration(day.overtimeMinutes)}`;
+
+        return (
+          <div
+            key={day.date}
+            className="flex h-full flex-1 flex-col items-center justify-end"
+            role="img"
+            aria-label={detailsLabel}
+            title={detailsLabel}
+          >
+            <div
+              className={cn(
+                'flex flex-col-reverse overflow-hidden rounded-t-sm',
+                narrowBars ? 'w-full max-w-[66px]' : 'w-[85%]',
+                isToday && 'ring-1 ring-foreground/15',
+              )}
+              style={{ height: workPx + breakPx + overtimePx }}
+            >
+              {workPx > 0 && <div className="w-full shrink-0 bg-success" style={{ height: workPx }} />}
+              {breakPx > 0 && <div className="w-full shrink-0 bg-warning" style={{ height: breakPx }} />}
+              {overtimePx > 0 && <div className="w-full shrink-0 bg-info" style={{ height: overtimePx }} />}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Day labels */
+function WeeklyHoursChartDayLabels({ data, todayIndex }: { data: DayData[]; todayIndex: number }) {
+  return (
+    <div
+      className="absolute flex gap-1 sm:gap-1.5"
+      style={{ bottom: 0, height: LABEL_AREA, left: 28, right: 0 }}
+    >
+      {data.map((day, i) => {
+        const isToday = i === todayIndex;
+        return (
+          <div key={`lbl-${day.date}`} className="flex flex-1 items-start justify-center pt-1.5">
+            <span
+              className={cn(
+                'text-xs tabular-nums leading-none',
+                isToday ? 'font-semibold text-foreground' : 'text-muted-foreground',
+              )}
+            >
+              {day.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Legend */
+function WeeklyHoursChartLegend() {
+  return (
+    <div className="mt-2 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-2 rounded-full bg-success" />
+        Arbeitszeit
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-2 rounded-full bg-warning" />
+        Pause
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-2 rounded-full bg-info" />
+        Überstunden
+      </span>
+    </div>
+  );
+}
+
+function WeeklyHoursChartHeader({
+  weekLabel,
+  weeklyTargetMinutes,
+}: {
+  weekLabel: { dateRange: string; kw: string };
+  weeklyTargetMinutes: number | null;
+}) {
+  return (
+    <div className="mb-6 flex items-baseline justify-between gap-2 text-xs font-medium tabular-nums text-muted-foreground">
+      <span>{weekLabel.dateRange}</span>
+      <span className="flex items-baseline gap-3">
+        {weeklyTargetMinutes !== null && <span>Soll: {formatDuration(weeklyTargetMinutes)}</span>}
+        <span>{weekLabel.kw}</span>
+      </span>
+    </div>
+  );
+}
+
+/* Y-axis labels and horizontal grid lines */
+function WeeklyHoursChartGrid({
+  gridLines,
+  minutesToPx,
+}: {
+  gridLines: number[];
+  minutesToPx: (mins: number) => number;
+}) {
+  return (
+    <>
+      {/* Y-axis labels – absolutely positioned from bottom, centered on the gridline.
+         `bottom` sets the element's bottom edge, so translateY(50%) shifts it down
+         by half its own height, placing its vertical center on the line. */}
+      {gridLines.map((h) => (
+        <span
+          key={`label-${h}`}
+          className="absolute left-0 z-20 translate-y-1/2 text-xs leading-none tabular-nums text-muted-foreground"
+          style={{ bottom: LABEL_AREA + minutesToPx(h * 60) }}
+        >
+          {h}h
+        </span>
+      ))}
+
+      {/* Horizontal grid lines – same coordinate system as labels */}
+      {gridLines.map((h) => (
+        <div
+          key={`grid-${h}`}
+          className="pointer-events-none absolute z-10 border-t border-dashed border-muted-foreground/15"
+          style={{
+            bottom: LABEL_AREA + minutesToPx(h * 60),
+            left: 28,
+            right: 0,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+export function WeeklyHoursChart({
+  weekData,
+  todayIndex,
+  liveTodayMinutes,
+  liveTodayBreakMinutes,
+  liveTodayBreakPolicy,
+  narrowBars = false,
+  weekLabel,
+  weekTargets,
+  className,
+}: WeeklyHoursChartProps) {
+  const data = useMemo(() => {
+    if (!weekData.length) return [];
+    return weekData.map((day, i) => {
+      if (i === todayIndex && liveTodayMinutes !== undefined) {
+        const bd = computeBreakdownForSettings(
+          liveTodayMinutes,
+          liveTodayBreakMinutes ?? 0,
+          liveTodayBreakPolicy,
+          weekTargets?.[i]?.targetMinutes,
+        );
+        return { ...day, ...bd, totalMinutes: liveTodayMinutes };
+      }
+      return day;
+    });
+  }, [weekData, todayIndex, liveTodayBreakMinutes, liveTodayBreakPolicy, liveTodayMinutes, weekTargets]);
+
+  const weeklyTargetMinutes = useMemo(
+    () => (weekTargets ? sumTargetMinutes(weekTargets) : null),
+    [weekTargets],
+  );
+
+  const maxMinutes = useMemo(() => {
+    const tallest = Math.max(...data.map((d) => d.totalMinutes), 0);
+    const ceil = Math.max(Math.ceil(tallest / 120) * 120, MIN_AXIS_CEILING_MINUTES);
+    return Math.min(ceil, 12 * 60);
+  }, [data]);
+
+  const gridLines = useMemo(() => GRID_HOURS.filter((h) => h * 60 <= maxMinutes), [maxMinutes]);
+
+  if (!data.length) return null;
+
+  // Helper: convert minutes to px offset from bottom of bar area
+  const minutesToPx = (mins: number) => (mins / maxMinutes) * BAR_HEIGHT;
+
+  return (
+    <div className={cn('isolate w-full overflow-hidden', className)}>
+      {weekLabel && (
+        <WeeklyHoursChartHeader weekLabel={weekLabel} weeklyTargetMinutes={weeklyTargetMinutes} />
+      )}
+
+      {/* Chart wrapper: position relative so all children use the same coordinate space.
+          The bar area occupies the top BAR_HEIGHT px, the label area the bottom LABEL_AREA px. */}
+      <div className="relative" style={{ height: BAR_HEIGHT + LABEL_AREA }}>
+        <WeeklyHoursChartGrid gridLines={gridLines} minutesToPx={minutesToPx} />
+
+        <WeeklyHoursChartBars
+          data={data}
+          todayIndex={todayIndex}
+          narrowBars={narrowBars}
+          minutesToPx={minutesToPx}
+        />
+
+        <WeeklyHoursChartDayLabels data={data} todayIndex={todayIndex} />
+      </div>
+
+      <WeeklyHoursChartLegend />
+      <WeeklySchoolDays weekTargets={weekTargets} />
+    </div>
+  );
+}
+
+/* The week's Berufsschule days: each counts with its normal target (werk-flow/werkflow-planning#165). */
+function WeeklySchoolDays({ weekTargets }: { weekTargets: DailyTarget[] | undefined }) {
+  const schoolDays = (weekTargets ?? []).filter((target) => target.absence?.type === 'school');
+  if (schoolDays.length === 0) return null;
+  return (
+    <p className="mt-2 text-center text-xs text-muted-foreground">
+      {`Berufsschule diese Woche: ${schoolDays.map((target) => formatBerlin(`${target.date}T12:00:00Z`, 'weekdayDayMonth')).join(', ')}. `}
+      An diesen Tagen gilt dein Tagesziel als erfüllt.
+    </p>
+  );
+}

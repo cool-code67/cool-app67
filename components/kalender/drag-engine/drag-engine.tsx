@@ -1,0 +1,457 @@
+'use client';
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { autoScrollDue, autoScrollVelocity, exceedsDragThreshold } from '@/lib/calendar/drag-math';
+import {
+  ghostPaint,
+  ghostWidth,
+  visibleGhostOrigin,
+  zoneAtPoint,
+  type DragVerdict,
+} from '@/lib/calendar/drag-ghost';
+import { CALENDAR_LAYER_CLASS } from '../surface/layers';
+import { targetKey, type CalendarDragPayload, type CalendarDragTarget, type DragModifiers } from './payload';
+
+/**
+ * The calendar's one drag engine (P1-24a, decision Q6): pointer events with
+ * capture, a five-pixel threshold, a ghost moved by `transform` inside one
+ * animation frame per pointer batch, hit testing against the active
+ * surface's precomputed map, auto-scroll near the edges, Escape to cancel,
+ * and no React state between the start and the drop. The active view
+ * registers a surface; side panels register drop zones; every draggable
+ * calls `startDrag` from its pointer-down handler.
+ */
+
+export type DragSurface = {
+  /** Client coordinates to a target, against a map computed at drag start. */
+  /** `origin` is the ghost's top-left corner: the card's own edge, for surfaces with an axis. */
+  resolveTarget: (
+    point: { x: number; y: number },
+    payload: CalendarDragPayload,
+    modifiers: DragModifiers,
+    origin: { x: number; y: number },
+  ) => CalendarDragTarget | null;
+  /** The client pre-check: the same rule the server enforces, or a view rule. */
+  checkTarget: (
+    target: CalendarDragTarget,
+    payload: CalendarDragPayload,
+    modifiers: DragModifiers,
+  ) => DragVerdict;
+  /** Called on target change only; writes to the DOM, never to React state. */
+  onTargetChange?: (
+    target: CalendarDragTarget | null,
+    verdict: DragVerdict | null,
+    payload: CalendarDragPayload,
+  ) => void;
+  onDrop: (target: CalendarDragTarget, payload: CalendarDragPayload, modifiers: DragModifiers) => void;
+  onEnd?: (payload: CalendarDragPayload) => void;
+  /** Auto-scroll container, if any. */
+  scrollContainer: () => HTMLElement | null;
+  /** Called once at drag start so the surface can compute its map. */
+  prepare?: (payload: CalendarDragPayload) => void;
+};
+
+export type DragSession = {
+  payload: CalendarDragPayload;
+  ghost: { label: string; secondary?: string | undefined; width: number; height: number };
+  /** Pointer offset from the card's top-left corner. */
+  pointerOffset: { x: number; y: number };
+};
+
+type ZoneRegistration = { zone: 'parkplatz'; element: HTMLElement };
+
+type EngineContextValue = {
+  startDrag: (event: React.PointerEvent, session: DragSession) => void;
+  registerSurface: (surface: DragSurface | null) => void;
+  registerDropZone: (registration: ZoneRegistration) => () => void;
+  /** True while a drag is in progress; a ref so reading it never renders. */
+  isDragging: () => boolean;
+  /** Read-only mode refuses every start; the surface shows the reason. */
+};
+
+const DragEngineContext = createContext<EngineContextValue | null>(null);
+
+type ActiveDrag = {
+  session: DragSession;
+  pointerId: number;
+  start: { x: number; y: number };
+  last: { x: number; y: number; alt: boolean; shift: boolean };
+  moved: boolean;
+  zones: Array<{ zone: 'parkplatz'; rect: DOMRect }>;
+  targetKey: string;
+  target: CalendarDragTarget | null;
+  verdict: DragVerdict | null;
+  frame: number | null;
+  captured: Element | null;
+  /** When the pointer entered the container's auto-scroll edge; a pointer crossing the edge does not scroll. */
+  edgeSince: number | null;
+};
+
+const LONG_PRESS_MS = 250;
+
+/** Writes the ghost's state, message, width and on-screen position for the current target. */
+function paintDragGhost(ghost: HTMLDivElement | null, drag: ActiveDrag): void {
+  if (!ghost) return;
+  const x = drag.last.x - drag.session.pointerOffset.x;
+  const y = drag.last.y - drag.session.pointerOffset.y;
+  const { state, text } = ghostPaint(Boolean(drag.target), drag.verdict);
+  ghost.dataset.state = state;
+  const message = ghost.querySelector<HTMLElement>('[data-ghost-message]');
+  if (message) {
+    if (message.textContent !== text) message.textContent = text;
+    message.hidden = text === '';
+    ghost.style.width = `${ghostWidth(drag.session.ghost.width, text !== '', window.innerWidth)}px`;
+  }
+  // A refusal can be taller than the source card. Keep the full message on screen
+  // without changing the pointer coordinates used to resolve the actual drop.
+  const visible = visibleGhostOrigin(
+    { x, y },
+    { width: ghost.offsetWidth, height: ghost.offsetHeight },
+    { width: window.innerWidth, height: window.innerHeight },
+  );
+  ghost.style.transform = `translate3d(${Math.round(visible.x)}px, ${Math.round(visible.y)}px, 0)`;
+}
+
+// The click that follows a pointer release lands on the drag source; after a
+// moved drag it must not open the card. One capture-phase listener eats it
+// and leaves on the next task if no click arrives.
+function suppressNextClick(): void {
+  const swallow = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    remove();
+  };
+  const remove = () => {
+    window.removeEventListener('click', swallow, true);
+    window.clearTimeout(timer);
+  };
+  window.addEventListener('click', swallow, true);
+  const timer = window.setTimeout(remove, 0);
+}
+
+/**
+ * The moment a press becomes a drag (past the threshold, or after a touch
+ * long-press): mark the body, let the surface compute its map, measure the
+ * drop zones and show the ghost at the source card's size.
+ */
+function activateDrag(
+  drag: ActiveDrag,
+  surface: DragSurface | null,
+  zones: readonly ZoneRegistration[],
+  ghost: HTMLDivElement | null,
+): void {
+  drag.moved = true;
+  document.body.classList.add('is-dragging');
+  surface?.prepare?.(drag.session.payload);
+  drag.zones = zones.map((registration) => ({
+    zone: registration.zone,
+    rect: registration.element.getBoundingClientRect(),
+  }));
+  if (ghost) {
+    ghost.hidden = false;
+    ghost.style.width = `${drag.session.ghost.width}px`;
+    ghost.style.minHeight = `${drag.session.ghost.height}px`;
+  }
+}
+
+/** Scrolls the container once the pointer has rested at its edge; true while the pointer is in the edge band. */
+function scrollAtEdge(drag: ActiveDrag, container: HTMLElement, point: { x: number; y: number }): boolean {
+  const rect = container.getBoundingClientRect();
+  const dx = autoScrollVelocity(point.x, rect.left, rect.right);
+  const dy = autoScrollVelocity(point.y, rect.top, rect.bottom);
+  if (dx === 0 && dy === 0) {
+    drag.edgeSince = null;
+    return false;
+  }
+  drag.edgeSince ??= performance.now();
+  if (autoScrollDue(drag.edgeSince, performance.now())) container.scrollBy(dx, dy);
+  return true;
+}
+
+/** The drag ends: stop the frame, hide the ghost, release the capture, swallow the click after a move. */
+function releaseDrag(drag: ActiveDrag, ghost: HTMLDivElement | null): void {
+  if (drag.frame !== null) cancelAnimationFrame(drag.frame);
+  document.body.classList.remove('is-dragging');
+  if (ghost) {
+    ghost.hidden = true;
+    ghost.dataset.state = 'idle';
+  }
+  if (drag.captured && 'releasePointerCapture' in drag.captured) {
+    try {
+      drag.captured.releasePointerCapture(drag.pointerId);
+    } catch {
+      // best-effort: the browser may have released the capture already; the drag ends either way.
+    }
+  }
+  if (drag.moved) suppressNextClick();
+}
+
+/**
+ * One frame per pointer batch: resolve the target, run the pre-check on a
+ * change, auto-scroll the surface's container, and paint the ghost.
+ */
+function advanceDrag(
+  drag: ActiveDrag,
+  surface: DragSurface | null,
+  ghost: HTMLDivElement | null,
+  stepRef: React.RefObject<() => void>,
+): void {
+  drag.frame = null;
+  const point = { x: drag.last.x, y: drag.last.y };
+  const container = surface?.scrollContainer() ?? null;
+  if (container && scrollAtEdge(drag, container, point))
+    drag.frame = requestAnimationFrame(() => stepRef.current());
+  const modifiers: DragModifiers = { copy: drag.last.alt, fine: drag.last.shift };
+  const origin = { x: point.x - drag.session.pointerOffset.x, y: point.y - drag.session.pointerOffset.y };
+  // A card that left the Parkplatz cannot land back on it: the panel's zone is invisible to a parked payload.
+  const zone = drag.session.payload.kind === 'parked' ? undefined : zoneAtPoint(drag.zones, point);
+  const target: CalendarDragTarget | null = zone
+    ? { kind: 'zone', zone: zone.zone }
+    : (surface?.resolveTarget(point, drag.session.payload, modifiers, origin) ?? null);
+  const key = targetKey(target);
+  if (key !== drag.targetKey) {
+    drag.targetKey = key;
+    drag.target = target;
+    drag.verdict = target && surface ? surface.checkTarget(target, drag.session.payload, modifiers) : null;
+    surface?.onTargetChange?.(target, drag.verdict, drag.session.payload);
+  }
+  paintDragGhost(ghost, drag);
+}
+
+type DragLoop = {
+  activeRef: React.RefObject<ActiveDrag | null>;
+  surfaceRef: React.RefObject<DragSurface | null>;
+  zonesRef: React.RefObject<ZoneRegistration[]>;
+  ghostRef: React.RefObject<HTMLDivElement | null>;
+  finish: (dropped: boolean) => void;
+  schedule: () => void;
+  step: () => void;
+};
+
+/** Follows the pointer and the keys of a drag on the window; the returned cleanup also cancels a running drag. */
+function listenForDrag(loop: DragLoop): () => void {
+  const { activeRef, surfaceRef, zonesRef, ghostRef, finish, schedule, step } = loop;
+  const onMove = (event: PointerEvent) => {
+    const drag = activeRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const events = 'getCoalescedEvents' in event ? event.getCoalescedEvents() : [];
+    const latest = events.length ? (events[events.length - 1] ?? event) : event;
+    drag.last = { x: latest.clientX, y: latest.clientY, alt: event.altKey, shift: event.shiftKey };
+    if (!drag.moved) {
+      if (!exceedsDragThreshold(drag.start, drag.last)) return;
+      activateDrag(drag, surfaceRef.current, zonesRef.current, ghostRef.current);
+    }
+    schedule();
+  };
+  const onUp = (event: PointerEvent) => {
+    const drag = activeRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag.last = { x: event.clientX, y: event.clientY, alt: event.altKey, shift: event.shiftKey };
+    if (drag.moved) {
+      // A final synchronous resolve, so the drop lands where the pointer let go.
+      if (drag.frame !== null) {
+        cancelAnimationFrame(drag.frame);
+        drag.frame = null;
+      }
+      step();
+    }
+    finish(true);
+  };
+  const onCancel = (event: PointerEvent) => {
+    const drag = activeRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    finish(false);
+  };
+  const onKey = (event: KeyboardEvent) => {
+    const drag = activeRef.current;
+    if (!drag) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      finish(false);
+      return;
+    }
+    if (event.key === 'Alt' || event.key === 'Shift') {
+      drag.last = { ...drag.last, alt: event.altKey, shift: event.shiftKey };
+      drag.targetKey = '';
+      schedule();
+    }
+  };
+  const onKeyUp = (event: KeyboardEvent) => {
+    const drag = activeRef.current;
+    if (!drag || (event.key !== 'Alt' && event.key !== 'Shift')) return;
+    drag.last = { ...drag.last, alt: event.altKey, shift: event.shiftKey };
+    drag.targetKey = '';
+    schedule();
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onCancel);
+  // Capture, so Escape cancels the drag before the panels' document
+  // handlers see it; the cancel prevents default and the panel stays open.
+  window.addEventListener('keydown', onKey, { capture: true });
+  window.addEventListener('keyup', onKeyUp);
+  return () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onCancel);
+    window.removeEventListener('keydown', onKey, { capture: true });
+    window.removeEventListener('keyup', onKeyUp);
+    finish(false);
+  };
+}
+
+/** The drag a press opens; it stays a press until the threshold or the long press activates it. */
+function pressedDrag(event: React.PointerEvent, session: DragSession): ActiveDrag {
+  return {
+    session,
+    pointerId: event.pointerId,
+    start: { x: event.clientX, y: event.clientY },
+    last: { x: event.clientX, y: event.clientY, alt: event.altKey, shift: event.shiftKey },
+    moved: false,
+    zones: [],
+    targetKey: 'none',
+    target: null,
+    verdict: null,
+    frame: null,
+    captured: event.currentTarget,
+    edgeSince: null,
+  };
+}
+
+/** Both pointer movement and a stationary touch long-press reveal this same content. */
+function writeGhostLabels(ghost: HTMLDivElement | null, session: DragSession): void {
+  const label = ghost?.querySelector<HTMLElement>('[data-ghost-label]');
+  if (label) label.textContent = session.ghost.label;
+  const secondary = ghost?.querySelector<HTMLElement>('[data-ghost-secondary]');
+  if (secondary) {
+    secondary.textContent = session.ghost.secondary ?? '';
+    secondary.hidden = !session.ghost.secondary;
+  }
+}
+
+/** A press on a draggable: the drag opens, the ghost takes its labels, and a touch arms its long press. */
+function beginDragPress(
+  event: React.PointerEvent,
+  session: DragSession,
+  { activeRef, surfaceRef, zonesRef, ghostRef }: Omit<DragLoop, 'finish' | 'schedule' | 'step'>,
+  schedule: () => void,
+): void {
+  if (activeRef.current || event.button !== 0) return;
+  const element = event.currentTarget;
+  const isTouch = event.pointerType === 'touch';
+  const drag = pressedDrag(event, session);
+  activeRef.current = drag;
+  writeGhostLabels(ghostRef.current, session);
+  try {
+    element.setPointerCapture(event.pointerId);
+  } catch {
+    drag.captured = null;
+  }
+  if (isTouch) {
+    // A touch starts the drag after a long press; a quick swipe pans instead.
+    window.setTimeout(() => {
+      const current = activeRef.current;
+      if (current === drag && !current.moved) {
+        activateDrag(current, surfaceRef.current, zonesRef.current, ghostRef.current);
+        schedule();
+      }
+    }, LONG_PRESS_MS);
+  }
+}
+
+export function CalendarDragProvider({ children }: { children: ReactNode }): React.JSX.Element {
+  const ghostRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<DragSurface | null>(null);
+  const zonesRef = useRef<ZoneRegistration[]>([]);
+  const activeRef = useRef<ActiveDrag | null>(null);
+
+  const finish = useCallback((dropped: boolean) => {
+    const drag = activeRef.current;
+    if (!drag) return;
+    activeRef.current = null;
+    releaseDrag(drag, ghostRef.current);
+    const surface = surfaceRef.current;
+    surface?.onTargetChange?.(null, null, drag.session.payload);
+    if (dropped && drag.moved && drag.target && drag.verdict?.ok && surface) {
+      surface.onDrop(drag.target, drag.session.payload, { copy: drag.last.alt, fine: drag.last.shift });
+    }
+    surface?.onEnd?.(drag.session.payload);
+  }, []);
+
+  const stepRef = useRef<() => void>(() => undefined);
+  const step = useCallback(() => {
+    const drag = activeRef.current;
+    if (!drag) return;
+    advanceDrag(drag, surfaceRef.current, ghostRef.current, stepRef);
+  }, []);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  const schedule = useCallback(() => {
+    const drag = activeRef.current;
+    if (!drag || drag.frame !== null) return;
+    drag.frame = requestAnimationFrame(step);
+  }, [step]);
+
+  useEffect(
+    () => listenForDrag({ activeRef, surfaceRef, zonesRef, ghostRef, finish, schedule, step }),
+    [finish, schedule, step],
+  );
+
+  const startDrag = useCallback(
+    (event: React.PointerEvent, session: DragSession) =>
+      beginDragPress(event, session, { activeRef, surfaceRef, zonesRef, ghostRef }, schedule),
+    [schedule],
+  );
+
+  const value = useMemo<EngineContextValue>(
+    () => ({
+      startDrag,
+      registerSurface: (surface) => {
+        surfaceRef.current = surface;
+      },
+      registerDropZone: (registration) => {
+        zonesRef.current = [...zonesRef.current, registration];
+        return () => {
+          zonesRef.current = zonesRef.current.filter((entry) => entry !== registration);
+        };
+      },
+      isDragging: () => activeRef.current?.moved === true,
+    }),
+    [startDrag],
+  );
+
+  return (
+    <DragEngineContext.Provider value={value}>
+      {children}
+      <div
+        ref={ghostRef}
+        hidden
+        aria-hidden="true"
+        data-calendar-drag-ghost=""
+        data-state="idle"
+        className={`pointer-events-none fixed left-0 top-0 ${CALENDAR_LAYER_CLASS.drag} flex flex-col justify-center gap-0.5 rounded-md border px-2 py-1 text-xs font-medium shadow-lg will-change-transform data-[state=idle]:border-calendar-planning-border data-[state=idle]:bg-calendar-planning data-[state=idle]:text-calendar-planning-foreground data-[state=valid]:border-calendar-planning-strong data-[state=valid]:bg-calendar-planning data-[state=valid]:text-calendar-planning-foreground data-[state=refused]:border-destructive data-[state=refused]:bg-destructive-soft data-[state=refused]:text-destructive-soft-foreground`}
+      >
+        <span data-ghost-label="" className="truncate" />
+        <span data-ghost-secondary="" className="truncate text-xs opacity-80" hidden />
+        <span data-ghost-message="" className="whitespace-normal break-words text-xs leading-normal" hidden />
+      </div>
+    </DragEngineContext.Provider>
+  );
+}
+
+export function useCalendarDrag(): EngineContextValue {
+  const context = useContext(DragEngineContext);
+  if (!context) throw new Error('useCalendarDrag requires a CalendarDragProvider.');
+  return context;
+}
+
+/** Registers the view's surface while it is mounted. */
+export function useDragSurface(surface: DragSurface | null): void {
+  const { registerSurface } = useCalendarDrag();
+  useEffect(() => {
+    registerSurface(surface);
+    return () => registerSurface(null);
+  }, [registerSurface, surface]);
+}

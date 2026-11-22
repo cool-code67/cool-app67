@@ -1,0 +1,353 @@
+'use client';
+
+import { StaleRegion } from '@/components/shared/stale-region';
+import { useId, useState } from 'react';
+import { FileUp } from 'lucide-react';
+
+import { useBanner } from '@/components/ui/banner';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorText } from '@/components/ui/error-text';
+import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { SectionError } from '@/components/ui/section-error';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useBusyIds } from '@/hooks/use-busy-id';
+import { useLiveView, type LiveViewResult, type LiveViewState } from '@/hooks/use-live-view';
+import { useServerAction } from '@/hooks/use-server-action';
+import { readInBackground } from '@/lib/data/background-read-client';
+import { uploadPersonnelDocumentDirect } from '@/lib/documents/upload-client';
+import { getPersonnelDocumentSignedUrl } from '@/lib/personnel/document-download-actions';
+import {
+  acknowledgePersonnelDocument,
+  acknowledgePersonnelRequirement,
+  type OwnPersonnelActions,
+} from '@/lib/personnel/lifecycle-actions';
+import { PersonnelOwnDocumentList, PersonnelOwnRequirementList } from './personnel-own-actions-lists';
+import { describeFailure } from '@/lib/action-messages';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+
+type EvidenceFieldErrors = { file?: string | undefined; type?: string | undefined };
+
+function PersonnelOwnActionsHeader({ prestart, onUpload }: { prestart: boolean; onUpload: () => void }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 id="own-personnel-actions-title" className="text-sm font-semibold">
+          Meine Personalaufgaben
+        </h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {prestart
+            ? 'Bis zum Zugangsstart siehst du nur freigegebene Unterlagen und deine Onboardingaufgaben.'
+            : 'Freigegebene Personalunterlagen und Aufgaben, die dich selbst betreffen.'}
+        </p>
+      </div>
+      <Button size="sm" variant="outline" onClick={onUpload}>
+        <FileUp className="size-4" /> Nachweis hochladen
+      </Button>
+    </div>
+  );
+}
+
+function PersonnelEvidenceUploadDialog({
+  open,
+  isPending,
+  onOpenChange,
+  formId,
+  fieldErrors,
+  documentType,
+  onFileChange,
+  onDocumentTypeChange,
+  error,
+  onSubmit,
+}: {
+  open: boolean;
+  isPending: boolean;
+  onOpenChange: (open: boolean) => void;
+  formId: string;
+  fieldErrors: EvidenceFieldErrors;
+  documentType: string;
+  onFileChange: (file: File | null) => void;
+  onDocumentTypeChange: (documentType: string) => void;
+  error: string | null;
+  onSubmit: () => Promise<void>;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} pending={isPending}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Gesundheitsnachweis hochladen</DialogTitle>
+          <DialogDescription>
+            Die Datei wird geschützt gespeichert. Andere Beschäftigte und Büro-Nutzer sehen sie nicht.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="space-y-4 py-1">
+          <form
+            id={formId}
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!isPending) void onSubmit();
+            }}
+          >
+            <Field label="Datei" htmlFor="own-evidence-file" required error={fieldErrors.file}>
+              <Input type="file" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
+            </Field>
+            <Field label="Dokumentart" htmlFor="own-evidence-type" required error={fieldErrors.type}>
+              <Input value={documentType} onChange={(event) => onDocumentTypeChange(event.target.value)} />
+            </Field>
+            <p className="text-xs text-muted-foreground">
+              Keine Diagnose oder medizinischen Details in WerkFlow erfassen.
+            </p>
+            <ErrorText>{error}</ErrorText>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+            Abbrechen
+          </Button>
+          <Button pending={isPending} type="submit" form={formId} disabled={isPending}>
+            Hochladen
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+function useOwnPersonnelActionsView() {
+  return useLiveView<OwnPersonnelActions>({
+    tables: [
+      'personnel_documents',
+      'personnel_document_releases',
+      'personnel_onboarding_plans',
+      'personnel_onboarding_requirements',
+    ],
+    read: async ({ signal }): Promise<LiveViewResult<OwnPersonnelActions>> => {
+      const result = await readInBackground('own-personnel-actions', {}, signal);
+      return result.success ? { ok: true, data: result.data } : { ok: false };
+    },
+  });
+}
+
+/** What every own action reports through: the view it refreshes, the row spinner, the banner and the error. */
+type OwnPersonnelActionsContext = {
+  view: LiveViewState<OwnPersonnelActions>;
+  runBusy: ReturnType<typeof useBusyIds>['run'];
+  showBanner: ReturnType<typeof useBanner>['showBanner'];
+  setError: (error: string | null) => void;
+};
+
+async function acknowledgeOwnRequirement(
+  { view, runBusy, showBanner, setError }: OwnPersonnelActionsContext,
+  requirementId: string,
+  requirementVersion: number,
+): Promise<void> {
+  setError(null);
+  await runBusy(requirementId, async () => {
+    try {
+      const result = await acknowledgePersonnelRequirement({
+        requirementId,
+        requirementVersion,
+        statement: 'Von mir als erledigt bestätigt.',
+        operationId: crypto.randomUUID(),
+      });
+      if (!result.success)
+        setError(
+          describeFailure(
+            result.error,
+            { stale_version: 'Die Aufgabe wurde inzwischen geändert.' },
+            'Die Bestätigung konnte nicht gespeichert werden.',
+          ),
+        );
+      else showBanner({ variant: 'success', message: 'Die Bestätigung wurde gespeichert.' });
+      await view.refresh();
+    } catch {
+      setError('Die Bestätigung konnte nicht gespeichert werden.');
+    }
+  });
+}
+
+async function openOwnPersonnelDocument(
+  { runBusy, setError }: OwnPersonnelActionsContext,
+  rowId: string,
+  documentId: string,
+): Promise<void> {
+  await runBusy(rowId, async () => {
+    try {
+      const result = await getPersonnelDocumentSignedUrl(documentId);
+      if (!result.success) {
+        setError('Das Dokument konnte nicht geöffnet werden.');
+        return;
+      }
+      window.location.assign(result.data.signedUrl);
+    } catch {
+      setError('Das Dokument konnte nicht geöffnet werden.');
+    }
+  });
+}
+
+async function acknowledgeOwnDocument(
+  { view, runBusy, showBanner, setError }: OwnPersonnelActionsContext,
+  personnelDocumentId: string,
+  version: number,
+): Promise<void> {
+  setError(null);
+  await runBusy(personnelDocumentId, async () => {
+    try {
+      const result = await acknowledgePersonnelDocument({
+        personnelDocumentId,
+        documentVersionNumber: version,
+        statement: 'Erhalt dieser Dokumentversion bestätigt.',
+        operationId: crypto.randomUUID(),
+      });
+      if (!result.success) {
+        setError('Die Empfangsbestätigung konnte nicht gespeichert werden.');
+      } else {
+        showBanner({ variant: 'success', message: 'Der Erhalt der Dokumentversion wurde bestätigt.' });
+        await view.refresh();
+      }
+    } catch {
+      setError('Die Empfangsbestätigung konnte nicht gespeichert werden.');
+    }
+  });
+}
+
+/** The evidence dialog's fields and its save, as the section renders them. */
+type OwnEvidenceUpload = {
+  file: File | null;
+  documentType: string;
+  setFieldErrors: (fieldErrors: EvidenceFieldErrors) => void;
+  run: (task: () => Promise<void>) => Promise<void>;
+  setUploadOpen: (open: boolean) => void;
+  setFile: (file: File | null) => void;
+};
+
+async function uploadOwnEvidence(
+  { view, showBanner, setError }: OwnPersonnelActionsContext,
+  { file, documentType, setFieldErrors, run, setUploadOpen, setFile }: OwnEvidenceUpload,
+): Promise<void> {
+  setError(null);
+  const fileError = file ? undefined : 'Bitte wähle eine Datei aus.';
+  const typeError = documentType.trim().length < 2 ? 'Bitte gib die Dokumentart an.' : undefined;
+  setFieldErrors({ file: fileError, type: typeError });
+  const evidenceErrors = { 'own-evidence-file': fileError, 'own-evidence-type': typeError };
+  if (focusFirstInvalidField(evidenceErrors) || !file) return;
+  const employeeRecordId = view.data?.employeeRecordId;
+  if (!employeeRecordId) return;
+  await run(async () => {
+    const result = await uploadPersonnelDocumentDirect({
+      employeeRecordId,
+      file,
+      documentType,
+      accessClass: 'health_evidence',
+      evidenceState: 'valid',
+      validUntil: null,
+      operationId: crypto.randomUUID(),
+    });
+    if (!result.success) {
+      setError('Der Nachweis konnte nicht hochgeladen werden.');
+      return;
+    }
+    setUploadOpen(false);
+    setFile(null);
+    showBanner({ variant: 'success', message: 'Der Gesundheitsnachweis wurde hochgeladen.' });
+    await view.refresh();
+  });
+}
+
+export function PersonnelOwnActionsSection({ forceVisible = false }: { forceVisible?: boolean }) {
+  const { showBanner } = useBanner();
+  const evidenceFormId = useId();
+  const { run: runBusy, isBusy } = useBusyIds();
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [documentType, setDocumentType] = useState('Krankheitsnachweis');
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<EvidenceFieldErrors>({});
+  const { run, isPending } = useServerAction(async (task: () => Promise<void>) => task());
+  const view = useOwnPersonnelActionsView();
+
+  // On the task list the section stays empty for most people, so a placeholder there
+  // would collapse and pull the list up while it loads (audit:layout streaming shift).
+  if (view.isLoading) return forceVisible ? <Skeleton className="h-28 w-full" /> : null;
+  if (!view.data) {
+    return forceVisible ? (
+      <SectionError onRetry={() => void view.refresh()} retryPending={view.isRefreshing}>
+        Deine persönlichen Aufgaben konnten nicht geladen werden.
+      </SectionError>
+    ) : null;
+  }
+  const { requirements, documents, prestart } = view.data;
+  if (!forceVisible && requirements.length === 0 && documents.length === 0) return null;
+
+  const actions: OwnPersonnelActionsContext = { view, runBusy, showBanner, setError };
+
+  return (
+    <section
+      className="space-y-4 rounded-lg border bg-card p-4 shadow-xs"
+      aria-labelledby="own-personnel-actions-title"
+      data-testid="personnel-own-actions"
+    >
+      <PersonnelOwnActionsHeader
+        prestart={prestart}
+        onUpload={() => {
+          // The file input remounts empty, so a file from an earlier opening must not upload.
+          setFile(null);
+          setError(null);
+          setFieldErrors({});
+          setUploadOpen(true);
+        }}
+      />
+      <StaleRegion stale={view.isStale} onRetry={view.refresh} className="space-y-4">
+        {requirements.length === 0 && documents.length === 0 ? (
+          <EmptyState size="compact" title="Keine offenen Personalaufgaben oder freigegebenen Unterlagen." />
+        ) : null}
+        {requirements.length > 0 ? (
+          <PersonnelOwnRequirementList
+            requirements={requirements}
+            isBusy={isBusy}
+            onAcknowledge={(requirementId, requirementVersion) =>
+              acknowledgeOwnRequirement(actions, requirementId, requirementVersion)
+            }
+          />
+        ) : null}
+        {documents.length > 0 ? (
+          <PersonnelOwnDocumentList
+            documents={documents}
+            isBusy={isBusy}
+            onDownload={(rowId, documentId) => openOwnPersonnelDocument(actions, rowId, documentId)}
+            onAcknowledge={(personnelDocumentId, version) =>
+              acknowledgeOwnDocument(actions, personnelDocumentId, version)
+            }
+          />
+        ) : null}
+      </StaleRegion>
+      {!uploadOpen && <ErrorText>{error}</ErrorText>}
+
+      <PersonnelEvidenceUploadDialog
+        open={uploadOpen}
+        isPending={isPending}
+        onOpenChange={setUploadOpen}
+        formId={evidenceFormId}
+        fieldErrors={fieldErrors}
+        documentType={documentType}
+        onFileChange={setFile}
+        onDocumentTypeChange={setDocumentType}
+        error={error}
+        onSubmit={() =>
+          uploadOwnEvidence(actions, { file, documentType, setFieldErrors, run, setUploadOpen, setFile })
+        }
+      />
+    </section>
+  );
+}

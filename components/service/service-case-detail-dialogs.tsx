@@ -1,0 +1,431 @@
+'use client';
+import { describeFailure } from '@/lib/action-messages';
+import { focusFirstInvalidField, REASON_MIN_3_MESSAGE } from '@/lib/ui/field-validation';
+
+import { useState, type ReactElement } from 'react';
+
+import { useBanner } from '@/components/ui/banner';
+import { Button } from '@/components/ui/button';
+import { DateTimeField } from '@/components/ui/date-time-field';
+import {
+  Dialog,
+  DialogContent,
+  DialogBody,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorText } from '@/components/ui/error-text';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { useJobEntityOptions } from '@/hooks/use-job-entity-options';
+import { useServerAction } from '@/hooks/use-server-action';
+import { createCustomerFollowUp } from '@/lib/customer-relationships/actions';
+import { parseBerlinDateTimeInput, tomorrowMorningInBerlin } from '@/lib/date-time/berlin';
+import { linkServiceCaseRelation } from '@/lib/service-cases/actions';
+import {
+  SERVICE_CASE_RELATION_LABELS,
+  SERVICE_CASE_RELATION_TYPES,
+  type ServiceCaseDetailWorkspace,
+  type ServiceCaseEvidenceOption,
+  type ServiceCaseRelationType,
+} from '@/lib/service-cases/types';
+import { WORK_ARTIFACT_KIND_LABELS } from '@/lib/work-artifacts/types';
+
+const RELATION_ERRORS: Record<string, string> = {
+  service_case_stale_version:
+    'Der Servicefall wurde inzwischen geändert. Prüfe den aktuellen Stand und versuche es erneut.',
+  service_case_relation_cycle: 'Diese Verknüpfung würde einen widersprüchlichen Kreis erzeugen.',
+};
+
+type RelationDialogProps = {
+  workspace: ServiceCaseDetailWorkspace;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Called after success so the section settles through the live read. */
+  onSaved: () => void;
+};
+
+/** The related case, the relation and its reason, with the case search and the link. */
+function useRelationForm({ workspace, onOpenChange, onSaved }: Omit<RelationDialogProps, 'open'>) {
+  const [relatedId, setRelatedId] = useState('');
+  const [relationType, setRelationType] = useState<ServiceCaseRelationType>('related');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  // Other cases of the same customer, searched on the server; the case itself is no choice.
+  const caseSearch = useJobEntityOptions(
+    { kind: 'service-cases', clientId: workspace.serviceCase.clientId },
+    relatedId ? [relatedId] : [],
+  );
+  const caseOptions = caseSearch.options.filter((option) => option.value !== workspace.serviceCase.id);
+  const { run, isPending } = useServerAction(async () => {
+    const result = await linkServiceCaseRelation({
+      serviceCaseId: workspace.serviceCase.id,
+      relatedServiceCaseId: relatedId,
+      relationType,
+      expectedVersion: workspace.serviceCase.version,
+      reason,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    if (!result.success) {
+      setError(
+        describeFailure(result.error, RELATION_ERRORS, 'Der Zusammenhang konnte nicht verknüpft werden.'),
+      );
+      return;
+    }
+    onOpenChange(false);
+    onSaved();
+  });
+  const [attempted, setAttempted] = useState(false);
+  const fieldErrors = {
+    'relation-case': relatedId ? undefined : 'Bitte wähle einen Servicefall.',
+    'relation-reason': reason.trim().length < 3 ? REASON_MIN_3_MESSAGE : undefined,
+  };
+  return {
+    relatedId,
+    setRelatedId,
+    relationType,
+    setRelationType,
+    reason,
+    setReason,
+    error,
+    caseSearch,
+    caseOptions,
+    run,
+    isPending,
+    attempted,
+    setAttempted,
+    fieldErrors,
+  };
+}
+
+function RelationCaseField({ form }: { form: ReturnType<typeof useRelationForm> }): ReactElement {
+  const { relatedId, setRelatedId, caseOptions, caseSearch, attempted, fieldErrors } = form;
+  return (
+    <Field
+      label="Servicefall"
+      htmlFor="relation-case"
+      required
+      error={attempted ? fieldErrors['relation-case'] : undefined}
+    >
+      <SearchableSelect
+        value={relatedId}
+        onChange={setRelatedId}
+        options={caseOptions}
+        onSearchChange={caseSearch.onSearchChange}
+        loading={caseSearch.loading}
+        loadFailure={caseSearch.loadFailure}
+        onLoadMore={caseSearch.onLoadMore}
+        placeholder="Servicefall suchen"
+        searchPlaceholder="Fallnummer oder Kurzbeschreibung…"
+        emptyMessage="Kein weiterer Servicefall dieses Kunden gefunden"
+      />
+    </Field>
+  );
+}
+
+function RelationTypeField({
+  value,
+  onChange,
+}: {
+  value: ServiceCaseRelationType;
+  onChange: (relationType: ServiceCaseRelationType) => void;
+}): ReactElement {
+  return (
+    <Field label="Beziehung" htmlFor="relation-type">
+      <Select
+        value={value}
+        onValueChange={(selected) => {
+          const relationType = SERVICE_CASE_RELATION_TYPES.find((candidate) => candidate === selected);
+          if (relationType) onChange(relationType);
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SERVICE_CASE_RELATION_TYPES.map((relationType) => (
+            <SelectItem key={relationType} value={relationType}>
+              {SERVICE_CASE_RELATION_LABELS[relationType]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+export function RelationDialog({
+  workspace,
+  open,
+  onOpenChange,
+  onSaved,
+}: RelationDialogProps): ReactElement {
+  const form = useRelationForm({ workspace, onOpenChange, onSaved });
+  const { relationType, setRelationType, reason, setReason, error, isPending, run } = form;
+  const { attempted, setAttempted, fieldErrors } = form;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} pending={isPending}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Servicefälle verknüpfen</DialogTitle>
+          <DialogDescription>
+            Beide Fälle bleiben eigenständig und vollständig nachvollziehbar.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (isPending) return;
+            setAttempted(true);
+            if (focusFirstInvalidField(fieldErrors)) return;
+            void run();
+          }}
+          noValidate
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
+          <DialogBody>
+            <div className="space-y-4 py-2">
+              <RelationCaseField form={form} />
+              <RelationTypeField value={relationType} onChange={setRelationType} />
+              <Field
+                label="Begründung"
+                htmlFor="relation-reason"
+                required
+                error={attempted ? fieldErrors['relation-reason'] : undefined}
+              >
+                <Input value={reason} onChange={(event) => setReason(event.target.value)} />
+              </Field>
+            </div>
+            <ErrorText>{error}</ErrorText>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+              Abbrechen
+            </Button>
+            <Button pending={isPending} type="submit" disabled={isPending}>
+              Verknüpfen
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Picks the exact evidence version. The owner (`ServiceCaseEvidenceLink`)
+ * runs the write: the dialog stays open and pending until the server answers,
+ * and a refusal shows here, beside the submit.
+ */
+export function ServiceCaseEvidenceDialog({
+  options,
+  open,
+  onOpenChange,
+  isPending,
+  error,
+  onLink,
+}: {
+  options: ServiceCaseEvidenceOption[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isPending: boolean;
+  error: string | null;
+  onLink: (option: ServiceCaseEvidenceOption) => void;
+}): ReactElement {
+  const [revisionId, setRevisionId] = useState('');
+  const [attempted, setAttempted] = useState(false);
+  const revisionError = revisionId ? undefined : 'Bitte wähle einen Arbeitsnachweis.';
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} pending={isPending}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Arbeitsnachweis verknüpfen</DialogTitle>
+          <DialogDescription>
+            Verknüpft wird genau diese Version aus dem zugeordneten Auftrag. Der Nachweis wird nicht kopiert.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (isPending) return;
+            setAttempted(true);
+            const option = options.find((entry) => entry.revisionId === revisionId);
+            if (focusFirstInvalidField({ 'evidence-revision': revisionError }) || !option) return;
+            onLink(option);
+          }}
+          noValidate
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
+          <DialogBody>
+            <Field
+              label="Nachweisversion"
+              htmlFor="evidence-revision"
+              required
+              error={attempted ? revisionError : undefined}
+              className="py-2"
+            >
+              <SearchableSelect
+                value={revisionId}
+                onChange={setRevisionId}
+                options={options.map((option) => ({
+                  value: option.revisionId,
+                  label: `${option.title} · ${WORK_ARTIFACT_KIND_LABELS[option.kind]} · Version ${option.revisionNumber}`,
+                }))}
+                placeholder="Arbeitsnachweis suchen"
+                emptyMessage="Keine unverknüpfte Version gefunden"
+              />
+            </Field>
+            <ErrorText>{error}</ErrorText>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+              Abbrechen
+            </Button>
+            <Button pending={isPending} type="submit" disabled={isPending}>
+              Verknüpfen
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type FollowUpDialogProps = {
+  workspace: ServiceCaseDetailWorkspace;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+/** The follow-up's fields, their errors after a first submit, and the create. */
+function useServiceCaseFollowUpForm({ workspace, onOpenChange }: Omit<FollowUpDialogProps, 'open'>) {
+  const currentOwner = workspace.followUpOwners.find((owner) => owner.userId === workspace.currentActorId);
+  const [title, setTitle] = useState(`Servicefall ${workspace.serviceCase.caseNumber} nachfassen`);
+  const [note, setNote] = useState('');
+  const [ownerUserId, setOwnerUserId] = useState(currentOwner?.userId ?? '');
+  const [dueAt, setDueAt] = useState(() => tomorrowMorningInBerlin());
+  const [error, setError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const { showBanner } = useBanner();
+  const { run, isPending } = useServerAction(async () => {
+    const dueDate = parseBerlinDateTimeInput(dueAt);
+    if (!dueDate) return;
+    const result = await createCustomerFollowUp(workspace.serviceCase.clientId, {
+      title,
+      note,
+      ownerUserId,
+      dueAt: dueDate.toISOString(),
+      sourceType: 'service_case',
+      sourceId: workspace.serviceCase.id,
+    });
+    if (!result.success) {
+      setError('Die Nachfassaktion konnte nicht angelegt werden.');
+      return;
+    }
+    onOpenChange(false);
+    // The follow-up lives under Aufgaben, not on this page: the banner is the
+    // only confirmation the user gets here.
+    showBanner({ variant: 'success', message: 'Nachfassaktion wurde angelegt.' });
+  });
+  const errors = {
+    'service-follow-up-title': title.trim() ? undefined : 'Bitte gib einen Titel ein.',
+    'service-follow-up-owner': ownerUserId ? undefined : 'Bitte wähle eine zuständige Person.',
+    'service-follow-up-due-date': parseBerlinDateTimeInput(dueAt)
+      ? undefined
+      : 'Bitte gib eine Fälligkeit an.',
+  };
+  const titleError = attempted ? errors['service-follow-up-title'] : undefined;
+  const ownerError = attempted ? errors['service-follow-up-owner'] : undefined;
+  const dueError = attempted ? errors['service-follow-up-due-date'] : undefined;
+  function submit(): void {
+    setError(null);
+    setAttempted(true);
+    if (focusFirstInvalidField(errors)) return;
+    void run();
+  }
+  return {
+    title,
+    setTitle,
+    note,
+    setNote,
+    ownerUserId,
+    setOwnerUserId,
+    dueAt,
+    setDueAt,
+    error,
+    isPending,
+    titleError,
+    ownerError,
+    dueError,
+    submit,
+  };
+}
+
+export function FollowUpDialog({ workspace, open, onOpenChange }: FollowUpDialogProps): ReactElement {
+  const form = useServiceCaseFollowUpForm({ workspace, onOpenChange });
+  const { title, setTitle, note, setNote, ownerUserId, setOwnerUserId, dueAt, setDueAt } = form;
+  const { error, isPending, titleError, ownerError, dueError, submit } = form;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} pending={isPending}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nachfassaktion anlegen</DialogTitle>
+          <DialogDescription>
+            Lege einen klaren nächsten Schritt für diesen Servicefall fest. Die Aktion erscheint in der
+            bestehenden Aufgabenübersicht.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+          className="space-y-4"
+        >
+          <p className="rounded-md bg-muted px-3 py-2 text-sm">Quelle: {workspace.serviceCase.caseNumber}</p>
+          <Field label="Titel" htmlFor="service-follow-up-title" required error={titleError}>
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} />
+          </Field>
+          <Field label="Zuständig" htmlFor="service-follow-up-owner" required error={ownerError}>
+            <SearchableSelect
+              value={ownerUserId}
+              onChange={setOwnerUserId}
+              options={workspace.followUpOwners.map((owner) => ({ value: owner.userId, label: owner.name }))}
+              placeholder="Person wählen"
+              searchPlaceholder="Person suchen…"
+              emptyMessage="Keine Person gefunden"
+            />
+          </Field>
+          <Field label="Fällig am" htmlFor="service-follow-up-due-date" required error={dueError}>
+            <DateTimeField
+              idPrefix="service-follow-up-due"
+              value={dueAt}
+              onChange={setDueAt}
+              dateAriaLabel="Fälligkeitsdatum"
+              invalid={Boolean(dueError)}
+            />
+          </Field>
+          <Field label="Notiz" htmlFor="service-follow-up-note">
+            <Textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} />
+          </Field>
+          <ErrorText>{error}</ErrorText>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+              Abbrechen
+            </Button>
+            <Button pending={isPending} type="submit" disabled={isPending}>
+              Speichern
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

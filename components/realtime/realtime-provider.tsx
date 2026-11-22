@@ -1,0 +1,328 @@
+'use client';
+
+import { createContext, useContext, useEffect, useRef, useMemo, useState, type ReactNode } from 'react';
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { logError } from '@/lib/logging';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useOrganization } from '@/components/organization/organization-context';
+import {
+  REALTIME_FOCUS_CATCH_UP_MIN_ABSENCE_MS,
+  normalizeRealtimeDeletion,
+  type RealtimeChangeEvent,
+} from '@/lib/realtime/events';
+import {
+  REALTIME_TABLES,
+  REALTIME_DELETION_TABLE,
+  UNFILTERED_REALTIME_TABLES,
+  type RealtimeTable,
+} from '@/lib/realtime/tables';
+import {
+  createListenerRegistry,
+  type ListenerRegistry,
+  type RealtimeCallback,
+} from '@/lib/realtime/listener-registry';
+
+export type { RealtimeTable } from '@/lib/realtime/tables';
+
+export type { RealtimeChangeEvent };
+
+type RealtimeContextValue = {
+  subscribe: ListenerRegistry['subscribe'];
+};
+
+const RealtimeContext = createContext<RealtimeContextValue | null>(null);
+
+type OrganizationChannelOptions = {
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+  organizationId: string;
+  registry: ListenerRegistry;
+  isCancelled: () => boolean;
+  dispatch: (event: RealtimeChangeEvent) => void;
+};
+
+function handleSystemPayload(payload: unknown, registry: ListenerRegistry, isCancelled: () => boolean) {
+  if (
+    isCancelled() ||
+    !payload ||
+    typeof payload !== 'object' ||
+    !('extension' in payload) ||
+    payload.extension !== 'postgres_changes' ||
+    !('status' in payload)
+  )
+    return;
+  if (payload.status === 'ok') {
+    document.documentElement.dataset.realtimePostgresState = 'ready';
+    // Channel join can precede database-listener readiness. Read after
+    // this signal on initial connection and reconnect to cover that gap.
+    registry.dispatchAll({ joined: true });
+  } else if (payload.status === 'error') {
+    document.documentElement.dataset.realtimePostgresState = 'error';
+    logError('realtime.database_subscription_unavailable');
+  }
+}
+
+/**
+ * One binding per table, generated from the single source of truth:
+ * a table cannot join Realtime without its organization filter
+ * (profiles is the recorded exception). All bindings ride one channel
+ * join. Raw DELETE/TRUNCATE are disabled in the database publication;
+ * tenant-authorized INSERT invalidations below replace DELETE delivery.
+ */
+function subscribeOrganizationChannel({
+  supabase,
+  organizationId,
+  registry,
+  isCancelled,
+  dispatch,
+}: OrganizationChannelOptions): RealtimeChannel {
+  let channel = supabase.channel(`org-${organizationId}`);
+  channel = channel.on('system', {}, (payload: unknown) => {
+    handleSystemPayload(payload, registry, isCancelled);
+  });
+  for (const table of REALTIME_TABLES) {
+    const filter = UNFILTERED_REALTIME_TABLES.includes(table)
+      ? undefined
+      : `organization_id=eq.${organizationId}`;
+    channel = channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table,
+        ...(filter ? { filter } : {}),
+      },
+      (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+        if (payload.eventType === 'DELETE') return;
+        dispatch({ table, eventType: payload.eventType, new: payload.new, old: payload.old });
+      },
+    );
+  }
+  channel = channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: REALTIME_DELETION_TABLE,
+      filter: `organization_id=eq.${organizationId}`,
+    },
+    (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+      const event = normalizeRealtimeDeletion(payload.new, organizationId);
+      if (event) dispatch(event);
+    },
+  );
+  channel.subscribe((status: string, err?: Error) => {
+    if (isCancelled()) return;
+    // Diagnostic marker for measured scenarios and support: the join state
+    // of this organization's channel, written after the client committed.
+    document.documentElement.dataset.realtimeState = status.toLowerCase();
+    if (err) logError('realtime.subscription_error', err);
+    if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+      registry.leave();
+      delete document.documentElement.dataset.realtimePostgresState;
+      // The client reconnects by itself; the log keeps the interruption.
+      logError('realtime.channel_interrupted', status);
+    }
+  });
+  return channel;
+}
+
+/**
+ * Browsers (especially Edge) may throttle or drop WebSocket connections
+ * for background tabs. After a long absence one catch-up re-reads every
+ * live view; a short glance elsewhere never does (decision D5), and a
+ * dropped socket recovers through the reconnect catch-up instead.
+ * A provider mounted in a hidden tab is already away; focus is not read
+ * here because headless and embedded browsers report it unreliably.
+ * Returns the cleanup that removes the listeners.
+ */
+function watchLongAbsence(registry: ListenerRegistry): () => void {
+  let awaySince: number | null = document.visibilityState === 'hidden' ? Date.now() : null;
+  function markAway() {
+    awaySince ??= Date.now();
+  }
+  function handleReturn() {
+    if (awaySince === null) return;
+    const absenceMs = Date.now() - awaySince;
+    awaySince = null;
+    if (absenceMs >= REALTIME_FOCUS_CATCH_UP_MIN_ABSENCE_MS) registry.dispatchAll();
+  }
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'hidden') markAway();
+    else handleReturn();
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('blur', markAway);
+  window.addEventListener('focus', handleReturn);
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('blur', markAway);
+    window.removeEventListener('focus', handleReturn);
+  };
+}
+
+type ChannelOpener = (options: {
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+  registry: ListenerRegistry;
+  isCancelled: () => boolean;
+  dispatch: (event: RealtimeChangeEvent) => void;
+}) => RealtimeChannel;
+
+/**
+ * The one channel of a provider: opened with the session's token, renewed on
+ * a token change, caught up after a long absence, removed on unmount. `key`
+ * names the scope; null opens nothing.
+ */
+function useProviderChannel(key: string | null, open: ChannelOpener, registry: ListenerRegistry): void {
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  });
+  useEffect(() => {
+    if (key === null) return;
+    const supabase = createSupabaseBrowserClient();
+    let cancelled = false;
+    let channel: RealtimeChannel | null = null;
+
+    // Preserve every event identity. The two read/refresh hooks coalesce
+    // their complete table set once, with the shared 150 ms guard.
+    // A second provider timer delays delivery and can swallow a DELETE.
+    function dispatch(event: RealtimeChangeEvent) {
+      if (!cancelled) registry.dispatch(event);
+    }
+
+    async function setup() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+
+      if (session?.access_token) {
+        void supabase.realtime.setAuth(session.access_token);
+      }
+
+      channel = openRef.current({ supabase, registry, isCancelled: () => cancelled, dispatch });
+    }
+
+    // A failed session read leaves the page without live updates; the log keeps it.
+    setup().catch((error: unknown) => logError('realtime.setup_failed', error));
+
+    const {
+      data: { subscription: authListener },
+    } = supabase.auth.onAuthStateChange((_event: string, session: { access_token?: string } | null) => {
+      if (session?.access_token) {
+        void supabase.realtime.setAuth(session.access_token);
+      }
+    });
+
+    const stopWatchingAbsence = watchLongAbsence(registry);
+
+    return () => {
+      cancelled = true;
+      registry.leave();
+      delete document.documentElement.dataset.realtimeState;
+      delete document.documentElement.dataset.realtimePostgresState;
+      authListener.unsubscribe();
+      stopWatchingAbsence();
+      if (channel) {
+        void supabase.removeChannel(channel);
+        channel = null;
+      }
+    };
+  }, [key, registry]);
+}
+
+export function RealtimeProvider({ children }: { children: ReactNode }) {
+  const { activeOrgId } = useOrganization();
+  const [registry] = useState(createListenerRegistry);
+  useProviderChannel(
+    activeOrgId,
+    (options) => subscribeOrganizationChannel({ ...options, organizationId: activeOrgId ?? '' }),
+    registry,
+  );
+  const ctxValue = useMemo<RealtimeContextValue>(() => ({ subscribe: registry.subscribe }), [registry]);
+  return <RealtimeContext.Provider value={ctxValue}>{children}</RealtimeContext.Provider>;
+}
+
+/**
+ * WerkFlow support's channel: support belongs to no organization, so its one
+ * binding is its own user's report signals (problem_report_signals), which
+ * the select-own policy delivers to nobody else. Every other table stays off
+ * this channel.
+ */
+function subscribeSupportChannel({
+  supabase,
+  userId,
+  registry,
+  isCancelled,
+  dispatch,
+}: Parameters<ChannelOpener>[0] & { userId: string }): RealtimeChannel {
+  const table = 'problem_report_signals' satisfies RealtimeTable;
+  return supabase
+    .channel(`support-${userId}`)
+    .on('system', {}, (payload: unknown) => {
+      handleSystemPayload(payload, registry, isCancelled);
+    })
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` },
+      (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+        if (payload.eventType === 'DELETE') return;
+        dispatch({ table, eventType: payload.eventType, new: payload.new, old: payload.old });
+      },
+    )
+    .subscribe((status: string, err?: Error) => {
+      if (isCancelled()) return;
+      document.documentElement.dataset.realtimeState = status.toLowerCase();
+      if (err) logError('realtime.subscription_error', err);
+      if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        registry.leave();
+        delete document.documentElement.dataset.realtimePostgresState;
+        logError('realtime.channel_interrupted', status);
+      }
+    });
+}
+
+/** The provider of WerkFlow support's area, for the verified support user. */
+export function SupportRealtimeProvider({ userId, children }: { userId: string; children: ReactNode }) {
+  const [registry] = useState(createListenerRegistry);
+  useProviderChannel(
+    `support-${userId}`,
+    (options) => subscribeSupportChannel({ ...options, userId }),
+    registry,
+  );
+  const ctxValue = useMemo<RealtimeContextValue>(() => ({ subscribe: registry.subscribe }), [registry]);
+  return <RealtimeContext.Provider value={ctxValue}>{children}</RealtimeContext.Provider>;
+}
+
+/**
+ * Imperative access to the provider's subscribe function, for hooks that
+ * subscribe to a dynamic table list in one effect (the live-view primitive).
+ * Returns null outside the provider (auth/onboarding shells).
+ */
+export function useRealtimeSubscribe(): RealtimeContextValue['subscribe'] | null {
+  const ctx = useContext(RealtimeContext);
+  return ctx ? ctx.subscribe : null;
+}
+
+/**
+ * Subscribe to Realtime changes on a specific table.
+ * The callback fires whenever a row in that table (for the active org) is inserted, updated, or deleted.
+ */
+export function useRealtimeEvent(table: RealtimeTable, callback: RealtimeCallback) {
+  const ctx = useContext(RealtimeContext);
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  useEffect(() => {
+    if (!ctx) return;
+
+    const stableCallback: RealtimeCallback = (event) => {
+      callbackRef.current(event);
+    };
+
+    return ctx.subscribe(table, stableCallback);
+  }, [ctx, table]);
+}

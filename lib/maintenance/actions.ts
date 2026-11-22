@@ -1,0 +1,632 @@
+'use server';
+
+import { revalidatePath, updateTag } from 'next/cache';
+
+import type { ActionResult } from '@/lib/action-result';
+import { logReadFailure } from '@/lib/data/read-request-cache';
+import { authenticateAndAuthorize } from '@/lib/jobs/auth';
+import { readJobAssignmentOfUser } from '@/lib/jobs/job-access-reads';
+import { CACHE_TAGS } from '@/lib/data/cached';
+import { JOB_CREATION_REFUSALS, prepareJobCreation } from '@/lib/jobs/creation';
+import { addLocalMonthsClamped, formatBerlinLocalDate } from '@/lib/date-time/berlin';
+import { preparePlanningCreation } from '@/lib/planning/creation';
+import { createPlanningEntrySchema } from '@/lib/planning/schemas';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { toJson } from '@/lib/supabase/json';
+import { rpcArgs } from '@/lib/supabase/rpc-args';
+import { captureUsage } from '@/lib/usage-statistics/capture';
+import { LIST_ROW_CAP, readCompleteRows, readInBatches } from '@/lib/supabase/query-batches';
+import type {
+  FieldMaintenanceContext,
+  MaintenanceActionResult,
+  MaintenanceCoverageInput,
+  MaintenanceEvidenceOption,
+  MaintenancePlanInput,
+  MaintenanceWorkspaceResult,
+  MaintenanceCatalogsResult,
+} from './types';
+import {
+  maintenanceArchiveSchema,
+  maintenanceCompletionSchema,
+  maintenanceCoverageSchema,
+  maintenanceExceptionSchema,
+  maintenancePlanSchema,
+  maintenanceScheduleSchema,
+  maintenanceServiceCaseLinkSchema,
+  maintenanceTransitionSchema,
+  maintenanceVisitMissedSchema,
+  maintenanceVisitSchema,
+} from './validation';
+import { logError } from '@/lib/logging';
+import { requireServiceManager } from '@/lib/service-cases/manager-context';
+import { uuidSchema } from '@/lib/validation/uuid';
+import { maintenanceWorkspaceQuerySchema, type MaintenanceWorkspaceQuery } from './workspace-page';
+import { readFieldMaintenanceContexts } from './field-context-reads';
+import { readReplayedVisitJobNumber, readVisitDueContext } from './visit-context-reads';
+import { loadMaintenanceCatalogs, readMaintenanceWorkspace } from './workspace-reads';
+
+function maintenanceFailureCode(error: { message?: string } | null, fallback: string): string {
+  const known = [
+    'maintenance_not_authorized',
+    'maintenance_idempotency_conflict',
+    'maintenance_stale_version',
+    'maintenance_reason_required',
+    'maintenance_coverage_not_found',
+    'maintenance_coverage_site_mismatch',
+    'maintenance_plan_not_found',
+    'maintenance_plan_site_mismatch',
+    'maintenance_plan_coverage_mismatch',
+    'maintenance_plan_equipment_mismatch',
+    'maintenance_template_version_unavailable',
+    'maintenance_overlap_reason_required',
+    'maintenance_plan_transition_not_allowed',
+    'maintenance_plan_archive_requires_terminated',
+    'maintenance_plan_generation_not_allowed',
+    'maintenance_generation_horizon_invalid',
+    'maintenance_due_not_found',
+    'maintenance_due_batch_invalid',
+    'maintenance_due_visit_not_allowed',
+    'maintenance_due_job_mismatch',
+    'maintenance_due_occurrence_mismatch',
+    'maintenance_due_exception_not_allowed',
+    'maintenance_due_completion_not_allowed',
+    'maintenance_completion_date_invalid',
+    'maintenance_due_evidence_required',
+    'maintenance_due_evidence_mismatch',
+    'maintenance_due_visit_missed_not_allowed',
+    'maintenance_next_action_required',
+    'maintenance_next_action_not_allowed',
+    'maintenance_next_action_owner_invalid',
+    'maintenance_next_action_date_invalid',
+    'maintenance_defect_required',
+    'maintenance_return_date_taken',
+  ];
+  return known.find((value) => error?.message?.includes(value)) ?? fallback;
+}
+
+/** The end of the due work window a plan write generates: today in Berlin plus 18 months. */
+function dueWorkHorizonDate(): string {
+  return addLocalMonthsClamped(formatBerlinLocalDate(new Date()), 18);
+}
+
+function refreshMaintenancePaths(): void {
+  revalidatePath('/service/wartung');
+  revalidatePath('/auftraege');
+}
+
+/**
+ * One page of each maintenance workspace list with the editors' catalogs.
+ * The page render and the live refresh (background read
+ * `maintenance-workspace`) both read through it. Office roles only.
+ */
+export async function getMaintenanceWorkspace(
+  rawQuery: MaintenanceWorkspaceQuery,
+): Promise<MaintenanceWorkspaceResult> {
+  const parsedQuery = maintenanceWorkspaceQuerySchema.safeParse(rawQuery);
+  if (!parsedQuery.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  return readMaintenanceWorkspace(context, parsedQuery.data);
+}
+
+/** The published job templates and follow-up owners the workspace dialogs offer; read once per page. */
+export async function getMaintenanceCatalogs(): Promise<MaintenanceCatalogsResult> {
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const catalogs = await loadMaintenanceCatalogs(context.admin, context.organizationId);
+  return catalogs ? { success: true, catalogs } : { success: false, error: 'maintenance_load_failed' };
+}
+
+export async function createMaintenanceCoverage(
+  input: MaintenanceCoverageInput,
+): Promise<MaintenanceActionResult> {
+  const parsed = maintenanceCoverageSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { error } = await context.admin.rpc('create_maintenance_coverage', {
+    p_organization_id: context.organizationId,
+    p_maintenance_coverage_id: parsed.data.coverageId,
+    p_payload: toJson(parsed.data),
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error) {
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_coverage_create_failed'),
+    };
+  }
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+export async function createMaintenancePlan(input: MaintenancePlanInput): Promise<MaintenanceActionResult> {
+  const parsed = maintenancePlanSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  // One call: an active plan and its due work are saved together or not at all.
+  const { data, error } = await context.admin.rpc('create_maintenance_plan_with_due_work', {
+    p_organization_id: context.organizationId,
+    p_maintenance_plan_id: parsed.data.planId,
+    p_revision_id: parsed.data.revisionId,
+    p_payload: toJson(parsed.data),
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+    p_through_date: dueWorkHorizonDate(),
+  });
+  if (error || !data) {
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_plan_create_failed'),
+    };
+  }
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+export async function reviseMaintenancePlan(
+  input: MaintenancePlanInput & { expectedVersion: number },
+): Promise<MaintenanceActionResult> {
+  // safeExtend keeps the date refinement; extend throws on a refined schema.
+  const parsed = maintenancePlanSchema
+    .safeExtend({
+      expectedVersion: maintenanceTransitionSchema.shape.expectedVersion,
+    })
+    .safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const payload = {
+    templateVersionId: parsed.data.templateVersionId,
+    effectiveFromDate: parsed.data.effectiveFromDate,
+    firstDueDate: parsed.data.firstDueDate,
+    intervalMonths: parsed.data.intervalMonths,
+    dueWindowBeforeDays: parsed.data.dueWindowBeforeDays,
+    dueWindowAfterDays: parsed.data.dueWindowAfterDays,
+    plannedDurationMinutes: parsed.data.plannedDurationMinutes,
+    nextDueBasis: parsed.data.nextDueBasis,
+    operationalInstructions: parsed.data.operationalInstructions ?? null,
+    overlapReason: parsed.data.overlapReason ?? null,
+    equipmentIds: parsed.data.equipmentIds,
+  };
+  const { data, error } = await context.admin.rpc('revise_maintenance_plan_with_due_work', {
+    p_organization_id: context.organizationId,
+    p_maintenance_plan_id: parsed.data.planId,
+    p_revision_id: parsed.data.revisionId,
+    p_expected_version: parsed.data.expectedVersion,
+    p_payload: payload,
+    p_reason: parsed.data.reason,
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+    p_through_date: dueWorkHorizonDate(),
+  });
+  if (error || !data) {
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_plan_revision_failed'),
+    };
+  }
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+export async function transitionMaintenancePlan(input: unknown): Promise<MaintenanceActionResult> {
+  const parsed = maintenanceTransitionSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { data, error } = await context.admin.rpc('transition_maintenance_plan_with_due_work', {
+    p_organization_id: context.organizationId,
+    p_maintenance_plan_id: parsed.data.planId,
+    p_expected_version: parsed.data.expectedVersion,
+    p_to_status: parsed.data.toStatus,
+    p_reason: parsed.data.reason,
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+    p_through_date: dueWorkHorizonDate(),
+  });
+  if (error || !data) {
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_transition_failed'),
+    };
+  }
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+export async function setMaintenancePlanArchived(rawInput: {
+  planId: string;
+  expectedVersion: number;
+  archived: boolean;
+  reason: string;
+  idempotencyKey: string;
+}): Promise<MaintenanceActionResult> {
+  const parsedInput = maintenanceArchiveSchema.safeParse(rawInput);
+  if (!parsedInput.success) return { success: false, error: 'invalid_input' };
+  const input = parsedInput.data;
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { error } = await context.admin.rpc('set_maintenance_plan_archived', {
+    p_organization_id: context.organizationId,
+    p_maintenance_plan_id: input.planId,
+    p_expected_version: input.expectedVersion,
+    p_archived: input.archived,
+    p_reason: input.reason,
+    p_actor_id: context.actorId,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  if (error)
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_archive_failed'),
+    };
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+export async function createMaintenanceVisit(input: {
+  dueWorkIds: string[];
+  expectedVersions: number[];
+  reason: string;
+  idempotencyKey: string;
+}): Promise<ActionResult<{ jobNumber: string }>> {
+  const parsed = maintenanceVisitSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: 'invalid_input' };
+  }
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { data: replayEvents, error: replayError } = await context.admin
+    .from('maintenance_due_work_events')
+    .select('maintenance_due_work_id, request_payload')
+    .eq('organization_id', context.organizationId)
+    .eq('idempotency_key', parsed.data.idempotencyKey)
+    .like('request_operation', 'due_visit_link:%');
+  if (replayError) {
+    return { success: false, error: 'maintenance_visit_context_failed' };
+  }
+  if (replayEvents.length > 0) {
+    const replay = await readReplayedVisitJobNumber(context, replayEvents, parsed.data.dueWorkIds);
+    if (!replay.success) return replay;
+    refreshMaintenancePaths();
+    return { success: true, jobNumber: replay.jobNumber };
+  }
+  const dueContext = await readVisitDueContext(context, parsed.data.dueWorkIds);
+  if (!dueContext.success) return dueContext;
+  const { plans, firstPlan, firstRevision, estimatedDurationMinutes } = dueContext;
+  const prepared = await prepareJobCreation(
+    { admin: context.admin, orgId: context.organizationId, actorId: context.actorId },
+    {
+      title: `Wartung · ${plans.map((plan) => plan.plan_number).join(', ')}`,
+      ...(firstRevision.operational_instructions !== null
+        ? { description: firstRevision.operational_instructions }
+        : {}),
+      clientId: firstPlan.client_id,
+      siteId: firstPlan.site_id,
+      estimatedDurationMinutes,
+      templateVersionId: firstRevision.template_version_id,
+      selectedUserIds: [],
+    },
+    null,
+  );
+  if (!prepared.success) return prepared;
+  // One call: the job takes the next number, gets the plan's template and is
+  // linked to the due items, or nothing changes and the number stays free.
+  const { data, error } = await context.admin.rpc(
+    'create_maintenance_visit_job',
+    rpcArgs('create_maintenance_visit_job', {
+      ...prepared.arguments,
+      p_organization_id: context.organizationId,
+      p_actor_id: context.actorId,
+      p_maintenance_due_work_ids: parsed.data.dueWorkIds,
+      p_expected_versions: parsed.data.expectedVersions,
+      p_reason: parsed.data.reason,
+      p_idempotency_key: parsed.data.idempotencyKey,
+    }),
+  );
+  if (error || !data.job_number) {
+    const jobRefusal = JOB_CREATION_REFUSALS.find((code) => code === error?.message);
+    if (!jobRefusal) logError('Failed to create maintenance visit:', error);
+    return {
+      success: false,
+      error: jobRefusal ?? maintenanceFailureCode(error, 'maintenance_visit_create_failed'),
+    };
+  }
+  updateTag(CACHE_TAGS.workTemplates(context.organizationId));
+  refreshMaintenancePaths();
+  captureUsage(context.organizationId, 'maintenance_visit', 'started');
+  return { success: true, jobNumber: data.job_number };
+}
+
+export async function scheduleMaintenanceVisit(input: {
+  dueWorkId: string;
+  expectedVersion: number;
+  jobId: string;
+  startsAtLocal: string;
+  durationMinutes: number;
+  idempotencyKey: string;
+}): Promise<MaintenanceActionResult> {
+  const parsed = maintenanceScheduleSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const planningInput = createPlanningEntrySchema.safeParse({
+    entryKind: 'job_visit',
+    internalType: null,
+    jobId: parsed.data.jobId,
+    title: null,
+    description: null,
+    location: null,
+    timeKind: 'timed',
+    startsAtLocal: parsed.data.startsAtLocal,
+    durationMinutes: parsed.data.durationMinutes,
+    durationDays: null,
+    assignmentDrafts: [],
+    teamIds: [],
+    overrideReason: null,
+    assessmentFingerprint: null,
+    idempotencyKey: parsed.data.idempotencyKey,
+    recurrence: null,
+  });
+  if (!planningInput.success) return { success: false, error: 'invalid_input' };
+  const prepared = await preparePlanningCreation(planningInput.data, context.organizationId);
+  if (!prepared.success) return { success: false, error: prepared.error };
+  const [occurrence] = prepared.occurrences;
+  if (!occurrence || prepared.occurrences.length !== 1) {
+    return { success: false, error: 'maintenance_schedule_failed' };
+  }
+  // One call: the appointment and its link to the due item are saved together or not at all.
+  const { error } = await context.admin.rpc('schedule_maintenance_visit', {
+    p_organization_id: context.organizationId,
+    p_actor_id: context.actorId,
+    p_maintenance_due_work_id: parsed.data.dueWorkId,
+    p_expected_version: parsed.data.expectedVersion,
+    p_occurrence: occurrence,
+    p_assignments: prepared.assignments,
+    p_idempotency_key: parsed.data.idempotencyKey,
+    p_capacity_snapshot: prepared.capacitySnapshot,
+    p_capacity_fingerprint: prepared.capacityFingerprint,
+    p_qualification_snapshot: prepared.qualificationSnapshot,
+    p_qualification_fingerprint: prepared.qualificationFingerprint,
+  });
+  if (error) {
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_schedule_failed'),
+    };
+  }
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+export async function setMaintenanceDueException(input: unknown): Promise<MaintenanceActionResult> {
+  const parsed = maintenanceExceptionSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { error } = await context.admin.rpc('set_maintenance_due_exception', {
+    p_organization_id: context.organizationId,
+    p_maintenance_due_work_id: parsed.data.dueWorkId,
+    p_expected_version: parsed.data.expectedVersion,
+    p_to_status: parsed.data.toStatus,
+    p_reason: parsed.data.reason,
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error)
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_exception_failed'),
+    };
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+/**
+ * „Besuch hat nicht stattgefunden“: the due item leaves its visit job and is
+ * open again with its due date, for a new visit; the history names the job
+ * and the reason. One database call. Office roles only.
+ */
+export async function recordMaintenanceVisitMissed(input: unknown): Promise<MaintenanceActionResult> {
+  const parsed = maintenanceVisitMissedSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { error } = await context.admin.rpc('record_maintenance_visit_missed', {
+    p_organization_id: context.organizationId,
+    p_maintenance_due_work_id: parsed.data.dueWorkId,
+    p_expected_version: parsed.data.expectedVersion,
+    p_missed_reason: parsed.data.missedReason,
+    p_note: parsed.data.note,
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error) {
+    const code = maintenanceFailureCode(error, 'maintenance_visit_missed_failed');
+    // A known refusal is the user's case; anything else is a failure to diagnose.
+    if (code === 'maintenance_visit_missed_failed') {
+      logError('recordMaintenanceVisitMissed: record_maintenance_visit_missed failed', error);
+    }
+    return { success: false, error: code };
+  }
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+/**
+ * „Wartung abschließen“. A partial or unresolved visit also records its
+ * Mängel and next action: the owner's follow-up in Aufgaben and, for a
+ * Rückkehr, a return due item. One database call. Office roles only.
+ */
+export async function completeMaintenanceDueWork(input: unknown): Promise<MaintenanceActionResult> {
+  const parsed = maintenanceCompletionSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const completion = parsed.data;
+  const { error } = await context.admin.rpc(
+    'complete_maintenance_visit',
+    rpcArgs('complete_maintenance_visit', {
+      p_organization_id: context.organizationId,
+      p_maintenance_due_work_id: completion.dueWorkId,
+      p_expected_version: completion.expectedVersion,
+      p_scope_outcome: completion.scopeOutcome,
+      p_completed_on: completion.completedOn,
+      p_work_artifact_revision_ids: completion.workArtifactRevisionIds,
+      p_reason: completion.reason,
+      p_defects: completion.defects,
+      p_next_action: completion.nextAction,
+      p_next_action_owner_id: completion.nextActionOwnerId,
+      p_next_action_target_date: completion.nextActionTargetDate,
+      p_next_action_note: completion.nextActionNote || null,
+      p_actor_id: context.actorId,
+      p_idempotency_key: completion.idempotencyKey,
+    }),
+  );
+  if (error) {
+    const code = maintenanceFailureCode(error, 'maintenance_completion_failed');
+    // A known refusal is the user's case; anything else is a failure to diagnose.
+    if (code === 'maintenance_completion_failed') {
+      logError('completeMaintenanceDueWork: complete_maintenance_visit failed', error);
+    }
+    return { success: false, error: code };
+  }
+  refreshMaintenancePaths();
+  captureUsage(context.organizationId, 'maintenance_visit', 'completed');
+  return { success: true };
+}
+
+export async function linkMaintenanceServiceCase(rawInput: {
+  planId: string;
+  dueWorkId: string;
+  expectedDueVersion: number;
+  serviceCaseId: string;
+  reason: string;
+  idempotencyKey: string;
+}): Promise<MaintenanceActionResult> {
+  const parsedInput = maintenanceServiceCaseLinkSchema.safeParse(rawInput);
+  if (!parsedInput.success) return { success: false, error: 'invalid_input' };
+  const input = parsedInput.data;
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { error } = await context.admin.rpc('link_maintenance_service_case', {
+    p_organization_id: context.organizationId,
+    p_maintenance_plan_id: input.planId,
+    p_maintenance_due_work_id: input.dueWorkId,
+    p_service_case_id: input.serviceCaseId,
+    p_expected_due_version: input.expectedDueVersion,
+    p_reason: input.reason,
+    p_actor_id: context.actorId,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  if (error) {
+    return {
+      success: false,
+      error: maintenanceFailureCode(error, 'maintenance_service_case_link_failed'),
+    };
+  }
+  refreshMaintenancePaths();
+  return { success: true };
+}
+
+export async function getMaintenanceEvidenceOptions(
+  rawJobId: string,
+): Promise<ActionResult<{ options: MaintenanceEvidenceOption[] }>> {
+  const parsedJobId = uuidSchema.safeParse(rawJobId);
+  if (!parsedJobId.success) return { success: false, error: 'invalid_input' };
+  const jobId = parsedJobId.data;
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { data: artifacts, error } = await readCompleteRows(
+    (from, to) =>
+      context.admin
+        .from('work_artifacts')
+        .select('current_revision_id')
+        .eq('organization_id', context.organizationId)
+        .eq('job_id', jobId)
+        .is('voided_at', null)
+        .order('id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (error) {
+    logReadFailure('getMaintenanceEvidenceOptions: artifact read failed', {
+      code: error.code,
+      message: error.message,
+    });
+    return { success: false, error: 'maintenance_evidence_load_failed' };
+  }
+  const revisionIds = artifacts.flatMap((artifact) =>
+    artifact.current_revision_id ? [artifact.current_revision_id] : [],
+  );
+  const { data: revisions, error: revisionError } = await readInBatches(revisionIds, (batch) =>
+    context.admin
+      .from('work_artifact_revisions')
+      .select('id, title, revision_number')
+      .eq('organization_id', context.organizationId)
+      .in('id', [...batch]),
+  );
+  if (revisionError) {
+    logReadFailure('getMaintenanceEvidenceOptions: revision read failed', {
+      code: revisionError.code,
+      message: revisionError.message,
+    });
+    return { success: false, error: 'maintenance_evidence_load_failed' };
+  }
+  return {
+    success: true,
+    // Highest revision number first, across batches.
+    options: revisions
+      .sort((left, right) => right.revision_number - left.revision_number)
+      .map((revision) => ({
+        revisionId: revision.id,
+        title: revision.title,
+        revisionNumber: revision.revision_number,
+      })),
+  };
+}
+
+export async function getAssignedMaintenanceContextForJob(
+  rawJobId: string,
+): Promise<ActionResult<{ contexts: FieldMaintenanceContext[] }>> {
+  const parsedJobId = uuidSchema.safeParse(rawJobId);
+  if (!parsedJobId.success) return { success: false, error: 'not_authorized' };
+  const jobId = parsedJobId.data;
+  const auth = await authenticateAndAuthorize();
+  if (!auth.success) return auth;
+  const admin = createSupabaseAdminClient();
+  if (!auth.context.isManagerOrAbove) {
+    const { data: assignment, error: assignmentError } = await readJobAssignmentOfUser(
+      auth.context.orgId,
+      jobId,
+      auth.context.userId,
+    );
+    if (assignmentError) return { success: false, error: 'maintenance_context_load_failed' };
+    if (!assignment) return { success: false, error: 'not_authorized' };
+  }
+  const { data: dueRows, error } = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('maintenance_due_work')
+        .select('*')
+        .eq('organization_id', auth.context.orgId)
+        .eq('job_id', jobId)
+        .in('status', ['visit_created', 'completed'])
+        .order('due_date')
+        .order('id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (error) {
+    logReadFailure('getAssignedMaintenanceContextForJob: due work read failed', {
+      code: error.code,
+      message: error.message,
+    });
+    return { success: false, error: 'maintenance_context_load_failed' };
+  }
+  if (dueRows.length === 0) return { success: true, contexts: [] };
+  return readFieldMaintenanceContexts(admin, auth.context.orgId, dueRows);
+}

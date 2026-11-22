@@ -1,0 +1,277 @@
+'use client';
+
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
+import type { useBusyIds } from '@/hooks/use-busy-id';
+import { useBanner } from '@/components/ui/banner';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { ErrorText } from '@/components/ui/error-text';
+import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { QuantityStepper } from '@/components/ui/quantity-stepper';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { createCapability, retireCapabilityDefinition } from '@/lib/qualifications/actions';
+import {
+  CAPABILITY_KINDS,
+  getCapabilityKindLabel,
+  type CapabilityKind,
+  type QualificationWorkspace,
+} from '@/lib/qualifications/types';
+import { parseDecimalInput } from '@/lib/ui/decimal';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+import { describeFailure } from '@/lib/action-messages';
+
+type DefinitionFieldErrors = {
+  name?: string | undefined;
+  warningDays?: string | undefined;
+};
+
+type DefinitionCreation = {
+  kind: CapabilityKind;
+  definitionName: string;
+  warningDays: string;
+  setDefinitionName: (name: string) => void;
+  setDefinitionError: (error: string | null) => void;
+  setDefinitionFieldErrors: (errors: DefinitionFieldErrors) => void;
+  runAction: ReturnType<typeof useBusyIds>['run'];
+  refresh: () => void;
+  showBanner: ReturnType<typeof useBanner>['showBanner'];
+};
+
+/** Validates the definition form and creates the capability. */
+async function createDefinition({
+  kind,
+  definitionName,
+  warningDays,
+  setDefinitionName,
+  setDefinitionError,
+  setDefinitionFieldErrors,
+  runAction,
+  refresh,
+  showBanner,
+}: DefinitionCreation) {
+  setDefinitionError(null);
+  const expiryWarningDays = kind === 'certification' ? parseDecimalInput(warningDays) : 0;
+  const nextFieldErrors = {
+    name: definitionName.trim() ? undefined : 'Bitte gib einen Namen an.',
+    warningDays:
+      !Number.isInteger(expiryWarningDays) || expiryWarningDays < 0 || expiryWarningDays > 365
+        ? 'Bitte gib eine ganze Zahl zwischen 0 und 365 Tagen ein.'
+        : undefined,
+  };
+  setDefinitionFieldErrors(nextFieldErrors);
+  const invalid = focusFirstInvalidField({
+    'capability-name': nextFieldErrors.name,
+    'capability-warning-days': nextFieldErrors.warningDays,
+  });
+  if (invalid) return;
+  await runAction('create-definition', async () => {
+    try {
+      const result = await createCapability({
+        kind,
+        name: definitionName,
+        expiryWarningDays,
+      });
+      if (!result.success) {
+        setDefinitionError(
+          describeFailure(
+            result.error,
+            { duplicate_name: 'Dieser Begriff ist bereits vorhanden.' },
+            'Der Begriff konnte nicht angelegt werden.',
+          ),
+        );
+        return;
+      }
+      setDefinitionName('');
+      showBanner({
+        variant: 'success',
+        message: 'Der Begriff wurde angelegt.',
+      });
+      refresh();
+    } catch {
+      setDefinitionError('Der Begriff konnte nicht angelegt werden.');
+    }
+  });
+}
+
+function CapabilityKindField({
+  kind,
+  setKind,
+}: {
+  kind: CapabilityKind;
+  setKind: (kind: CapabilityKind) => void;
+}) {
+  return (
+    <Field label="Art" htmlFor="capability-kind" className="min-w-0 gap-1.5">
+      <Select
+        value={kind}
+        onValueChange={(value) => {
+          const match = CAPABILITY_KINDS.find((candidate) => candidate === value);
+          if (match) setKind(match);
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="skill">Fähigkeit</SelectItem>
+          <SelectItem value="certification">Zertifizierung</SelectItem>
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+type QualificationManagementDefinitionFormProps = {
+  anyBusy: boolean;
+  runAction: ReturnType<typeof useBusyIds>['run'];
+  refresh: () => void;
+};
+
+export function QualificationManagementDefinitionForm({
+  anyBusy,
+  runAction,
+  refresh,
+}: QualificationManagementDefinitionFormProps) {
+  const { showBanner } = useBanner();
+  const [kind, setKind] = useState<CapabilityKind>('skill');
+  const [definitionName, setDefinitionName] = useState('');
+  const [warningDays, setWarningDays] = useState('30');
+  const [definitionError, setDefinitionError] = useState<string | null>(null);
+  const [definitionFieldErrors, setDefinitionFieldErrors] = useState<DefinitionFieldErrors>({});
+
+  return (
+    // The four columns follow the section's width, not the screen's: beside the
+    // sidebar a tablet screen leaves too little room for them.
+    <Card className="grid grid-cols-1 gap-3 p-4 @xl/qualifications:grid-cols-[180px_minmax(0,1fr)_180px_auto]">
+      <CapabilityKindField kind={kind} setKind={setKind} />
+      <Field
+        label="Name"
+        htmlFor="capability-name"
+        required
+        error={definitionFieldErrors.name}
+        className="min-w-0 gap-1.5"
+      >
+        <Input
+          value={definitionName}
+          onChange={(event) => setDefinitionName(event.target.value)}
+          placeholder="z. B. Wärmepumpen-Inbetriebnahme"
+          maxLength={160}
+        />
+      </Field>
+      <Field
+        label="Hinweis vorher (Tage)"
+        htmlFor="capability-warning-days"
+        error={definitionFieldErrors.warningDays}
+        className="min-w-0 gap-1.5"
+      >
+        <QuantityStepper
+          min={0}
+          value={kind === 'skill' ? '0' : warningDays}
+          onChange={setWarningDays}
+          disabled={kind === 'skill'}
+        />
+      </Field>
+      <Button
+        className="self-end"
+        disabled={anyBusy}
+        onClick={() =>
+          createDefinition({
+            kind,
+            definitionName,
+            warningDays,
+            setDefinitionName,
+            setDefinitionError,
+            setDefinitionFieldErrors,
+            runAction,
+            refresh,
+            showBanner,
+          })
+        }
+      >
+        <Plus className="size-4" />
+        Anlegen
+      </Button>
+      <div className="@xl/qualifications:col-span-4">
+        <ErrorText>{definitionError}</ErrorText>
+      </div>
+    </Card>
+  );
+}
+
+type QualificationManagementDefinitionListProps = QualificationManagementDefinitionFormProps & {
+  activeCapabilities: QualificationWorkspace['capabilities'];
+};
+
+export function QualificationManagementDefinitionList({
+  activeCapabilities,
+  anyBusy,
+  runAction,
+  refresh,
+}: QualificationManagementDefinitionListProps) {
+  const { showBanner } = useBanner();
+
+  return (
+    <div className="divide-y rounded-lg border">
+      {activeCapabilities.length === 0 ? (
+        <EmptyState
+          size="compact"
+          className="p-4"
+          title="Noch keine Fähigkeiten oder Zertifizierungen angelegt."
+        />
+      ) : (
+        activeCapabilities.map((capability) => (
+          <div
+            key={capability.id}
+            className="flex items-center justify-between gap-3 px-4 py-3"
+            data-testid="capability-definition-row"
+            data-capability-name={capability.name}
+          >
+            <div className="min-w-0">
+              <p className="font-medium break-words">{capability.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {getCapabilityKindLabel(capability.kind)}
+                {capability.kind === 'certification'
+                  ? ' · Hinweis ' + capability.defaultExpiryWarningDays + ' Tage vorher'
+                  : ''}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={anyBusy}
+              onClick={async () => {
+                await runAction(`retire:${capability.id}`, async () => {
+                  try {
+                    const result = await retireCapabilityDefinition(capability.id);
+                    if (!result.success) {
+                      showBanner({
+                        variant: 'error',
+                        message: 'Der Begriff konnte nicht archiviert werden.',
+                      });
+                      return;
+                    }
+                    showBanner({
+                      variant: 'success',
+                      message: 'Der Begriff wurde archiviert.',
+                    });
+                    refresh();
+                  } catch {
+                    showBanner({
+                      variant: 'error',
+                      message: 'Der Begriff konnte nicht archiviert werden.',
+                    });
+                  }
+                });
+              }}
+            >
+              Archivieren
+            </Button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}

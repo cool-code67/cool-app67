@@ -1,0 +1,226 @@
+'use client';
+
+import type { ActionFailure } from '@/lib/action-result';
+import { describeFailure } from '@/lib/action-messages';
+import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useRouter } from 'next/navigation';
+
+import { useJobEntityOptions, type JobEntityOptionsState } from '@/hooks/use-job-entity-options';
+import { useServerAction } from '@/hooks/use-server-action';
+import { createServiceCase, updateServiceCase } from '@/lib/service-cases/actions';
+import type {
+  ServiceCaseClientOption,
+  ServiceCaseCreateInput,
+  ServiceCaseDetail,
+  ServiceCaseListItem,
+  ServiceCaseUpdateInput,
+} from '@/lib/service-cases/types';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+import {
+  EMPTY_SERVICE_CASE_FORM,
+  GENERIC_SERVICE_CASE_ERROR,
+  SERVICE_CASE_ERRORS,
+  SERVICE_CASE_REQUIRED_FIELD_IDS,
+  fromDetail,
+  missingServiceCaseFields,
+  type ServiceCaseFormState,
+  type ServiceCaseRequiredField,
+} from './service-case-form-state';
+import { useClientOption } from './use-client-option';
+
+/** The values a list can show for a record before the server confirms it. */
+export type ServiceCasePendingDraft = Pick<
+  ServiceCaseListItem,
+  'id' | 'summary' | 'urgency' | 'status' | 'clientName' | 'siteName'
+>;
+
+export type ServiceCaseCreateSubmission = {
+  draft: ServiceCasePendingDraft;
+  /** Never rejects; a failure carries the German message for the caller's banner. */
+  result: Promise<{ success: true } | (ActionFailure & { message: string })>;
+};
+
+type UseServiceCaseFormOptions = {
+  onOpenChange: (open: boolean) => void;
+  preloadedClient: ServiceCaseClientOption | null | undefined;
+  initial: ServiceCaseDetail | undefined;
+  onSubmitted: ((submission: ServiceCaseCreateSubmission) => void) | undefined;
+  onSaved: (() => void) | undefined;
+};
+
+export type ServiceCaseFormController = {
+  form: ServiceCaseFormState;
+  setForm: Dispatch<SetStateAction<ServiceCaseFormState>>;
+  error: string | null;
+  fieldErrors: Partial<Record<ServiceCaseRequiredField, string>>;
+  isPending: boolean;
+  clientOption: ReturnType<typeof useClientOption>;
+  client: ServiceCaseClientOption | null;
+  site: ServiceCaseClientOption['sites'][number] | undefined;
+  /** The server search of the customer's jobs at the case's site. */
+  jobSearch: JobEntityOptionsState;
+  /** The chosen status closes the case, so a resolution note is required. */
+  terminal: boolean;
+  submit: () => void;
+};
+
+function serviceCaseCreateInput(form: ServiceCaseFormState, serviceCaseId: string): ServiceCaseCreateInput {
+  return {
+    serviceCaseId,
+    idempotencyKey: crypto.randomUUID(),
+    clientId: form.clientId,
+    siteId: form.siteId,
+    contactId: form.contactId || null,
+    originalStatement: form.originalStatement,
+    originalDetails: form.originalDetails,
+    summary: form.summary,
+    urgency: form.urgency,
+    chargeContext: form.chargeContext,
+    accessInstructions: form.accessInstructions,
+    triageNote: form.triageNote,
+    equipmentIds: form.equipmentIds,
+  };
+}
+
+function serviceCaseUpdateInput(
+  initial: ServiceCaseDetail,
+  form: ServiceCaseFormState,
+): ServiceCaseUpdateInput {
+  return {
+    serviceCaseId: initial.id,
+    expectedVersion: initial.version,
+    summary: form.summary,
+    urgency: form.urgency,
+    status: form.status,
+    chargeContext: form.chargeContext,
+    accessInstructions: form.accessInstructions,
+    triageNote: form.triageNote,
+    resolutionNote: form.resolutionNote,
+    jobId: form.jobId || null,
+    equipmentIds: form.equipmentIds,
+    reason: form.reason,
+    idempotencyKey: crypto.randomUUID(),
+  };
+}
+
+/** The create's outcome for the caller's banner; it never rejects. */
+function serviceCaseSubmissionResult(
+  created: ReturnType<typeof createServiceCase>,
+): ServiceCaseCreateSubmission['result'] {
+  return created.then(
+    (outcome) =>
+      outcome.success
+        ? { success: true as const }
+        : {
+            success: false as const,
+            error: outcome.error,
+            message: describeFailure(outcome.error, SERVICE_CASE_ERRORS, GENERIC_SERVICE_CASE_ERROR),
+          },
+    () => ({ success: false as const, error: 'unexpected_error', message: GENERIC_SERVICE_CASE_ERROR }),
+  );
+}
+
+/** The server search of the customer's jobs at the case's site; a case under edit keeps its job's label. */
+function useServiceCaseJobSearch(
+  form: ServiceCaseFormState,
+  initial: ServiceCaseDetail | undefined,
+): JobEntityOptionsState {
+  return useJobEntityOptions(
+    {
+      kind: 'jobs',
+      purpose: 'equipment-work',
+      ...(form.clientId ? { clientId: form.clientId } : {}),
+      ...(form.siteId ? { siteId: form.siteId } : {}),
+    },
+    form.jobId ? [form.jobId] : [],
+    initial?.jobId
+      ? [
+          {
+            value: initial.jobId,
+            label: initial.jobTitle ?? 'Auftrag',
+            description: initial.jobNumber ?? undefined,
+          },
+        ]
+      : undefined,
+  );
+}
+
+/** Form state, the chosen customer's options and the create/update submit of the service case dialog. */
+export function useServiceCaseForm({
+  onOpenChange,
+  preloadedClient,
+  initial,
+  onSubmitted,
+  onSaved,
+}: UseServiceCaseFormOptions): ServiceCaseFormController {
+  const router = useRouter();
+  const [form, setForm] = useState<ServiceCaseFormState>(() =>
+    initial ? fromDetail(initial) : EMPTY_SERVICE_CASE_FORM,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const { run, isPending } = useServerAction(async () => {
+    const result = initial
+      ? await updateServiceCase(serviceCaseUpdateInput(initial, form))
+      : await createServiceCase(serviceCaseCreateInput(form, crypto.randomUUID()));
+    if (!result.success) {
+      setError(describeFailure(result.error, SERVICE_CASE_ERRORS, GENERIC_SERVICE_CASE_ERROR));
+      return;
+    }
+    onOpenChange(false);
+    // Without a caller's live read, the action's response renders the route.
+    if (!initial) {
+      router.push(`/service/faelle/${result.serviceCase.case_number}`);
+    } else if (onSaved) {
+      onSaved();
+    }
+  });
+  // Sites, contacts and equipment of the chosen customer only.
+  const clientOption = useClientOption(form.clientId, preloadedClient);
+  const client = clientOption.client;
+  const site = client?.sites.find((item) => item.id === form.siteId);
+  const jobSearch = useServiceCaseJobSearch(form, initial);
+  const terminal = ['resolved', 'closed_without_visit', 'duplicate'].includes(form.status);
+  const missingFields = missingServiceCaseFields(form, Boolean(initial), terminal);
+  const fieldErrors = attempted ? missingFields : {};
+
+  function submit(): void {
+    setError(null);
+    setAttempted(true);
+    const errorsById = Object.fromEntries(
+      SERVICE_CASE_REQUIRED_FIELD_IDS.map(([key, id]) => [id, missingFields[key]]),
+    );
+    if (focusFirstInvalidField(errorsById)) return;
+    if (!initial && onSubmitted) {
+      const serviceCaseId = crypto.randomUUID();
+      onSubmitted({
+        draft: {
+          id: serviceCaseId,
+          summary: form.summary.trim(),
+          urgency: form.urgency,
+          status: 'new',
+          clientName: client?.name ?? '',
+          siteName: site?.name ?? '',
+        },
+        result: serviceCaseSubmissionResult(createServiceCase(serviceCaseCreateInput(form, serviceCaseId))),
+      });
+      onOpenChange(false);
+      return;
+    }
+    void run();
+  }
+
+  return {
+    form,
+    setForm,
+    error,
+    fieldErrors,
+    isPending,
+    clientOption,
+    client,
+    site,
+    jobSearch,
+    terminal,
+    submit,
+  };
+}

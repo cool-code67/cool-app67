@@ -1,0 +1,197 @@
+import { addLocalMonthsClamped, getBusinessTodayIso } from '@/lib/date-time/berlin';
+import { z } from '@/lib/zod';
+import { nullableTrimmedText } from '@/lib/validation/text';
+import { uuidSchema } from '@/lib/validation/uuid';
+
+import {
+  MAINTENANCE_COVERAGE_STATUSES,
+  MAINTENANCE_MISSED_VISIT_REASONS,
+  MAINTENANCE_NEXT_ACTIONS,
+  MAINTENANCE_NEXT_DUE_BASES,
+  MAINTENANCE_SCOPE_OUTCOMES,
+} from './types';
+
+const nullableDate = z.preprocess(
+  (value) => (value === '' ? null : value),
+  z.string().date().optional().nullable(),
+);
+
+export const maintenanceCoverageSchema = z
+  .object({
+    coverageId: uuidSchema,
+    clientId: uuidSchema,
+    siteId: uuidSchema,
+    reference: nullableTrimmedText(1, 160),
+    description: nullableTrimmedText(1, 5000),
+    status: z.enum(MAINTENANCE_COVERAGE_STATUSES),
+    validFrom: nullableDate,
+    validUntil: nullableDate,
+    noticeDate: nullableDate,
+    renewalDate: nullableDate,
+    reviewDueDate: nullableDate,
+    operationalNote: nullableTrimmedText(1, 5000),
+    idempotencyKey: uuidSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.validFrom && value.validUntil && value.validUntil < value.validFrom) {
+      context.addIssue({
+        code: 'custom',
+        path: ['validUntil'],
+        message: 'Das Vertragsende darf nicht vor dem Beginn liegen.',
+      });
+    }
+  });
+
+export const maintenancePlanSchema = z
+  .object({
+    planId: uuidSchema,
+    revisionId: uuidSchema,
+    clientId: uuidSchema,
+    siteId: uuidSchema,
+    maintenanceCoverageId: uuidSchema.optional().nullable(),
+    status: z.enum(['draft', 'active']),
+    templateVersionId: uuidSchema,
+    effectiveFromDate: z.string().date(),
+    firstDueDate: z.string().date(),
+    intervalMonths: z.number().int().min(1).max(120),
+    dueWindowBeforeDays: z.number().int().min(0).max(365),
+    dueWindowAfterDays: z.number().int().min(0).max(365),
+    plannedDurationMinutes: z.number().int().min(15).max(1440),
+    nextDueBasis: z.enum(MAINTENANCE_NEXT_DUE_BASES),
+    operationalInstructions: nullableTrimmedText(1, 10000),
+    overlapReason: nullableTrimmedText(3, 1000),
+    reason: z.string().trim().min(3).max(1000),
+    equipmentIds: z
+      .array(uuidSchema)
+      .min(1)
+      .max(50)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: 'Jede Anlage darf nur einmal ausgewählt werden.',
+      }),
+    idempotencyKey: uuidSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.firstDueDate < value.effectiveFromDate) {
+      context.addIssue({
+        code: 'custom',
+        path: ['firstDueDate'],
+        message: 'Die erste Fälligkeit darf nicht vor dem Gültigkeitsbeginn liegen.',
+      });
+    }
+    // Five years back bounds the due work one save generates; generate_maintenance_due_work caps its walk too.
+    if (value.firstDueDate < addLocalMonthsClamped(getBusinessTodayIso(), -60)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['firstDueDate'],
+        message: 'Die erste Fälligkeit darf höchstens fünf Jahre zurückliegen.',
+      });
+    }
+  });
+
+export const maintenanceTransitionSchema = z.object({
+  planId: uuidSchema,
+  expectedVersion: z.number().int().positive(),
+  toStatus: z.enum(['active', 'suspended', 'terminated']),
+  reason: z.string().trim().min(3).max(1000),
+  idempotencyKey: uuidSchema,
+});
+
+export const maintenanceArchiveSchema = maintenanceTransitionSchema
+  .omit({ toStatus: true })
+  .extend({ archived: z.boolean() });
+
+export const maintenanceServiceCaseLinkSchema = maintenanceTransitionSchema
+  .pick({ planId: true, reason: true, idempotencyKey: true })
+  .extend({
+    dueWorkId: uuidSchema,
+    expectedDueVersion: maintenanceTransitionSchema.shape.expectedVersion,
+    serviceCaseId: uuidSchema,
+  });
+
+export const maintenanceVisitSchema = z
+  .object({
+    dueWorkIds: z.array(uuidSchema).min(1).max(20),
+    expectedVersions: z.array(z.number().int().positive()).min(1).max(20),
+    reason: z.string().trim().min(3).max(1000),
+    idempotencyKey: uuidSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.dueWorkIds.length !== value.expectedVersions.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['expectedVersions'],
+        message: 'Für jede Fälligkeit muss genau eine erwartete Version übergeben werden.',
+      });
+    }
+  });
+
+export const maintenanceScheduleSchema = z.object({
+  dueWorkId: uuidSchema,
+  expectedVersion: z.number().int().positive(),
+  jobId: uuidSchema,
+  startsAtLocal: z.string().datetime({ local: true }),
+  durationMinutes: z.number().int().min(15).max(1440),
+  idempotencyKey: uuidSchema,
+});
+
+export const maintenanceExceptionSchema = z.object({
+  dueWorkId: uuidSchema,
+  expectedVersion: z.number().int().positive(),
+  toStatus: z.enum(['skipped', 'cancelled', 'superseded']),
+  reason: z.string().trim().min(3).max(1000),
+  idempotencyKey: uuidSchema,
+});
+
+/** „Besuch hat nicht stattgefunden“: a reason code, and a note that „Anderer Grund“ requires. */
+export const maintenanceVisitMissedSchema = z
+  .object({
+    dueWorkId: uuidSchema,
+    expectedVersion: z.number().int().positive(),
+    missedReason: z.enum(MAINTENANCE_MISSED_VISIT_REASONS),
+    note: z.string().trim().max(1000),
+    idempotencyKey: uuidSchema,
+  })
+  .refine((value) => value.note.length >= 3 || (value.note.length === 0 && value.missedReason !== 'other'), {
+    path: ['note'],
+    message: 'Bitte beschreibe den Grund mit mindestens 3 Zeichen.',
+  });
+
+/**
+ * „Wartung abschließen“. A partial or unresolved visit names one to ten
+ * Mängel and its next action: Keine with a reason, or an action with an owner
+ * and a target date after the visit. A complete visit names none of them.
+ */
+export const maintenanceCompletionSchema = z
+  .object({
+    dueWorkId: uuidSchema,
+    expectedVersion: z.number().int().positive(),
+    scopeOutcome: z.enum(MAINTENANCE_SCOPE_OUTCOMES),
+    completedOn: z.string().date(),
+    workArtifactRevisionIds: z.array(uuidSchema).min(1).max(50),
+    reason: z.string().trim().min(3).max(1000),
+    defects: z.array(z.string().trim().min(3).max(160)).max(10),
+    nextAction: z.enum(MAINTENANCE_NEXT_ACTIONS).nullable(),
+    nextActionOwnerId: uuidSchema.nullable(),
+    nextActionTargetDate: z.string().date().nullable(),
+    nextActionNote: z.string().trim().max(1000),
+    idempotencyKey: uuidSchema,
+  })
+  .refine((value) => {
+    const { scopeOutcome, defects, nextAction, nextActionOwnerId, nextActionTargetDate, nextActionNote } =
+      value;
+    if (scopeOutcome === 'complete') {
+      return (
+        defects.length === 0 && !nextAction && !nextActionOwnerId && !nextActionTargetDate && !nextActionNote
+      );
+    }
+    if (!nextAction || defects.length === 0) return false;
+    if (nextAction === 'none') {
+      return nextActionNote.length >= 3 && !nextActionOwnerId && !nextActionTargetDate;
+    }
+    return (
+      nextActionOwnerId !== null &&
+      nextActionTargetDate !== null &&
+      nextActionTargetDate > value.completedOn &&
+      !nextActionNote
+    );
+  });
