@@ -1,0 +1,123 @@
+import { expect, type Locator, type Page } from '@playwright/test';
+import { pressKey } from '../../golden/support/steps/interaction';
+
+// The keyboard path of an open dialog, sheet or confirmation (werkflow-design,
+// "Add a form or a dialog"): focus moves into the layer, starts on its first
+// control, the start control it declares (`startControlId`), its cancel action
+// (a confirmation) or the layer itself, and Tab never leaves it.
+// Soft by default, so the surface audit names every defect of a page.
+
+/**
+ * Where focus sits in the layer: on its first control, its declared start, its
+ * cancel action, the layer itself, or elsewhere. A declared start that is
+ * present and enabled is the only accepted place: focus that falls back to the
+ * first control means the dialog's start no longer works.
+ */
+async function focusPosition(
+  layer: Locator,
+): Promise<{ startsRight: boolean; tabbables: number; focused: string }> {
+  return layer.evaluate((root) => {
+    const candidates = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        'a[href], button, input, textarea, select, [tabindex], [contenteditable="true"]',
+      ),
+    ).filter((element) => {
+      if (element.tabIndex < 0) return false;
+      // A roving-focus container (a tab strip, a toolbar) is one tab stop
+      // that hands focus to its active item, so the item is the control.
+      if (element.matches('[role="tablist"], [role="toolbar"], [role="menubar"], [role="radiogroup"]'))
+        return false;
+      if ('disabled' in element && element.disabled) return false;
+      if (element.closest('[inert]')) return false;
+      const box = element.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden';
+    });
+    const active = document.activeElement;
+    const describe = (element: Element | null): string =>
+      element
+        ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''} „${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 40)}“`
+        : 'nothing';
+    // A dialog that moves focus to a later control names it (DialogContent's `startControlId`).
+    const declaredId = root.getAttribute('data-dialog-start');
+    const declaredStart =
+      declaredId === null ? undefined : candidates.find((element) => element.id === declaredId);
+    // A destructive confirmation starts on its least destructive action
+    // (werkflow-design, "Destructive confirmations").
+    const onFirst =
+      active === candidates[0] ||
+      (root.getAttribute('role') === 'alertdialog' &&
+        active?.getAttribute('data-slot') === 'alert-dialog-cancel');
+    return {
+      startsRight: declaredStart ? active === declaredStart : onFirst || active === root,
+      tabbables: candidates.length,
+      focused: describe(active),
+    };
+  });
+}
+
+async function focusInside(layer: Locator): Promise<boolean> {
+  return layer.evaluate((root) => root.contains(document.activeElement));
+}
+
+type KeyboardPathOptions = { soft?: boolean };
+
+/**
+ * Where focus lands as the layer opens: its first control, its declared start
+ * control or the layer itself. Runs before an opener's `prepareLayer`, whose
+ * choices move focus as a user's would.
+ */
+export async function expectOpeningFocus(
+  layer: Locator,
+  label: string,
+  options: KeyboardPathOptions = {},
+): Promise<void> {
+  const check = options.soft === false ? expect : expect.soft;
+  // The primitive moves focus in an effect after the open frame.
+  // best-effort: this waits for that move; the check below reports a focus that never arrived,
+  // softly unless the caller asks for a hard check.
+  await expect
+    .poll(() => focusInside(layer), {
+      message: `${label}: focus moves into the opened dialog`,
+      timeout: 3_000,
+    })
+    .toBe(true)
+    .catch(() => undefined);
+  const start = await focusPosition(layer);
+  check(
+    start.startsRight,
+    `${label}: focus starts on the first control, the declared start control or the dialog, not on ${start.focused}`,
+  ).toBe(true);
+}
+
+/** Tab through every control of the open layer from where focus is; it never leaves the layer. */
+export async function expectTabCycle(
+  page: Page,
+  layer: Locator,
+  label: string,
+  options: KeyboardPathOptions = {},
+): Promise<void> {
+  const check = options.soft === false ? expect : expect.soft;
+  const { tabbables } = await focusPosition(layer);
+  const presses = Math.min(tabbables + 1, 40);
+  for (let press = 0; press < presses; press += 1) {
+    await pressKey(layer, 'Tab', { into: page.locator(':focus') });
+    if (!(await focusInside(layer))) {
+      check(false, `${label}: Tab press ${press + 1} moved focus out of the dialog`).toBe(true);
+      return;
+    }
+  }
+}
+
+/**
+ * The keyboard path inside an open layer: focus starts on its first control,
+ * its declared start control or the layer itself, and Tab never leaves it.
+ */
+export async function expectKeyboardPath(
+  page: Page,
+  layer: Locator,
+  label: string,
+  options: KeyboardPathOptions = {},
+): Promise<void> {
+  await expectOpeningFocus(layer, label, options);
+  await expectTabCycle(page, layer, label, options);
+}

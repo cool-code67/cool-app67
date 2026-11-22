@@ -1,0 +1,751 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+
+import type { ActionResult } from '@/lib/action-result';
+import { logReadFailure, loggedRead } from '@/lib/data/read-request-cache';
+import { compareRecordNumbers } from '@/lib/format/record-number';
+import { authenticateAndAuthorize } from '@/lib/jobs/auth';
+import { readJobAssignmentOfUser } from '@/lib/jobs/job-access-reads';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { formatSiteRowAddress } from '@/lib/clients/types';
+import type { Tables } from '@/lib/supabase/database.types';
+import { toJson } from '@/lib/supabase/json';
+import { LIST_ROW_CAP, readCompleteRows, readInBatches } from '@/lib/supabase/query-batches';
+import { constrainedValue } from '@/lib/validation/constrained-value';
+import { uuidSchema } from '@/lib/validation/uuid';
+import { z } from '@/lib/zod';
+import {
+  serviceCaseCreateSchema,
+  serviceCaseEvidenceSchema,
+  serviceCaseRelationSchema,
+  serviceCaseUpdateSchema,
+} from './validation';
+import { hydrateListItems } from './list-page-server';
+import type {
+  FieldServiceContext,
+  FieldServiceContextResult,
+  ServiceCaseClientOption,
+  ServiceCaseCreateInput,
+  ServiceCaseDetail,
+  ServiceCaseDetailResult,
+  ServiceCaseDetailWorkspace,
+  ServiceCaseDocument,
+  ServiceCaseEvidenceInput,
+  ServiceCaseEvidenceOption,
+  ServiceCaseEvent,
+  ServiceCaseMutationResult,
+  ServiceCaseRelation,
+  ServiceCaseRelationInput,
+  ServiceCaseRow,
+  ServiceCaseUpdateInput,
+} from './types';
+import { logError } from '@/lib/logging';
+import { captureUsage } from '@/lib/usage-statistics/capture';
+import {
+  requireServiceManager,
+  type ServiceAdminClient as AdminClient,
+  type ServiceManagerContext,
+} from './manager-context';
+
+function serviceCaseFailureCode(error: { message?: string } | null, fallback: string): string {
+  const known = [
+    'service_case_not_authorized',
+    'service_case_idempotency_conflict',
+    'service_case_request_not_found',
+    'service_case_request_mismatch',
+    'service_case_request_already_converted',
+    'service_case_request_customer_site_required',
+    'service_case_direct_input_required',
+    'service_case_client_mismatch',
+    'service_case_site_mismatch',
+    'service_case_contact_mismatch',
+    'service_case_job_mismatch',
+    'service_case_equipment_mismatch',
+    'service_case_reason_required',
+    'service_case_not_found',
+    'service_case_stale_version',
+    'service_case_resolution_note_required',
+    'service_case_duplicate_relation_required',
+    'service_case_relation_mismatch',
+    'service_case_relation_cycle',
+    'service_case_related_not_found',
+    'service_case_evidence_mismatch',
+  ];
+  return known.find((value) => error?.message?.includes(value)) ?? fallback;
+}
+
+/** The customer row, its sites, contacts and active equipment; a failed read throws after logging. */
+async function readClientOptionRows(admin: AdminClient, organizationId: string, clientId: string) {
+  const [clientsResult, sitesResult, contactsResult, equipmentResult] = await Promise.all([
+    readCompleteRows(
+      (from, to) =>
+        admin
+          .from('clients')
+          .select('id, name')
+          .eq('organization_id', organizationId)
+          .eq('id', clientId)
+          .order('name')
+          .order('id')
+          .range(from, to),
+      LIST_ROW_CAP,
+    ),
+    readCompleteRows(
+      (from, to) =>
+        admin
+          .from('client_sites')
+          .select('id, client_id, name, street, postal_code, city, is_active')
+          .eq('organization_id', organizationId)
+          .eq('client_id', clientId)
+          .order('name')
+          .order('id')
+          .range(from, to),
+      LIST_ROW_CAP,
+    ),
+    readCompleteRows(
+      (from, to) =>
+        admin
+          .from('client_contacts')
+          .select('id, client_id, name')
+          .eq('organization_id', organizationId)
+          .eq('client_id', clientId)
+          .order('name')
+          .order('id')
+          .range(from, to),
+      LIST_ROW_CAP,
+    ),
+    readCompleteRows(
+      (from, to) =>
+        admin
+          .from('installed_equipment')
+          .select(
+            'id, site_id, parent_equipment_id, equipment_number, name, manufacturer, model, location_detail',
+          )
+          .eq('organization_id', organizationId)
+          .eq('client_id', clientId)
+          .is('voided_at', null)
+          .is('archived_at', null)
+          .order('equipment_number')
+          .order('id')
+          .range(from, to),
+      LIST_ROW_CAP,
+    ),
+  ]);
+  const optionsError =
+    clientsResult.error ?? sitesResult.error ?? contactsResult.error ?? equipmentResult.error;
+  if (optionsError) {
+    logReadFailure('loadClientOption: service case option read failed', {
+      code: optionsError.code,
+      message: optionsError.message,
+    });
+    throw new Error('service_case_client_options_failed');
+  }
+  return {
+    clients: clientsResult.data,
+    sites: sitesResult.data,
+    contacts: contactsResult.data,
+    equipment: equipmentResult.data,
+  };
+}
+
+type ClientOptionRows = Awaited<ReturnType<typeof readClientOptionRows>>;
+
+/** One customer's sites, contacts and active equipment: the choices of the case form. */
+async function loadClientOption(
+  admin: AdminClient,
+  organizationId: string,
+  clientId: string,
+): Promise<ServiceCaseClientOption | null> {
+  return toClientOption(await readClientOptionRows(admin, organizationId, clientId));
+}
+
+function toClientOption(rows: ClientOptionRows): ServiceCaseClientOption | null {
+  const sitesByClient = new Map<string, ClientOptionRows['sites']>();
+  for (const site of rows.sites ?? []) {
+    const sites = sitesByClient.get(site.client_id) ?? [];
+    sites.push(site);
+    sitesByClient.set(site.client_id, sites);
+  }
+  const equipmentBySite = new Map<string, ClientOptionRows['equipment']>();
+  for (const equipment of (rows.equipment ?? []).toSorted((left, right) =>
+    compareRecordNumbers(left.equipment_number, right.equipment_number),
+  )) {
+    const items = equipmentBySite.get(equipment.site_id) ?? [];
+    items.push(equipment);
+    equipmentBySite.set(equipment.site_id, items);
+  }
+  const contactsByClient = new Map<string, ClientOptionRows['contacts']>();
+  for (const contact of rows.contacts ?? []) {
+    const contacts = contactsByClient.get(contact.client_id) ?? [];
+    contacts.push(contact);
+    contactsByClient.set(contact.client_id, contacts);
+  }
+  const [client] = (rows.clients ?? []).map((client) => ({
+    id: client.id,
+    name: client.name,
+    sites: (sitesByClient.get(client.id) ?? []).map((site) => ({
+      id: site.id,
+      name: site.name,
+      address: formatSiteRowAddress(site),
+      isActive: site.is_active,
+      equipment: (equipmentBySite.get(site.id) ?? []).map((item) => ({
+        id: item.id,
+        equipmentNumber: item.equipment_number,
+        name: item.name,
+        manufacturer: item.manufacturer,
+        model: item.model,
+        locationDetail: item.location_detail,
+        parentEquipmentId: item.parent_equipment_id,
+      })),
+    })),
+    contacts: (contactsByClient.get(client.id) ?? []).map((contact) => ({
+      id: contact.id,
+      name: contact.name,
+    })),
+  }));
+  return client ?? null;
+}
+
+export async function getServiceClientOption(
+  clientId: string,
+): Promise<ActionResult<{ client: ServiceCaseClientOption | null }>> {
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const parsed = uuidSchema.safeParse(clientId);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  try {
+    const client = await loadClientOption(context.admin, context.organizationId, parsed.data);
+    return { success: true, client };
+  } catch {
+    return { success: false, error: 'service_case_load_failed' };
+  }
+}
+
+async function loadDetailRelations(
+  admin: AdminClient,
+  organizationId: string,
+  caseId: string,
+): Promise<ServiceCaseRelation[]> {
+  const { data, error } = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('service_case_relations')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .or(`service_case_id.eq.${caseId},related_service_case_id.eq.${caseId}`)
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (error) throw new Error('service_case_relations_failed');
+  const relatedIds = data.map((relation) =>
+    relation.service_case_id === caseId ? relation.related_service_case_id : relation.service_case_id,
+  );
+  const casesResult = await readInBatches(relatedIds, (batch) =>
+    admin
+      .from('service_cases')
+      .select('id, case_number, summary')
+      .eq('organization_id', organizationId)
+      .in('id', [...batch]),
+  );
+  if (casesResult.error) throw new Error('service_case_relations_failed');
+  const cases = new Map(casesResult.data.map((item) => [item.id, item]));
+  return data.flatMap((relation) => {
+    const relatedId =
+      relation.service_case_id === caseId ? relation.related_service_case_id : relation.service_case_id;
+    const related = cases.get(relatedId);
+    if (!related) return [];
+    return [
+      {
+        id: relation.id,
+        relationType: relation.relation_type,
+        relatedCaseId: related.id,
+        relatedCaseNumber: related.case_number,
+        relatedSummary: related.summary,
+        reason: relation.reason,
+        createdAt: relation.created_at,
+      },
+    ];
+  });
+}
+
+async function loadDetailEvidence(admin: AdminClient, organizationId: string, caseId: string) {
+  const { data: links, error } = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('service_case_evidence_links')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('service_case_id', caseId)
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (error) throw new Error('service_case_evidence_failed');
+  const revisionIds = links.map((link) => link.work_artifact_revision_id);
+  const revisionResult = await readInBatches(revisionIds, (batch) =>
+    admin
+      .from('work_artifact_revisions')
+      .select('id, artifact_id, revision_number, title, kind')
+      .eq('organization_id', organizationId)
+      .in('id', [...batch]),
+  );
+  if (revisionResult.error) throw new Error('service_case_evidence_failed');
+  const revisions = new Map(revisionResult.data.map((revision) => [revision.id, revision]));
+  return links.flatMap((link) => {
+    const revision = revisions.get(link.work_artifact_revision_id);
+    return revision
+      ? [
+          {
+            id: link.id,
+            revisionId: revision.id,
+            artifactId: revision.artifact_id,
+            revisionNumber: revision.revision_number,
+            title: revision.title,
+            kind: revision.kind,
+            createdAt: link.created_at,
+          },
+        ]
+      : [];
+  });
+}
+
+async function loadDetailDocuments(
+  admin: AdminClient,
+  organizationId: string,
+  caseId: string,
+): Promise<ServiceCaseDocument[]> {
+  const { data: links, error } = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('document_links')
+        .select('id, document_id')
+        .eq('organization_id', organizationId)
+        .eq('service_case_id', caseId)
+        .order('id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (error) throw new Error('service_case_documents_failed');
+  const documentIds = links.map((link) => link.document_id);
+  const documentsResult = await readInBatches(documentIds, (batch) =>
+    admin
+      .from('documents')
+      .select('id, display_name, category, current_version_number')
+      .eq('organization_id', organizationId)
+      .is('deleted_at', null)
+      .in('id', [...batch]),
+  );
+  if (documentsResult.error) throw new Error('service_case_documents_failed');
+  const documents = new Map(documentsResult.data.map((document) => [document.id, document]));
+  return links.flatMap((link) => {
+    const document = documents.get(link.document_id);
+    return document
+      ? [
+          {
+            linkId: link.id,
+            documentId: document.id,
+            displayName: document.display_name,
+            category: document.category,
+            currentVersionNumber: document.current_version_number,
+          },
+        ]
+      : [];
+  });
+}
+
+async function loadEvidenceOptions(
+  admin: AdminClient,
+  organizationId: string,
+  jobId: string | null,
+  linkedRevisionIds: Set<string>,
+): Promise<ServiceCaseEvidenceOption[]> {
+  if (!jobId) return [];
+  const artifactsResult = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('work_artifacts')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('job_id', jobId)
+        .is('voided_at', null)
+        .order('id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (artifactsResult.error) throw new Error('service_case_evidence_failed');
+  const artifactIds = artifactsResult.data.map((artifact) => artifact.id);
+  const revisionsResult = await readInBatches(artifactIds, (batch) =>
+    readCompleteRows(
+      (from, to) =>
+        admin
+          .from('work_artifact_revisions')
+          .select('id, artifact_id, revision_number, title, kind, captured_at')
+          .eq('organization_id', organizationId)
+          .in('artifact_id', [...batch])
+          .order('id')
+          .range(from, to),
+      LIST_ROW_CAP,
+    ),
+  );
+  if (revisionsResult.error) throw new Error('service_case_evidence_failed');
+  // Newest capture first, across batches.
+  return revisionsResult.data
+    .sort((left, right) => Date.parse(right.captured_at) - Date.parse(left.captured_at))
+    .filter((revision) => !linkedRevisionIds.has(revision.id))
+    .map((revision) => ({
+      revisionId: revision.id,
+      artifactId: revision.artifact_id,
+      revisionNumber: revision.revision_number,
+      title: revision.title,
+      kind: revision.kind,
+    }));
+}
+
+async function loadFollowUpOwnerOptions(
+  admin: AdminClient,
+  organizationId: string,
+): Promise<ServiceCaseDetailWorkspace['followUpOwners']> {
+  const membershipsResult = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('organization_members')
+        .select('user_id, role')
+        .eq('organization_id', organizationId)
+        .in('role', ['admin', 'buero'])
+        .order('user_id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (membershipsResult.error) throw new Error('service_case_owners_failed');
+  const userIds = membershipsResult.data.map((member) => member.user_id);
+  const profilesResult = await readInBatches(userIds, (batch) =>
+    admin
+      .from('profiles')
+      .select('id, first_name, last_name, email')
+      .in('id', [...batch]),
+  );
+  if (profilesResult.error) throw new Error('service_case_owners_failed');
+  const profiles = new Map(profilesResult.data.map((profile) => [profile.id, profile]));
+  return membershipsResult.data
+    .map((member) => {
+      const profile = profiles.get(member.user_id);
+      return {
+        userId: member.user_id,
+        name:
+          [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
+          profile?.email ||
+          'Unbekannt',
+        // The read filters on these two roles.
+        role: constrainedValue(['admin', 'buero'], member.role, 'organization_members.role'),
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, 'de'));
+}
+
+/** Every read of one case detail beside its events' actors, in parallel; a failed helper read throws. */
+function readServiceCaseDetailParts(context: ServiceManagerContext, row: ServiceCaseRow) {
+  return Promise.all([
+    hydrateListItems(context.admin, context.organizationId, [row]),
+    loadClientOption(context.admin, context.organizationId, row.client_id),
+    readCompleteRows(
+      (from, to) =>
+        context.admin
+          .from('service_case_events')
+          .select('*')
+          .eq('organization_id', context.organizationId)
+          .eq('service_case_id', row.id)
+          .order('recorded_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+      LIST_ROW_CAP,
+    ),
+    loadDetailRelations(context.admin, context.organizationId, row.id),
+    loadDetailEvidence(context.admin, context.organizationId, row.id),
+    loadDetailDocuments(context.admin, context.organizationId, row.id),
+    row.contact_id
+      ? context.admin
+          .from('client_contacts')
+          .select('name')
+          .eq('id', row.contact_id)
+          .eq('organization_id', context.organizationId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    loadFollowUpOwnerOptions(context.admin, context.organizationId),
+  ]);
+}
+
+/** The case's events with their actors named; a failed actor read throws. */
+async function loadServiceCaseEvents(
+  admin: AdminClient,
+  eventRows: Tables<'service_case_events'>[],
+): Promise<ServiceCaseEvent[]> {
+  const actorIds = [...new Set(eventRows.map((event) => event.actor_id))];
+  const actorsResult = await readInBatches(actorIds, (batch) =>
+    admin
+      .from('profiles')
+      .select('id, first_name, last_name, email')
+      .in('id', [...batch]),
+  );
+  if (actorsResult.error) throw new Error('service_case_actors_failed');
+  const actorNames = new Map(
+    actorsResult.data.map((actor) => [
+      actor.id,
+      [actor.first_name, actor.last_name].filter(Boolean).join(' ') || actor.email || 'Unbekannt',
+    ]),
+  );
+  return eventRows.map((event) => ({
+    id: event.id,
+    eventType: event.event_type,
+    actorName: actorNames.get(event.actor_id) ?? 'Unbekannt',
+    reason: event.reason,
+    beforeSnapshot: event.before_snapshot,
+    afterSnapshot: event.after_snapshot,
+    recordedAt: event.recorded_at,
+  }));
+}
+
+export async function getServiceCaseDetailByNumber(rawCaseNumber: string): Promise<ServiceCaseDetailResult> {
+  const parsedCaseNumber = z.string().trim().min(1).max(100).safeParse(rawCaseNumber);
+  if (!parsedCaseNumber.success) return { success: false, error: 'service_case_not_found' };
+  const caseNumber = parsedCaseNumber.data;
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { data: row, error } = await context.admin
+    .from('service_cases')
+    .select('*')
+    .eq('organization_id', context.organizationId)
+    .eq('case_number', caseNumber.toUpperCase())
+    .maybeSingle();
+  if (error) {
+    logReadFailure('getServiceCaseDetailByNumber: service case read failed', { code: error.code });
+    return { success: false, error: 'service_case_load_failed' };
+  }
+  if (!row) return { success: false, error: 'service_case_not_found' };
+
+  try {
+    const [listItems, client, eventsResult, relations, evidence, documents, contactResult, followUpOwners] =
+      await readServiceCaseDetailParts(context, row);
+    if (!listItems[0] || eventsResult.error || contactResult.error) {
+      logReadFailure('getServiceCaseDetailByNumber: detail read failed', {
+        hydrated: Boolean(listItems[0]),
+        events: eventsResult.error?.code,
+        contact: contactResult.error?.code,
+      });
+      return { success: false, error: 'service_case_load_failed' };
+    }
+    const events = await loadServiceCaseEvents(context.admin, eventsResult.data);
+    const contactName = contactResult.data?.name ?? null;
+    const serviceCase: ServiceCaseDetail = {
+      ...listItems[0],
+      contactId: row.contact_id,
+      contactName,
+      originalStatement: row.original_statement,
+      originalDetails: row.original_details,
+      accessInstructions: row.access_instructions,
+      triageNote: row.triage_note,
+      resolutionNote: row.resolution_note,
+      createdAt: row.created_at,
+      events,
+      relations,
+      evidence,
+      documents,
+    };
+    const evidenceOptions = await loadEvidenceOptions(
+      context.admin,
+      context.organizationId,
+      row.job_id,
+      new Set(evidence.map((item) => item.revisionId)),
+    );
+    return {
+      success: true,
+      workspace: {
+        serviceCase,
+        currentActorId: context.actorId,
+        client,
+        evidenceOptions,
+        followUpOwners,
+      },
+    };
+  } catch (cause) {
+    logError('service_case_detail_load_failed', cause);
+    return { success: false, error: 'service_case_load_failed' };
+  }
+}
+
+function refreshServicePaths(caseNumber?: string): void {
+  revalidatePath('/service/faelle');
+  revalidatePath('/anfragen');
+  if (caseNumber) revalidatePath(`/service/faelle/${caseNumber}`);
+}
+
+async function refreshServiceCasePathsById(
+  admin: AdminClient,
+  organizationId: string,
+  serviceCaseId: string,
+): Promise<void> {
+  const { data, error } = await loggedRead(
+    'refreshServiceCasePathsById: service_cases read failed',
+    admin
+      .from('service_cases')
+      .select('case_number')
+      .eq('organization_id', organizationId)
+      .eq('id', serviceCaseId)
+      .maybeSingle(),
+  );
+  // The write has committed: without the case number, refresh every case detail page instead of leaving this one stale.
+  if (error) revalidatePath('/service/faelle/[caseNumber]', 'page');
+  refreshServicePaths(data?.case_number);
+}
+
+export async function createServiceCase(input: ServiceCaseCreateInput): Promise<ServiceCaseMutationResult> {
+  const parsed = serviceCaseCreateSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { data, error } = await context.admin.rpc('create_service_case', {
+    p_organization_id: context.organizationId,
+    p_service_case_id: parsed.data.serviceCaseId,
+    p_payload: toJson(parsed.data),
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error || !data) {
+    return { success: false, error: serviceCaseFailureCode(error, 'service_case_create_failed') };
+  }
+  refreshServicePaths(data.case_number);
+  // „Als Servicefall übernehmen“ converts the Anfrage, as a conversion into a job or project does.
+  if (parsed.data.sourceRequestId) captureUsage(context.organizationId, 'request', 'completed');
+  return { success: true, serviceCase: data };
+}
+
+export async function updateServiceCase(input: ServiceCaseUpdateInput): Promise<ServiceCaseMutationResult> {
+  const parsed = serviceCaseUpdateSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const payload = {
+    summary: parsed.data.summary,
+    urgency: parsed.data.urgency,
+    status: parsed.data.status,
+    chargeContext: parsed.data.chargeContext,
+    accessInstructions: parsed.data.accessInstructions ?? null,
+    triageNote: parsed.data.triageNote ?? null,
+    resolutionNote: parsed.data.resolutionNote ?? null,
+    jobId: parsed.data.jobId ?? null,
+    equipmentIds: parsed.data.equipmentIds,
+  };
+  const { data, error } = await context.admin.rpc('update_service_case', {
+    p_organization_id: context.organizationId,
+    p_service_case_id: parsed.data.serviceCaseId,
+    p_expected_version: parsed.data.expectedVersion,
+    p_payload: payload,
+    p_reason: parsed.data.reason,
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error || !data) {
+    return { success: false, error: serviceCaseFailureCode(error, 'service_case_update_failed') };
+  }
+  refreshServicePaths(data.case_number);
+  return { success: true, serviceCase: data };
+}
+
+export async function linkServiceCaseRelation(input: ServiceCaseRelationInput): Promise<ActionResult> {
+  const parsed = serviceCaseRelationSchema.safeParse(input);
+  if (!parsed.success || parsed.data.serviceCaseId === parsed.data.relatedServiceCaseId) {
+    return { success: false, error: 'invalid_input' };
+  }
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { error } = await context.admin.rpc('link_service_case_relation', {
+    p_organization_id: context.organizationId,
+    p_service_case_id: parsed.data.serviceCaseId,
+    p_related_service_case_id: parsed.data.relatedServiceCaseId,
+    p_relation_type: parsed.data.relationType,
+    p_expected_version: parsed.data.expectedVersion,
+    p_reason: parsed.data.reason,
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error) {
+    return { success: false, error: serviceCaseFailureCode(error, 'service_case_relation_failed') };
+  }
+  await refreshServiceCasePathsById(context.admin, context.organizationId, parsed.data.serviceCaseId);
+  return { success: true };
+}
+
+export async function linkServiceCaseEvidence(input: ServiceCaseEvidenceInput): Promise<ActionResult> {
+  const parsed = serviceCaseEvidenceSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'invalid_input' };
+  const context = await requireServiceManager();
+  if ('success' in context) return context;
+  const { error } = await context.admin.rpc('link_service_case_evidence', {
+    p_organization_id: context.organizationId,
+    p_service_case_id: parsed.data.serviceCaseId,
+    p_work_artifact_revision_id: parsed.data.workArtifactRevisionId,
+    p_expected_version: parsed.data.expectedVersion,
+    p_actor_id: context.actorId,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error) {
+    return { success: false, error: serviceCaseFailureCode(error, 'service_case_evidence_failed') };
+  }
+  await refreshServiceCasePathsById(context.admin, context.organizationId, parsed.data.serviceCaseId);
+  return { success: true };
+}
+
+export async function getAssignedServiceContextForJob(rawJobId: string): Promise<FieldServiceContextResult> {
+  const parsedJobId = uuidSchema.safeParse(rawJobId);
+  if (!parsedJobId.success) return { success: false, error: 'not_authorized' };
+  const jobId = parsedJobId.data;
+  const auth = await authenticateAndAuthorize();
+  if (!auth.success) return auth;
+  const admin = createSupabaseAdminClient();
+  if (!auth.context.isManagerOrAbove) {
+    const { data: assignment, error: assignmentError } = await readJobAssignmentOfUser(
+      auth.context.orgId,
+      jobId,
+      auth.context.userId,
+    );
+    // A failed assignment read is a load failure, never a refusal.
+    if (assignmentError) return { success: false, error: 'service_context_load_failed' };
+    if (!assignment) return { success: false, error: 'not_authorized' };
+  }
+  const { data: rows, error } = await readCompleteRows(
+    (from, to) =>
+      admin
+        .from('service_cases')
+        .select('*')
+        .eq('organization_id', auth.context.orgId)
+        .eq('job_id', jobId)
+        .not('status', 'in', '(closed_without_visit,duplicate)')
+        .order('id')
+        .range(from, to),
+    LIST_ROW_CAP,
+  );
+  if (error) {
+    logReadFailure('getAssignedServiceContextForJob: service case read failed', {
+      code: error.code,
+      message: error.message,
+    });
+    return { success: false, error: 'service_context_load_failed' };
+  }
+  if (rows.length === 0) return { success: true, contexts: [] };
+  try {
+    const items = await hydrateListItems(admin, auth.context.orgId, rows);
+    const contexts: FieldServiceContext[] = items.map((item) => ({
+      caseNumber: item.caseNumber,
+      summary: item.summary,
+      urgency: item.urgency,
+      accessInstructions: rows.find((row) => row.id === item.id)?.access_instructions ?? null,
+      equipment: item.equipment,
+    }));
+    return { success: true, contexts };
+  } catch (cause) {
+    logError('service_context_load_failed', cause);
+    return { success: false, error: 'service_context_load_failed' };
+  }
+}

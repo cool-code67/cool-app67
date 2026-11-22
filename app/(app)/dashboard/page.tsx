@@ -1,0 +1,81 @@
+import { Suspense } from 'react';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+
+import { resolveActiveOrgId } from '@/lib/org/cookies';
+import { getCachedUser, getCachedMemberCount, getCachedMemberships } from '@/lib/data/cached';
+import { TodayRefreshOnStart } from '@/components/auftraege/work-pack/today-refresh-on-start';
+import { UrlFlashBanner } from '@/components/ui/banner';
+import { DashboardCards } from '@/components/dashboard/dashboard-cards';
+import { DashboardContentSkeleton } from '@/components/loading-states/dashboard-content-skeleton';
+import { PageHeader } from '@/components/shared/page-header';
+import { PageBody, PageShell } from '@/components/shared/page-shell';
+
+async function DashboardData({ activeOrgId }: { activeOrgId: string | null }) {
+  if (!activeOrgId) return <DashboardCards initialMemberCount={null} />;
+  // The reader logged a failure and cached nothing; the card shows the failure with a retry.
+  const memberCount = await getCachedMemberCount(activeOrgId).catch(() => null);
+
+  // „Bereitschaft jetzt“ reads in the browser: the clock actions render this page again and change no shift.
+  return <DashboardCards initialMemberCount={memberCount} />;
+}
+
+export default async function DashboardPage() {
+  const [
+    {
+      data: { user },
+    },
+    cookieStore,
+  ] = await Promise.all([getCachedUser(), cookies()]);
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  const [activeOrgId, memberships] = await Promise.all([
+    resolveActiveOrgId(cookieStore, user.id),
+    getCachedMemberships(user.id),
+  ]);
+  // The start page of every role: a field worker's phone refreshes the day it keeps for signal loss here.
+  // Only the gate is rendered here; the refresh takes person and organization from the client contexts.
+  const keepsToday = memberships.some((entry) => entry.orgId === activeOrgId && entry.role === 'employee');
+
+  return (
+    <PageShell>
+      {keepsToday && <TodayRefreshOnStart />}
+      <PageHeader title="Dashboard" />
+
+      <Suspense fallback={null}>
+        <UrlFlashBanner
+          paramKey="joined"
+          messageTemplate="Du wurdest erfolgreich zu dieser Organisation hinzugefügt."
+        />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <UrlFlashBanner paramKey="created" messageTemplate="Organisation erstellt — Du bist jetzt Admin." />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <UrlFlashBanner
+          paramKey="already_member"
+          messageTemplate="Du bist bereits Teil dieser Organisation."
+          variant="info"
+        />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <UrlFlashBanner
+          paramKey="org_deleted"
+          messageTemplate="Die Organisation wurde erfolgreich gelöscht."
+        />
+      </Suspense>
+
+      <PageBody className="space-y-4">
+        <Suspense fallback={<DashboardContentSkeleton />}>
+          <DashboardData activeOrgId={activeOrgId} />
+        </Suspense>
+      </PageBody>
+    </PageShell>
+  );
+}

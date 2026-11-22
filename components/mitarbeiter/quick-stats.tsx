@@ -1,0 +1,59 @@
+'use client';
+
+import Link from 'next/link';
+import { Users, Clock, AlertCircle } from 'lucide-react';
+import { useAttentionCounts } from '@/components/realtime/attention-count-provider';
+
+interface QuickStatsProps {
+  organizationId: string;
+  totalMembers: number;
+  /** Active working count from the parent's statusMap; null while the status read failed. */
+  activeWorkingCount: number | null;
+  /** Whether the current user is an admin */
+  isAdmin?: boolean;
+}
+
+export function QuickStats({ totalMembers, activeWorkingCount }: QuickStatsProps) {
+  // Time and vacation approvals — matches the Anträge tab this card links to.
+  const { approvalsCount } = useAttentionCounts();
+  const pendingCount = approvalsCount;
+
+  return (
+    <div className="flex flex-wrap gap-4 mb-4">
+      <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
+        <Users className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm">
+          <span className="font-medium">{totalMembers}</span>
+          <span className="text-muted-foreground ml-1">Mitglieder</span>
+        </span>
+      </div>
+
+      {activeWorkingCount !== null && (
+        <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
+          <Clock className="h-4 w-4 text-success-text" />
+          <span className="text-sm">
+            <span className="font-medium">{activeWorkingCount}</span>
+            <span className="text-muted-foreground ml-1">
+              {activeWorkingCount === 1 ? 'arbeitet gerade' : 'arbeiten gerade'}
+            </span>
+          </span>
+        </div>
+      )}
+
+      {pendingCount > 0 && (
+        <Link
+          href="/zeiterfassung?tab=approvals"
+          className="flex items-center gap-2 rounded-lg border border-warning/50 bg-warning-soft px-3 py-2 transition-colors hover:bg-warning/20"
+        >
+          <AlertCircle className="h-4 w-4 text-warning-soft-foreground" />
+          <span className="text-sm">
+            <span className="font-medium text-warning-soft-foreground">{pendingCount}</span>
+            <span className="text-warning-soft-foreground ml-1">
+              {pendingCount === 1 ? 'ausstehender Antrag' : 'ausstehende Anträge'}
+            </span>
+          </span>
+        </Link>
+      )}
+    </div>
+  );
+}

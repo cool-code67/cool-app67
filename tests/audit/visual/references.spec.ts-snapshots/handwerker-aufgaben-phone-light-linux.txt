@@ -1,0 +1,10 @@
+Menü öffnen
+Aufgaben
+Offene Aufgaben
+Keine offenen Aufgaben.
+Benachrichtigungen
+Keine Benachrichtigungen.
+Meine Anträge
+Zur Zeiterfassung
+Keine eigenen Urlaubsanträge.
+Nicht eingestempelt

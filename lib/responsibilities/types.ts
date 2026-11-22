@@ -1,0 +1,70 @@
+import type { OrgRole } from '@/lib/roles';
+import type { Database } from '@/lib/supabase/database.types';
+
+export type OrganizationResponsibility = Database['public']['Enums']['organization_responsibility'];
+export type ResponsibilityConfigurationMode =
+  Database['public']['Enums']['responsibility_configuration_mode'];
+export type ResponsibilityAssignmentSource = Database['public']['Enums']['responsibility_assignment_source'];
+
+export const ORGANIZATION_RESPONSIBILITIES = [
+  'time_approval',
+  'leave_approval',
+  'work_artifact_approval',
+  'work_handover_review',
+] as const satisfies readonly OrganizationResponsibility[];
+
+export const RESPONSIBILITY_LABELS: Record<OrganizationResponsibility, string> = {
+  time_approval: 'Zeitfreigaben',
+  leave_approval: 'Urlaubsfreigaben',
+  work_artifact_approval: 'Arbeitsnachweise freigeben',
+  work_handover_review: 'Übergaben prüfen',
+};
+
+export const RESPONSIBILITY_DESCRIPTIONS: Record<OrganizationResponsibility, string> = {
+  time_approval:
+    'Erlaubt die Freigabe eingereichter Arbeitszeiten, ohne weitere Verwaltungsrechte zu vergeben.',
+  leave_approval: 'Legt fest, wer Urlaubsanträge freigeben darf.',
+  work_artifact_approval:
+    'Legt fest, wer eingereichte Arbeitsnachweise nach dem Vier-Augen-Prinzip intern freigeben darf.',
+  work_handover_review:
+    'Legt fest, wer abgeschlossene Einsätze prüft, ein unveränderliches Übergabepaket freigibt und an das Büro übergibt.',
+};
+
+export type ResponsibilityPerson = {
+  employeeRecordId: string;
+  userId: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  role: OrgRole;
+};
+
+/**
+ * The responsibility that the membership trigger's
+ * `last_responsibility_holder:<responsibility>` refusal names; null for any
+ * other message.
+ */
+export function strandedResponsibilityOf(message: string): OrganizationResponsibility | null {
+  const named = /last_responsibility_holder:(\w+)/.exec(message)?.[1];
+  return ORGANIZATION_RESPONSIBILITIES.find((responsibility) => responsibility === named) ?? null;
+}
+
+export function formatResponsibilityPersonName(
+  person: Pick<ResponsibilityPerson, 'firstName' | 'lastName' | 'email'>,
+): string {
+  const name = [person.firstName, person.lastName].filter(Boolean).join(' ');
+  return name || person.email || 'Unbekannte Person';
+}
+
+/**
+ * The items in the order of the people list, which is sorted by name, so every
+ * section lists holders alike; a person outside the list goes last.
+ */
+export function orderByPersonName<Item extends { employeeRecordId: string }>(
+  items: readonly Item[],
+  people: readonly ResponsibilityPerson[],
+): Item[] {
+  const position = new Map(people.map((person, index) => [person.employeeRecordId, index]));
+  const rank = (item: Item) => position.get(item.employeeRecordId) ?? people.length;
+  return items.toSorted((left, right) => rank(left) - rank(right));
+}

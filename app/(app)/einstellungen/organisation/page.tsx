@@ -1,0 +1,46 @@
+import { redirect } from 'next/navigation';
+
+import { OrganizationSettingsForm } from '@/components/settings/organization-settings-form';
+import { RegionLoadError } from '@/components/shared/region-load-error';
+import { readOrganizationDeletionScope } from '@/lib/org/deletion-scope';
+import { readSettingsSectionMembership } from '@/lib/settings/section-access';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { formatBerlin } from '@/lib/utils';
+
+export default async function OrganizationSettingsPage() {
+  const { membership: activeMembership } = await readSettingsSectionMembership('organisation');
+
+  const supabase = await createSupabaseServerClient();
+  // Only an Admin may delete, so only an Admin reads what a deletion removes.
+  const [{ data: organization, error }, deletionScope] = await Promise.all([
+    supabase
+      .from('organizations')
+      .select('id, name, unique_code, created_at')
+      .eq('id', activeMembership.orgId)
+      .single(),
+    activeMembership.role === 'admin' ? readOrganizationDeletionScope(activeMembership.orgId) : null,
+  ]);
+
+  if (error && error.code !== 'PGRST116') {
+    return (
+      <RegionLoadError title="Die Organisation konnte nicht geladen werden">
+        Die Organisationsdaten sind gerade nicht erreichbar. Versuche es in einem Moment erneut.
+      </RegionLoadError>
+    );
+  }
+  if (!organization) redirect('/dashboard');
+
+  const createdAtLabel = formatBerlin(organization.created_at, 'longDate');
+
+  return (
+    <OrganizationSettingsForm
+      initialOrganization={{
+        name: organization.name,
+        uniqueCode: organization.unique_code,
+        createdAtLabel,
+        role: activeMembership.role,
+      }}
+      deletionScope={deletionScope && (deletionScope.success ? deletionScope.scope : deletionScope.error)}
+    />
+  );
+}

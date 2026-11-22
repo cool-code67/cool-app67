@@ -1,0 +1,254 @@
+import { formatBerlinLocalDate } from '../../../../lib/date-time/berlin';
+import { isJsonRecord, jsonRecordOrEmpty } from '../../../../lib/supabase/json';
+import { createAdminClient } from './shared';
+
+export type PlanningDbState = {
+  jobId: string | null;
+  occurrenceCount: number;
+  seriesCount: number;
+  assignmentCount: number;
+  assessmentCount: number;
+  capacityConflictKinds: string[];
+  qualificationEvaluationCount: number;
+  overrideReasons: string[];
+  eventTypes: string[];
+  actualTimeCount: number;
+  occurrences: Array<{
+    id: string;
+    seriesId: string | null;
+    originalStartLocal: string | null;
+    startAt: string | null;
+    endAt: string | null;
+    startDate: string | null;
+    endDateExclusive: string | null;
+    status: string;
+    isException: boolean;
+    legacySourceJobId: string | null;
+  }>;
+};
+
+// P1-11: read-only proof for stable occurrence identity, append-only audit,
+// multiple visits per authoritative job, and plan-versus-actual separation.
+export async function getPlanningState(
+  orgId: string,
+  subject: { jobNumber?: string; internalTitle?: string },
+): Promise<PlanningDbState> {
+  const admin = createAdminClient();
+  if (!subject.jobNumber && !subject.internalTitle) {
+    throw new Error('getPlanningState requires jobNumber or internalTitle');
+  }
+  let jobId: string | null = null;
+  if (subject.jobNumber) {
+    const { data: job, error } = await admin
+      .from('jobs')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('job_number', subject.jobNumber)
+      .single();
+    if (error || !job) {
+      throw new Error(`Planning job lookup failed: ${error?.message}`);
+    }
+    jobId = job.id;
+  }
+
+  let occurrenceQuery = admin
+    .from('planning_occurrences')
+    .select(
+      'id, series_id, original_start_local, start_at, end_at, start_date, end_date_exclusive, status, is_exception, legacy_source_job_id',
+    )
+    .eq('organization_id', orgId)
+    .order('original_start_local', { ascending: true, nullsFirst: false })
+    .limit(1001);
+  if (jobId) occurrenceQuery = occurrenceQuery.eq('job_id', jobId);
+  if (subject.internalTitle) {
+    occurrenceQuery = occurrenceQuery.eq('entry_kind', 'internal').eq('title', subject.internalTitle);
+  }
+  const { data: occurrenceRows, error: occurrenceError } = await occurrenceQuery;
+  if (occurrenceError) {
+    throw new Error(`Planning occurrence lookup failed: ${occurrenceError?.message}`);
+  }
+  if ((occurrenceRows?.length ?? 0) > 1000) {
+    throw new Error('Planning occurrence lookup exceeded the 1000-row safety limit');
+  }
+
+  const occurrenceIds = (occurrenceRows ?? []).map((row) => row.id);
+  const seriesIds = [
+    ...new Set((occurrenceRows ?? []).flatMap((row) => (row.series_id ? [row.series_id] : []))),
+  ];
+  const [seriesResult, assignmentResult, assessmentResult, eventResult, timeResult] = await Promise.all([
+    seriesIds.length
+      ? admin.from('planning_series').select('id').eq('organization_id', orgId).in('id', seriesIds)
+      : Promise.resolve({ data: [], error: null }),
+    occurrenceIds.length
+      ? admin
+          .from('planning_occurrence_assignments')
+          .select('id')
+          .eq('organization_id', orgId)
+          .in('occurrence_id', occurrenceIds)
+          .limit(10_001)
+      : Promise.resolve({ data: [], error: null }),
+    occurrenceIds.length
+      ? admin
+          .from('planning_occurrence_assessments')
+          .select('id, capacity_snapshot, qualification_snapshot, override_reason, operation_assessment_id')
+          .eq('organization_id', orgId)
+          .in('occurrence_id', occurrenceIds)
+          .limit(10_001)
+      : Promise.resolve({ data: [], error: null }),
+    occurrenceIds.length
+      ? admin
+          .from('planning_events')
+          .select('event_type')
+          .eq('organization_id', orgId)
+          .in('occurrence_id', occurrenceIds)
+          .order('created_at')
+          .limit(10_001)
+      : Promise.resolve({ data: [], error: null }),
+    jobId
+      ? admin
+          .from('time_entries')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
+          .eq('job_id', jobId)
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
+  const firstError =
+    seriesResult.error ??
+    assignmentResult.error ??
+    assessmentResult.error ??
+    eventResult.error ??
+    timeResult.error;
+  if (firstError) {
+    throw new Error(`Planning state lookup failed: ${firstError.message}`);
+  }
+  if (
+    (assignmentResult.data?.length ?? 0) > 10_000 ||
+    (assessmentResult.data?.length ?? 0) > 10_000 ||
+    (eventResult.data?.length ?? 0) > 10_000
+  ) {
+    throw new Error('Planning related-record lookup exceeded its safety limit');
+  }
+  // An occurrence assessment's snapshots are those of the operation it references, or its own before that reference existed.
+  const operationIds = [
+    ...new Set(
+      (assessmentResult.data ?? []).flatMap((row) =>
+        row.operation_assessment_id ? [row.operation_assessment_id] : [],
+      ),
+    ),
+  ];
+  const operationResult = operationIds.length
+    ? await admin
+        .from('planning_operation_assessments')
+        .select('id, capacity_snapshot, qualification_snapshot')
+        .eq('organization_id', orgId)
+        .in('id', operationIds)
+    : { data: [], error: null };
+  if (operationResult.error) {
+    throw new Error(`Planning operation assessment lookup failed: ${operationResult.error.message}`);
+  }
+  const operationById = new Map((operationResult.data ?? []).map((row) => [row.id, row]));
+  const assessmentSnapshots = (assessmentResult.data ?? []).map((row) => {
+    const operation = row.operation_assessment_id
+      ? operationById.get(row.operation_assessment_id)
+      : undefined;
+    return {
+      capacitySnapshot: operation ? operation.capacity_snapshot : row.capacity_snapshot,
+      qualificationSnapshot: operation ? operation.qualification_snapshot : row.qualification_snapshot,
+    };
+  });
+
+  return {
+    jobId,
+    occurrenceCount: occurrenceRows?.length ?? 0,
+    seriesCount: seriesResult.data?.length ?? 0,
+    assignmentCount: assignmentResult.data?.length ?? 0,
+    assessmentCount: assessmentResult.data?.length ?? 0,
+    capacityConflictKinds: [
+      ...new Set(
+        assessmentSnapshots.flatMap((row) => {
+          const conflicts = jsonRecordOrEmpty(row.capacitySnapshot).conflicts;
+          return (Array.isArray(conflicts) ? conflicts : []).flatMap((conflict) => {
+            const kind = jsonRecordOrEmpty(conflict).kind;
+            return typeof kind === 'string' && kind ? [kind] : [];
+          });
+        }),
+      ),
+    ].sort(),
+    qualificationEvaluationCount: assessmentSnapshots.reduce((count, row) => {
+      const evaluations = jsonRecordOrEmpty(row.qualificationSnapshot).evaluations;
+      return count + (Array.isArray(evaluations) ? evaluations.length : 0);
+    }, 0),
+    overrideReasons: (assessmentResult.data ?? []).flatMap((row) =>
+      row.override_reason ? [row.override_reason] : [],
+    ),
+    eventTypes: (eventResult.data ?? []).map((row) => row.event_type),
+    actualTimeCount: timeResult.count ?? 0,
+    occurrences: (occurrenceRows ?? []).map((row) => ({
+      id: row.id,
+      seriesId: row.series_id ?? null,
+      originalStartLocal: row.original_start_local ?? null,
+      startAt: row.start_at ?? null,
+      endAt: row.end_at ?? null,
+      startDate: row.start_date ?? null,
+      endDateExclusive: row.end_date_exclusive ?? null,
+      status: row.status,
+      isException: row.is_exception,
+      legacySourceJobId: row.legacy_source_job_id ?? null,
+    })),
+  };
+}
+
+/** The employee records assigned to the active occurrences of one job, sorted. */
+export async function getJobOccurrenceAssigneeRecordIds(orgId: string, jobNumber: string): Promise<string[]> {
+  const scheduledIds = (await getPlanningState(orgId, { jobNumber })).occurrences
+    .filter((occurrence) => occurrence.status === 'scheduled')
+    .map((occurrence) => occurrence.id);
+  if (scheduledIds.length === 0) return [];
+  const { data, error } = await createAdminClient()
+    .from('planning_occurrence_assignments')
+    .select('employee_record_id')
+    .eq('organization_id', orgId)
+    .in('occurrence_id', scheduledIds);
+  if (error) throw new Error(`Occurrence assignment lookup failed: ${error.message}`);
+  return (data ?? []).map((row) => row.employee_record_id).sort();
+}
+
+/** An organization closure day; setup only, the settings flow is proven elsewhere. */
+export async function seedClosureDay(input: {
+  organizationId: string;
+  actorUserId: string;
+  date: string;
+  label: string;
+}): Promise<void> {
+  const { error } = await createAdminClient().from('organization_closure_days').insert({
+    organization_id: input.organizationId,
+    closure_date: input.date,
+    label: input.label,
+    created_by: input.actorUserId,
+  });
+  if (error) throw new Error(`Closure day setup failed: ${error.message}`);
+}
+
+/** The stored calendar preferences of one member (the `calendar` key), or null before the first save. */
+export async function getCalendarPreferencesFor(
+  orgId: string,
+  userId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await createAdminClient()
+    .from('organization_user_preferences')
+    .select('preferences')
+    .eq('organization_id', orgId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw new Error(`Calendar preference read failed: ${error.message}`);
+  const stored = jsonRecordOrEmpty(data?.preferences).calendar;
+  return isJsonRecord(stored) ? stored : null;
+}
+
+/** The Berlin date an occurrence starts on: the all-day date or the timed instant's local date. */
+export function occurrenceLocalDate(
+  occurrence: { startDate: string | null; startAt: string | null } | undefined,
+): string | null {
+  if (!occurrence) return null;
+  return occurrence.startDate ?? (occurrence.startAt ? formatBerlinLocalDate(occurrence.startAt) : null);
+}

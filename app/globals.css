@@ -1,0 +1,409 @@
+@import 'tailwindcss' source(none);
+
+@source '.';
+@source '../components';
+@source '../hooks';
+@source '../lib';
+@source '../proxy.ts';
+/* Tests and test support never render: a class string in a lint
+   test's example or a fixture would otherwise ship in every page's start-up
+   stylesheet. */
+@source not '../lib/testing';
+@source not '../**/*.test.{ts,tsx,mjs}';
+
+:root {
+  --background: #fafafb;
+  --foreground: #1a1523;
+  --card: #ffffff;
+  --card-foreground: #1a1523;
+  --popover: #ffffff;
+  --popover-foreground: #1a1523;
+  --muted: #f4f3f6;
+  --muted-foreground: #5f5967;
+  --accent: #f1eff5;
+  --accent-foreground: #37304a;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --destructive-hover: #b01b1b;
+  --destructive-active: #a71919;
+  --primary: #ff7900;
+  --primary-foreground: #1a1523;
+  --primary-text: #984200;
+  --primary-text-hover: #863b00;
+  --primary-text-active: #773200;
+  --secondary: #f1eff5;
+  --secondary-foreground: #4b4266;
+  --border: #e6e4ea;
+  --input: #dedce3;
+  --ring: #ff7900;
+  --radius: 8px;
+  --selection: #d8d2e4;
+  --selection-foreground: #1a1523;
+
+  /* Brand colors. Purple is deliberately desaturated for UI use so it reads
+     as a soft undertone next to the orange primary; the logo keeps its own
+     vivid purple inside the SVG assets. */
+  --brand-orange: #ff7900;
+  --brand-orange-light: #ff9e00;
+  --brand-orange-dark: #cc6100;
+  --brand-purple: #6f5f94;
+  --brand-purple-light: #948ab3;
+  --brand-purple-dark: #544a78;
+  --brand-purple-deep: #3e3659;
+
+  /* Semantic status colors (werkflow-design: green success, yellow warning,
+     blue info, red destructive; never brand colors). Each family has a fill
+     with its readable text (`success` + `success-foreground`), a text color
+     for neutral surfaces (`success-text`), and a tinted surface with its text
+     (`success-soft` + `success-soft-foreground`). Components use these
+     tokens; raw palette classes such as bg-green-100 are a lint error
+     (pre-Wave-3 step 2, 2026-09-15). */
+  --success: #15803d;
+  --success-foreground: #ffffff;
+  --success-text: #166534;
+  --success-soft: #dcfce7;
+  --success-soft-foreground: #166534;
+  --warning: #eab308;
+  --warning-foreground: #422006;
+  --warning-text: #854d0e;
+  --warning-soft: #fef9c3;
+  --warning-soft-foreground: #854d0e;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  --info-text: #1d4ed8;
+  --info-soft: #dbeafe;
+  --info-soft-foreground: #1e40af;
+  --destructive-soft: #fee2e2;
+  --destructive-soft-foreground: #991b1b;
+  /* Work that is being done (job and project „In Bearbeitung“, work „In
+     Ausführung“). Teal keeps it apart from waiting yellow, info blue and
+     finished green (owner decision 2026-10-03). Only the tinted pair exists;
+     the owner of the status colors is components/auftraege/status-classes.ts. */
+  --ongoing-soft: #ccfbf1;
+  --ongoing-soft-foreground: #115e59;
+  /* The document viewer's stage is black in both themes; its error text
+     needs a light red that no theme-flipping token provides. */
+  --viewer-error: #fca5a5;
+
+  /* The time-progress ring reads the same families. */
+  --status-work: var(--success-text);
+  --status-break: var(--warning-text);
+  --status-overtime: var(--info-text);
+
+  /* Calendar tokens (P1-24a). One design language for the board, the day
+     and the month: hairlines from the foreground, cell tints from the
+     neutral and purple families, cards from the purple planning family,
+     actual time from the success family, and one now indicator in the red
+     family (the one non-status use of that hue, decision Q3). Opaque hex
+     for every surface that carries text so the contrast contract can read
+     it; alpha only for lines and tints without text. */
+  --calendar-grid: color-mix(in oklab, var(--foreground) 8%, transparent);
+  --calendar-grid-strong: color-mix(in oklab, var(--foreground) 16%, transparent);
+  --calendar-gutter: #faf9fb;
+  --calendar-cell-off: #f1f0f4;
+  --calendar-today: #f2f0f7;
+  --calendar-now: #dc2626;
+  --calendar-planning: #f4f2f8;
+  --calendar-planning-border: #ded9e8;
+  --calendar-planning-foreground: #3e3659;
+  --calendar-planning-strong: #6f5f94;
+  --calendar-planning-strong-foreground: #ffffff;
+  --calendar-note: #f4f3f6;
+  --calendar-note-border: #a99ec2;
+  --calendar-note-foreground: #37304a;
+  --calendar-absence: #e2deea;
+  --calendar-absence-foreground: #3e3659;
+  --calendar-absence-pending-border: #a99ec2;
+  --calendar-holiday: #ecebf0;
+  --calendar-holiday-foreground: #5f5967;
+  --calendar-actual: var(--success-soft);
+  --calendar-actual-foreground: var(--success-soft-foreground);
+  --calendar-actual-border: color-mix(in oklab, var(--success) 55%, transparent);
+  --calendar-actual-pending: var(--warning-soft);
+  --calendar-actual-pending-foreground: var(--warning-soft-foreground);
+  --calendar-break: color-mix(in oklab, var(--foreground) 12%, transparent);
+  --calendar-break-foreground: var(--muted-foreground);
+  --calendar-capacity-full: var(--info-soft);
+  --calendar-capacity-full-foreground: var(--info-soft-foreground);
+  --calendar-capacity-over: var(--destructive-soft);
+  --calendar-capacity-over-foreground: var(--destructive-soft-foreground);
+  --calendar-drop-valid: color-mix(in oklab, var(--success) 14%, transparent);
+  --calendar-drop-refused: color-mix(in oklab, var(--destructive) 14%, transparent);
+}
+
+@theme inline {
+  /* A live status (a running block, a working employee's dot) pulses like a
+     skeleton but is not a busy signal: the settle step waits on Skeleton and
+     Spinner by their data-slot, never on this class. */
+  --animate-live: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-active: var(--destructive-active);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-soft-foreground: var(--destructive-soft-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-text: var(--success-text);
+  --color-success-soft: var(--success-soft);
+  --color-success-soft-foreground: var(--success-soft-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-text: var(--warning-text);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-soft-foreground: var(--warning-soft-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-text: var(--info-text);
+  --color-info-soft: var(--info-soft);
+  --color-info-soft-foreground: var(--info-soft-foreground);
+  --color-ongoing-soft: var(--ongoing-soft);
+  --color-ongoing-soft-foreground: var(--ongoing-soft-foreground);
+  --color-viewer-error: var(--viewer-error);
+  --color-primary-text: var(--primary-text);
+  --color-primary-text-hover: var(--primary-text-hover);
+  --color-primary-text-active: var(--primary-text-active);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Brand colors for direct usage */
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-orange-light: var(--brand-orange-light);
+  --color-brand-orange-dark: var(--brand-orange-dark);
+  --color-brand-purple: var(--brand-purple);
+  --color-brand-purple-light: var(--brand-purple-light);
+  --color-brand-purple-dark: var(--brand-purple-dark);
+  --color-brand-purple-deep: var(--brand-purple-deep);
+
+  /* Calendar token classes (bg-calendar-today, border-calendar-grid, ...). */
+  --color-calendar-grid: var(--calendar-grid);
+  --color-calendar-grid-strong: var(--calendar-grid-strong);
+  --color-calendar-gutter: var(--calendar-gutter);
+  --color-calendar-cell-off: var(--calendar-cell-off);
+  --color-calendar-today: var(--calendar-today);
+  --color-calendar-now: var(--calendar-now);
+  --color-calendar-planning: var(--calendar-planning);
+  --color-calendar-planning-border: var(--calendar-planning-border);
+  --color-calendar-planning-foreground: var(--calendar-planning-foreground);
+  --color-calendar-planning-strong: var(--calendar-planning-strong);
+  --color-calendar-planning-strong-foreground: var(--calendar-planning-strong-foreground);
+  --color-calendar-note: var(--calendar-note);
+  --color-calendar-note-border: var(--calendar-note-border);
+  --color-calendar-note-foreground: var(--calendar-note-foreground);
+  --color-calendar-absence: var(--calendar-absence);
+  --color-calendar-absence-foreground: var(--calendar-absence-foreground);
+  --color-calendar-absence-pending-border: var(--calendar-absence-pending-border);
+  --color-calendar-holiday: var(--calendar-holiday);
+  --color-calendar-holiday-foreground: var(--calendar-holiday-foreground);
+  --color-calendar-actual: var(--calendar-actual);
+  --color-calendar-actual-foreground: var(--calendar-actual-foreground);
+  --color-calendar-actual-border: var(--calendar-actual-border);
+  --color-calendar-actual-pending: var(--calendar-actual-pending);
+  --color-calendar-actual-pending-foreground: var(--calendar-actual-pending-foreground);
+  --color-calendar-break: var(--calendar-break);
+  --color-calendar-break-foreground: var(--calendar-break-foreground);
+  --color-calendar-capacity-full: var(--calendar-capacity-full);
+  --color-calendar-capacity-full-foreground: var(--calendar-capacity-full-foreground);
+  --color-calendar-capacity-over: var(--calendar-capacity-over);
+  --color-calendar-capacity-over-foreground: var(--calendar-capacity-over-foreground);
+  --color-calendar-drop-valid: var(--calendar-drop-valid);
+  --color-calendar-drop-refused: var(--calendar-drop-refused);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0c0b0f;
+    --foreground: #ece9f0;
+    --card: #13121a;
+    --card-foreground: #ddd9e4;
+    --popover: #13121a;
+    --popover-foreground: #ddd9e4;
+    --muted: #1a1920;
+    --muted-foreground: #a7a1b3;
+    --accent: #252230;
+    --accent-foreground: #d9d6e2;
+    --destructive: #f87171;
+    --destructive-foreground: #450a0a;
+    --destructive-hover: #ec6b6b;
+    --destructive-active: #df6666;
+    --primary: #ff8c1a;
+    --primary-foreground: #0c0b0f;
+    --primary-text: #ff8c1a;
+    --primary-text-hover: #ff9e3d;
+    --primary-text-active: #ffad5c;
+    --secondary: #252230;
+    --secondary-foreground: #c7c1d6;
+    --border: #262330;
+    --input: #393543;
+    --ring: #ff8c1a;
+    --selection: #3b3648;
+    --selection-foreground: #ece9f0;
+    --success: #4ade80;
+    --success-foreground: #052e16;
+    --success-text: #4ade80;
+    --success-soft: #052e16;
+    --success-soft-foreground: #86efac;
+    --warning: #facc15;
+    --warning-foreground: #422006;
+    --warning-text: #facc15;
+    --warning-soft: #422006;
+    --warning-soft-foreground: #fde047;
+    --info: #60a5fa;
+    --info-foreground: #172554;
+    --info-text: #60a5fa;
+    --info-soft: #172554;
+    --info-soft-foreground: #93c5fd;
+    --destructive-soft: #450a0a;
+    --destructive-soft-foreground: #fca5a5;
+    --ongoing-soft: #042f2e;
+    --ongoing-soft-foreground: #5eead4;
+    --calendar-gutter: #131218;
+    --calendar-cell-off: #16151c;
+    --calendar-today: #171522;
+    --calendar-now: #f87171;
+    --calendar-planning: #2a2540;
+    --calendar-planning-border: #4a4166;
+    --calendar-planning-foreground: #ddd6ea;
+    --calendar-planning-strong: #948ab3;
+    --calendar-planning-strong-foreground: #1a1626;
+    --calendar-note: #1f1d27;
+    --calendar-note-border: #5d5480;
+    --calendar-note-foreground: #d9d6e2;
+    --calendar-absence: #2f2a43;
+    --calendar-absence-foreground: #ddd6ea;
+    --calendar-absence-pending-border: #6d6390;
+    --calendar-holiday: #1c1a24;
+    --calendar-holiday-foreground: #a7a1b3;
+  }
+}
+
+/* Default border color and sleeker Lucide strokes app-wide. Both live in the
+   base layer so Tailwind utilities still win: an unlayered `*` rule beats every
+   layered utility, which silently disabled `border-primary`, `border-destructive`
+   and every other border color until 2026-09-15 (pre-Wave-3 step 3). */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  svg.lucide {
+    stroke-width: 1.75;
+  }
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+}
+
+/* Text selection styles. `::selection` matches every element, text fields
+   included, and every supported browser reads it unprefixed. */
+::selection {
+  background-color: var(--selection);
+  color: var(--selection-foreground);
+}
+
+/* Banner animation keyframes.
+   CENTERING INVARIANT (recurring regression, fixed 2026-08-23): these
+   keyframes animate ONLY opacity and a vertical transform. They must NEVER
+   contain an x-translation. Horizontal centering comes exclusively from the
+   banner element's Tailwind classes `left-1/2 -translate-x-1/2`; in
+   Tailwind v4 that utility uses the standalone `translate` CSS property,
+   and `translate` COMPOSES with `transform` instead of being overridden by
+   it — an x-shift here therefore double-shifts the banner off-center.
+   Every element using .animate-banner-in/out must itself carry
+   `left-1/2 -translate-x-1/2` (see components/ui/banner.tsx). */
+@keyframes banner-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes banner-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-1.5rem);
+  }
+}
+
+/* Animation utility classes for floating banners */
+.animate-banner-in {
+  animation: banner-slide-in 0.2s ease-out forwards;
+}
+
+.animate-banner-out {
+  animation: banner-fade-out 0.15s ease-in forwards;
+}
+
+/* The calendar drag engine (P1-24a) sets this while a card is held: one
+   cursor everywhere, no text selection, and the ghost stays the only thing
+   that moves. */
+body.is-dragging,
+body.is-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+/* Hour grid painted by the container, not by one element per line: the
+   variables come from the day view (hour width and the sub-line interval). */
+.calendar-hour-grid {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--calendar-grid-strong) 0 1px,
+      transparent 1px var(--calendar-hour-width)
+    ),
+    repeating-linear-gradient(
+      to right,
+      var(--calendar-grid) 0 1px,
+      transparent 1px var(--calendar-subline-width)
+    );
+}
+
+/* Accessibility canon (werkflow-design skill): respect prefers-reduced-motion
+   globally — one block satisfies the rule for every animation and transition
+   in the app instead of per-component judgment. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

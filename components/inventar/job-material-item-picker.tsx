@@ -1,0 +1,147 @@
+'use client';
+
+import dynamic from 'next/dynamic';
+import { Plus } from 'lucide-react';
+
+import { EmptyState } from '@/components/ui/empty-state';
+import { SearchInput } from '@/components/ui/search-input';
+import { SectionError } from '@/components/ui/section-error';
+import { PlainButton } from '@/components/ui/plain-button';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { InventoryPickerOption } from '@/lib/inventory/types';
+import { formatInventoryQuantity, INVENTORY_PICKER_PAGE_SIZE } from '@/lib/inventory/types';
+import type { MaterialDialogMode } from './job-material-dialog-model';
+import type { SupplierCatalogSource } from './use-supplier-catalog-search';
+
+// Only the office plans from the wholesaler catalogs: the job page a field worker opens never loads them.
+const SupplierCatalogOptions = dynamic(
+  () => import('./supplier-catalog-options').then((mod) => mod.SupplierCatalogOptions),
+  { loading: () => <Skeleton className="h-4 w-2/3" /> },
+);
+
+function NoMatchingItems() {
+  return (
+    <EmptyState size="compact" className="px-3 py-6 text-center" title="Keine passenden Artikel gefunden." />
+  );
+}
+
+/** One catalog item with its stock per Lager; a take needs stock somewhere. */
+function PickableItem({
+  item,
+  mode,
+  onAdd,
+}: {
+  item: InventoryPickerOption;
+  mode: MaterialDialogMode;
+  onAdd: (item: InventoryPickerOption) => void;
+}) {
+  const hasStockForTake = mode !== 'take' || item.stockByLocation.some((stock) => stock.quantityOnHand > 0);
+  return (
+    <PlainButton
+      type="button"
+      className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+      onClick={() => onAdd(item)}
+      disabled={!hasStockForTake}
+    >
+      <span className="min-w-0 wrap-anywhere">
+        <span className="block truncate text-sm font-medium">{item.name}</span>
+        <span className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          {item.internalSku && <span>SKU {item.internalSku}</span>}
+          {item.primaryBarcode && <span>Barcode {item.primaryBarcode}</span>}
+          {item.categoryName && <span>{item.categoryName}</span>}
+          {item.supplierName && <span>{item.supplierName}</span>}
+        </span>
+        <span className="mt-1 block text-xs text-muted-foreground">
+          {item.stockByLocation.length > 0
+            ? item.stockByLocation
+                .map(
+                  (stock) =>
+                    `${stock.locationName}: ${formatInventoryQuantity(stock.quantityOnHand, item.unit)}`,
+                )
+                .join(' · ')
+            : 'Noch keinem Lager zugeordnet'}
+        </span>
+      </span>
+      <Plus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+    </PlainButton>
+  );
+}
+
+/** The left column of the material dialog: catalog search and the pickable items. */
+export function MaterialItemPicker({
+  mode,
+  showSupplier,
+  search,
+  onSearchChange,
+  filteredItems,
+  hasMoreItems,
+  isSearching,
+  searchFailed,
+  onRetrySearch,
+  onAdd,
+  supplierCatalog,
+}: {
+  mode: MaterialDialogMode;
+  /** The office searches by supplier too; a field worker never sees one. */
+  showSupplier: boolean;
+  search: string;
+  onSearchChange: (search: string) => void;
+  /** The matching items of the loaded catalog page. */
+  filteredItems: InventoryPickerOption[];
+  hasMoreItems: boolean;
+  isSearching: boolean;
+  /** The server search for the current text failed; the retry asks again for the same text. */
+  searchFailed: boolean;
+  onRetrySearch: () => void;
+  onAdd: (item: InventoryPickerOption) => void;
+  /** The office's wholesaler catalogs while planning; null otherwise. */
+  supplierCatalog?: SupplierCatalogSource | null | undefined;
+}) {
+  return (
+    <div className="space-y-3">
+      <SearchInput
+        value={search}
+        onValueChange={onSearchChange}
+        onKeyDown={(event) => {
+          // Enter while searching must never book the movement.
+          if (event.key === 'Enter') event.preventDefault();
+        }}
+        aria-label="Artikel suchen"
+        placeholder={
+          showSupplier
+            ? 'Artikel, SKU, Barcode, Lager, Lieferant suchen…'
+            : 'Artikel, SKU, Barcode, Lager suchen…'
+        }
+      />
+      {searchFailed && (
+        <SectionError onRetry={onRetrySearch} retryPending={isSearching}>
+          Die Artikelsuche ist fehlgeschlagen. Angezeigt werden nur die bereits geladenen Artikel.
+        </SectionError>
+      )}
+      <div className="max-h-[420px] overflow-y-auto rounded-md border">
+        {isSearching && filteredItems.length === 0 ? (
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground" role="status">
+            Material wird gesucht…
+          </p>
+        ) : filteredItems.length === 0 ? (
+          <NoMatchingItems />
+        ) : (
+          <div className="divide-y">
+            {filteredItems.map((item) => (
+              <PickableItem key={item.id} item={item} mode={mode} onAdd={onAdd} />
+            ))}
+          </div>
+        )}
+      </div>
+      {hasMoreItems && (
+        <p className="text-xs text-muted-foreground" role="status">
+          Es werden höchstens {INVENTORY_PICKER_PAGE_SIZE} Artikel angezeigt. Suche nach Name, SKU, Hersteller
+          oder Barcode, um weitere zu finden.
+        </p>
+      )}
+      {supplierCatalog && mode === 'plan' && (
+        <SupplierCatalogOptions source={supplierCatalog} search={search} />
+      )}
+    </div>
+  );
+}

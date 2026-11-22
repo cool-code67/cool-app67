@@ -1,0 +1,75 @@
+# 0003 — Dev/Prod Environment Split
+
+- **Status:** accepted (2026-08-18) — implemented 2026-08-18
+- **Date:** 2026-08-18
+- **Supersedes:** the shared-database follow-up flagged in [0001](0001-infrastructure-stack.md) and formerly tracked in [testing.md](../technical/testing.md) ("Shared-Database Caution") — resolved.
+- **Amended 2026-08-20:** the separate-orgs model below is historical. After a cost analysis (plans bill per org, compute per project: one Pro org with both projects ≈ $35/month vs $50 for two Pro orgs), the owner transferred the dev project into the "WerkFlow" org and deleted the "WerkFlow Dev" org. Transfer verified: refs, URLs, keys, and auth-config parity unchanged; the org-scoped claude.ai connector now sees both projects. The two-project split itself, the migration rule, and every workflow in this record are unchanged.
+- **Update 2026-09-17:** the DEV project moved into the shared "WerkFlow" organization on 2026-08-20 (refs and keys unchanged); [environments.md](../technical/environments.md) is current.
+- **Amended 2026-10-01:** the migration rule in force lives in [environments.md](../technical/environments.md#the-migration-rule): DEV through `bunx supabase db push`, PROD at a release through MCP `apply_migration`. The section below records the rule as it was decided here.
+
+## Decision
+
+WerkFlow development and testing move off the production Supabase project onto a dedicated dev project. Production never again carries development or test traffic.
+
+- **Prod:** project `jbgaqpdjauzoocplgdsn`, org "WerkFlow" (`svxdwqapsmvfkchswonc`), AWS eu-central-1, Postgres 17. Serves the deployed Vercel app and real customers. Bucket `werkflow-documents-prod`.
+- **Dev:** project `mbkkzuqjbdvzelqvuzcn` ("WerkFlow App Dev"), org "WerkFlow Dev" (`sptlkyimyrrmthjezafx`), same region (deliberate — identical latency/behavior characteristics), free tier, NANO compute. Historical: since 2026-08-21 the dev project runs on Micro compute inside the Pro org; see [environments.md](../technical/environments.md). Serves local dev and the entire Playwright harness. Bucket `werkflow-documents-dev` (EU jurisdiction, localhost-only CORS).
+- **Separate orgs for billing:** Supabase plans are per-org. Prod's org can upgrade to Pro without paying for the dev project; dev stays free (accepting NANO performance and ~1-week idle auto-pause).
+- The operational reference (env files, tool access, onboarding) is [environments.md](../technical/environments.md).
+
+## Migration history materialization
+
+Until this split, schema changes were applied to prod via the Supabase MCP (`apply_migration`), which recorded them only in prod's `supabase_migrations.schema_migrations` table — the repo had no `supabase/` directory. As part of the split, all 120 recorded migrations (versions `20251125131200` … `20260817175701`) were exported byte-exactly (MD5-verified per file against prod) into `supabase/migrations/` and are now versioned in git.
+
+Replaying that history into the empty dev project surfaced objects that had been created or changed on prod **outside** the recorded history (dashboard/manual work from the early days). These gaps are closed by four clearly-marked, fully **idempotent repair migrations** — they are no-ops on any database where the objects already exist, prod included:
+
+1. `20251129053500_baseline_unrecorded_core_schema.sql` — seven early core tables (`profiles`, `clients`, `projects`, `jobs`, `job_assignments`, `organization_settings`, `organization_user_preferences`) with their historical shapes, five enums, helper functions (`update_updated_at_column`, `get_org_clients`, `generate_job_number`, `generate_project_number`), an organizations unique index, and realtime publication members.
+2. `20260426211500_baseline_recreate_org_role_enum.sql` — recreates `org_role` as `('admin','buero','employee')` (the recorded history creates `('admin','employee','accountant')` + later `manager`/`secretary`; the consolidation to the buero model happened outside the history). Handles every dependent (columns, defaults, two functions, three policies).
+3. `20260519150000_baseline_unrecorded_secondary_objects.sql` — `time_entries.job_id` (column + FK), unrecorded indexes, `email_change_challenges` policies, remaining publication members.
+4. `20260817175800_baseline_reconcile_unrecorded_drift.sql` — drops six indexes prod had removed outside the history, widens one policy's role list, and updates two function bodies to prod's current form.
+
+**Fidelity proof (2026-08-18):** after the replay, a full object-level comparison of prod vs dev reported **zero discrepancies** across tables (78), columns (902), enums (29), constraints (580), indexes (404), policies (103), triggers (113), functions (138, whitespace-normalized), realtime publication members (58), and auth triggers (2). `supabase gen types` output for dev is identical to `lib/supabase/database.types.ts` except the `PostgrestVersion` platform stamp.
+
+Prod's migration table was left untouched (still 120 rows). The four repair migrations are recorded only in dev's migration table; if they are ever pushed against prod they no-op by design.
+
+## The migration rule (from now on)
+
+Every schema change:
+
+1. **Is a file** in `supabase/migrations/<version>_<name>.sql`, committed to git.
+2. **Applies dev-first, prod-second** — via MCP `apply_migration` or the CLI, but always both projects, always the same SQL.
+
+Never write schema changes to prod that are not a committed migration file. Never `supabase link` or `db push` against prod (the repo links to the dev ref only). Regenerate `lib/supabase/database.types.ts` from **dev** after schema changes.
+
+## Edge functions, auth, storage
+
+- Both edge function sources are now versioned in `supabase/functions/` (fetched from prod) and deployed to dev with `verify_jwt=false` preserved. Dev's secret store carries `RESEND_API_KEY` (the "werkflow-dev" Resend key) and `FROM_EMAIL` (`WerkFlow <noreply@werk-flow.app>`); the platform injects `SUPABASE_SECRET_KEYS` etc. automatically. Prod's Resend key remains prod-only.
+- Dev auth mirrors prod's custom SMTP (smtp.resend.com:465) with the dev Resend key; site URL and redirect allow-list point at `http://localhost:3000`.
+- Both R2 buckets are EU-jurisdiction. Since 2026-08-19 each environment has its own bucket-scoped R2 account token (verified both directions: the dev token is denied on the prod bucket and vice versa), so local dev credentials cannot touch production bytes. Tokens are object-scoped; bucket settings (CORS) are managed in the Cloudflare dashboard.
+
+## Known gap found after acceptance (2026-08-20): auth email templates
+
+The fidelity proof above covers the **database** exhaustively, but Supabase auth **email templates are project configuration, not schema** — they live outside `pg_dump`, migrations, and the object comparison. Dev therefore shipped with Supabase's default confirmation-**link** template while the app's signup flow deliberately uses the 6-digit **OTP** (`{{ .Token }}`) that prod's customized template sends. The first real manual signup against dev surfaced it.
+
+Consequences and fixes:
+
+- `scripts/sync-dev-auth-from-prod.ts` now diffs the complete auth config of both projects (all fields, secrets redacted, expected env-specific divergences separated) and with `--apply` syncs all `mailer_*` fields (templates, subjects, OTP expiry, autoconfirm) prod → dev. Run the diff after any dashboard-side auth change on prod.
+- **Lesson for any future environment cloning:** schema fidelity is not environment fidelity. Project configuration (auth templates and settings, storage settings, edge-function secrets, SMTP, rate limits) needs its own diff via the Management API as part of acceptance — a green test suite does not prove it, because the harness confirms users server-side and never reads real email content.
+
+## Acceptance evidence (2026-08-18)
+
+- Statics: `tsc` clean, lint clean, unit tests 188/188.
+- `bun run build` + production `bun start` against dev.
+- Focused `@GG-00` 13/13 (2.0m) — signup, invite email through the dev edge function, direct R2 uploads to the dev bucket, Realtime.
+- Full Golden suite **93/93 (27.4m)** and focused `@AUDIT-W1-A7` **9/9 (6.2m)** — first attempts, no reruns needed; durations ~2× the prod-class baseline (NANO compute, documented in [testing.md](../technical/testing.md)). Teardown destroyed every world; the independent leftover sweep returned `LEFTOVER_SWEEP=0` against dev.
+- Untouched-prod proof: migration count (120) and max version identical to the session-start baseline; zero organizations matching test markers.
+
+## Amendment 2026-10-27: PROD's migration ledger matches the committed files
+
+Before [decision 0009](0009-pull-requests-and-ci.md), PROD received its migrations through MCP `apply_migration`. That tool records each migration under a version of its own, the time it ran, while the committed file keeps the version it was written with. The `release` workflow applies PROD's migrations with `supabase db push`, which matches the ledger to the files by version, not by name. Against the old ledger it would have treated committed files as pending and PROD's own versions as unknown. It would also have run the baseline repair migrations, which this record left out of PROD's ledger.
+
+Decided by the owner, and done once by hand before the first release through the workflow:
+
+1. Every PROD ledger row whose name matches a committed file under another version now carries the file's version. No migration body ran, and the schema did not change.
+2. The baseline repair migrations that PROD's ledger lacked are recorded as applied, marked `ledger alignment 2026-10-27`: `20251129053500_baseline_unrecorded_core_schema`, `20260426211500_baseline_recreate_org_role_enum` and `20260519150000_baseline_unrecorded_secondary_objects`. Each is idempotent, and the fidelity proof above shows their objects already existed on PROD. `20260817175800_baseline_reconcile_unrecorded_drift` was already recorded there.
+
+The release that followed applied PROD's pending migrations through `supabase db push`. [The migration rule](../technical/environments.md#the-migration-rule) is unchanged.

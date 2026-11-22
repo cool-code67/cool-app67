@@ -1,0 +1,303 @@
+import { describeFailure } from '@/lib/action-messages';
+import type { InventoryLocation, InventoryPickerOption, JobMaterialLine } from '@/lib/inventory/types';
+import { formatInventoryQuantity, INVENTORY_ITEM_TYPE_LABELS } from '@/lib/inventory/types';
+import { parseDecimalInput } from '@/lib/ui/decimal';
+import { normalizeSearchText } from '@/lib/ui/search';
+
+export type MaterialDialogMode = 'plan' | 'take' | 'use' | 'return' | 'edit';
+
+export type MaterialDialogRow = {
+  key: string;
+  /** Names this position's take, use or return; every press of one dialog opening sends it, so a retry books once. */
+  operationId: string;
+  lineId: string | null;
+  itemId: string;
+  locationId: string;
+  quantity: string;
+  notes: string;
+  takenQuantity: number;
+  returnedQuantity: number;
+};
+
+export type MaterialDialogState = {
+  mode: MaterialDialogMode;
+  rows: MaterialDialogRow[];
+  search: string;
+  error: string | null;
+  /** A take opened on a line hides the catalog until „Weiteres Material“ opens it. */
+  catalogOpen: boolean;
+};
+
+/**
+ * What the dialog shows beside its positions: the catalog, the notice that
+ * the item is fixed, nothing until the worker asks for further material, or
+ * nothing at all for a use, which books on its line alone. A return keeps its
+ * item, and so does an edit once the position has bookings.
+ */
+export function materialDialogCatalog({
+  mode,
+  rows,
+  catalogOpen,
+}: MaterialDialogState): 'catalog' | 'locked' | 'collapsed' | 'single' {
+  if (mode === 'use') return 'single';
+  if (mode === 'return') return 'locked';
+  if (mode === 'edit' && rows.some((row) => row.takenQuantity !== 0 || row.returnedQuantity !== 0)) {
+    return 'locked';
+  }
+  if (mode === 'take' && rows.length > 0 && !catalogOpen) return 'collapsed';
+  return 'catalog';
+}
+
+type ValidatedMaterialRow = { row: MaterialDialogRow; quantity: number };
+
+export const NO_LOCATION_VALUE = '__no_location__';
+
+// Quantities are stored with three fractional digits (numeric(12,3)); a
+// prefill must keep them, or a dialog would save a rounded quantity.
+function quantityToInput(quantity: number): string {
+  return Number.isInteger(quantity)
+    ? String(quantity)
+    : quantity.toLocaleString('de-DE', {
+        maximumFractionDigits: 3,
+        useGrouping: false,
+      });
+}
+
+const MODE_FAILURE_MESSAGES: Record<MaterialDialogMode, string> = {
+  plan: 'Das Material konnte nicht geplant werden.',
+  take: 'Die Entnahme konnte nicht gebucht werden.',
+  use: 'Der Verbrauch konnte nicht gebucht werden.',
+  return: 'Die Rückgabe konnte nicht gebucht werden.',
+  edit: 'Die Materialposition konnte nicht geändert werden.',
+};
+
+export function getActionErrorMessage(error: string, mode: MaterialDialogMode): string {
+  const messages: Record<string, string> = {
+    item_required: 'Bitte wähle mindestens einen Artikel aus.',
+    quantity_required: 'Bitte gib eine Menge größer als 0 ein.',
+    location_required: 'Bitte wähle ein Lager mit Bestand aus.',
+    stock_would_go_negative:
+      'Der Bestand in diesem Lager reicht nicht aus. Wähle eine kleinere Menge oder ein anderes Lager.',
+    return_exceeds_taken:
+      'Du kannst nur zurücklegen, was für diese Position entnommen und noch nicht verbraucht oder zurückgelegt wurde.',
+    material_unit_changed:
+      'Die Einheit des Artikels wurde geändert, nachdem für diese Position schon Verbrauch erfasst wurde. Bitte das Büro, die Position zu prüfen.',
+    use_exceeds_taken:
+      'So viel ist nicht mehr offen. Verbrauchen kannst du nur, was entnommen und noch nicht verbraucht oder zurückgelegt wurde.',
+    line_has_movements:
+      'Der Artikel kann nicht mehr geändert werden, weil für diese Position bereits Entnahmen oder Rückgaben gebucht wurden.',
+    item_not_found: 'Der ausgewählte Artikel wurde nicht gefunden.',
+    location_not_found: 'Das ausgewählte Lager wurde nicht gefunden.',
+    line_not_found: 'Die Materialposition wurde nicht gefunden.',
+    line_changed: 'Die Materialposition wurde inzwischen geändert. Versuche es noch einmal.',
+    material_idempotency_conflict:
+      'Diese Buchung wurde schon mit anderen Angaben gespeichert. Schließe den Dialog und prüfe die Materialposition.',
+    create_failed: 'Die Materialposition konnte nicht gespeichert werden.',
+    update_failed: 'Die Materialposition konnte nicht aktualisiert werden.',
+    delete_failed: 'Die Materialposition konnte nicht entfernt werden.',
+    material_use_recorded:
+      'Für diese Position wurde Material als verbraucht erfasst. Sie bleibt deshalb am Auftrag und kann nicht entfernt werden.',
+  };
+
+  return describeFailure(error, messages, MODE_FAILURE_MESSAGES[mode]);
+}
+
+export function matchesItemSearch(item: InventoryPickerOption, search: string): boolean {
+  if (!search.trim()) return true;
+  const query = normalizeSearchText(search);
+  return [
+    item.name,
+    item.internalSku,
+    item.categoryName,
+    item.manufacturer,
+    item.supplierName,
+    item.supplierArticleNumber,
+    item.primaryBarcode,
+    INVENTORY_ITEM_TYPE_LABELS[item.itemType],
+    ...item.stockByLocation.map((stock) => stock.locationName),
+  ]
+    .filter(Boolean)
+    .some((value) => (value ? value.toLocaleLowerCase('de-DE').includes(query) : false));
+}
+
+function getDefaultLocationId(
+  item: InventoryPickerOption,
+  locations: InventoryLocation[],
+  mode: MaterialDialogMode,
+  fallbackLocationId?: string | null,
+): string {
+  if (fallbackLocationId) return fallbackLocationId;
+  if (mode === 'take') {
+    return item.stockByLocation.find((stock) => stock.quantityOnHand > 0)?.locationId ?? '';
+  }
+  return item.stockByLocation[0]?.locationId ?? locations[0]?.id ?? '';
+}
+
+export function getLocationOptions(
+  item: InventoryPickerOption | undefined,
+  locations: InventoryLocation[],
+  mode: MaterialDialogMode,
+): Array<{ id: string; label: string }> {
+  if (!item) return [];
+  if (mode === 'take') {
+    return item.stockByLocation
+      .filter((stock) => stock.quantityOnHand > 0)
+      .map((stock) => ({
+        id: stock.locationId,
+        label: `${stock.locationName} · ${formatInventoryQuantity(stock.quantityOnHand, item.unit)}`,
+      }));
+  }
+
+  if (mode === 'plan' || mode === 'edit') {
+    const stockLocations = item.stockByLocation.map((stock) => ({
+      id: stock.locationId,
+      label: `${stock.locationName} · ${formatInventoryQuantity(stock.quantityOnHand, item.unit)}`,
+    }));
+    return stockLocations.length > 0
+      ? stockLocations
+      : locations.map((location) => ({ id: location.id, label: location.name }));
+  }
+
+  return locations.map((location) => ({ id: location.id, label: location.name }));
+}
+
+/**
+ * Taken and neither used nor returned yet: what a worker can still use or
+ * return, in the stored thousandths, so 0.3 − 0.1 reads 0.2 and not just below.
+ */
+export function openMaterialQuantity(
+  line: Pick<JobMaterialLine, 'takenQuantity' | 'usedQuantity' | 'returnedQuantity'>,
+): number {
+  const open = line.takenQuantity - line.usedQuantity - line.returnedQuantity;
+  return Math.max(0, Math.round(open * 1000) / 1000);
+}
+
+export function buildDialogRow(
+  item: InventoryPickerOption,
+  locations: InventoryLocation[],
+  mode: MaterialDialogMode,
+  line?: JobMaterialLine,
+): MaterialDialogRow {
+  const remainingPlanned = line ? Math.max(0, line.plannedQuantity - line.takenQuantity) : 0;
+  const stillOpen = line ? openMaterialQuantity(line) : 0;
+  const defaultQuantity =
+    mode === 'return' || mode === 'use'
+      ? stillOpen || 1
+      : mode === 'take'
+        ? remainingPlanned || 1
+        : line?.plannedQuantity || 1;
+
+  return {
+    key: line?.id ?? `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    operationId: crypto.randomUUID(),
+    lineId: line?.id ?? null,
+    itemId: item.id,
+    locationId: getDefaultLocationId(item, locations, mode, line?.preferredLocationId),
+    quantity: quantityToInput(defaultQuantity),
+    notes: line?.notes ?? '',
+    takenQuantity: line?.takenQuantity ?? 0,
+    returnedQuantity: line?.returnedQuantity ?? 0,
+  };
+}
+
+export function itemFromLine(line: JobMaterialLine): InventoryPickerOption {
+  return {
+    id: line.itemId,
+    itemType: line.itemType,
+    name: line.itemName,
+    unit: line.unit,
+    internalSku: null,
+    manufacturer: null,
+    supplierName: null,
+    supplierArticleNumber: null,
+    primaryBarcode: null,
+    categoryName: line.categoryName,
+    isBillable: line.isBillable,
+    availableQuantity: line.availableQuantity,
+    stockByLocation: [],
+  };
+}
+
+const MATERIAL_DIALOG_COPY: Record<MaterialDialogMode, { title: string; description: string }> = {
+  plan: {
+    title: 'Material planen',
+    description: 'Geplante Mengen beschreiben den Bedarf. Der Lagerbestand bleibt unverändert.',
+  },
+  take: {
+    title: 'Entnahme buchen',
+    description: 'Diese Buchung zieht die gewählte Menge aus dem ausgewählten Lager ab.',
+  },
+  use: {
+    title: 'Verbrauch buchen',
+    description:
+      'Halte fest, was du beim Auftrag verbaut hast. Der Lagerbestand bleibt gleich, denn das Material ist schon entnommen.',
+  },
+  return: {
+    title: 'Material zurücklegen',
+    description: 'Diese Buchung legt Material zurück und erhöht den Lagerbestand.',
+  },
+  edit: {
+    title: 'Materialposition bearbeiten',
+    description: 'Ändere Artikel, Lager, Menge oder Notiz der geplanten Position.',
+  },
+};
+
+/** The dialog's heading and explanation for a mode. */
+export function getMaterialDialogCopy(mode: MaterialDialogMode): { title: string; description: string } {
+  return MATERIAL_DIALOG_COPY[mode];
+}
+
+/**
+ * Adds a picked item to the dialog rows: a single-row mode swaps the item,
+ * an item that is already listed gains one unit, a new item gets its own row.
+ */
+export function addItemToDialogRows(
+  rows: MaterialDialogRow[],
+  item: InventoryPickerOption,
+  context: { locations: InventoryLocation[]; mode: MaterialDialogMode; canAddMultiple: boolean },
+): MaterialDialogRow[] {
+  const { locations, mode, canAddMultiple } = context;
+  const existing = rows[0];
+  if (!canAddMultiple && existing) {
+    return [
+      {
+        ...existing,
+        itemId: item.id,
+        locationId: getDefaultLocationId(item, locations, mode),
+      },
+    ];
+  }
+
+  if (rows.some((row) => row.itemId === item.id)) {
+    return rows.map((row) =>
+      row.itemId === item.id
+        ? {
+            ...row,
+            quantity: quantityToInput(parseDecimalInput(row.quantity) + 1),
+          }
+        : row,
+    );
+  }
+
+  return [...rows, buildDialogRow(item, locations, mode)];
+}
+
+/** Checks the dialog rows before booking; the first failing rule names the error code. */
+export function validateDialogRows(
+  dialog: MaterialDialogState,
+): { ok: true; rows: ValidatedMaterialRow[] } | { ok: false; error: string } {
+  if (dialog.rows.length === 0) return { ok: false, error: 'item_required' };
+
+  const validatedRows: ValidatedMaterialRow[] = [];
+  for (const row of dialog.rows) {
+    const quantity = parseDecimalInput(row.quantity);
+    if (!row.itemId) return { ok: false, error: 'item_required' };
+    if (quantity <= 0) return { ok: false, error: 'quantity_required' };
+    if ((dialog.mode === 'take' || dialog.mode === 'return') && !row.locationId) {
+      return { ok: false, error: 'location_required' };
+    }
+
+    validatedRows.push({ row, quantity });
+  }
+  return { ok: true, rows: validatedRows };
+}

@@ -1,0 +1,48 @@
+Haustechnik Krämer GmbH
+Organisation erstellen
+Dashboard
+Aufgaben
+3
+3 offene Aufgaben und Benachrichtigungen
+Kalender
+Zeiterfassung
+Qualifikationen
+Anfragen
+Aufträge
+Dokumente
+Inventar
+Angebote
+Rechnungen
+Service
+Arbeitsvorlagen
+Mitarbeiter
+Kunden
+Problem melden
+F2
+MK
+Martin Krämer
+martin.kraemer@haustechnik-kraemer.de
+Service
+Servicefälle
+Anlagen & Geräte
+Wartung
+Bereitschaft
+Servicefälle
+Störungen, Reparaturen und vermutete Gewährleistungsfälle vom Eingang bis zur Nacharbeit.
+Servicefall erfassen
+Offene Servicefälle
+Servicefall
+Kunde & Einsatzort
+Dringlichkeit
+Status
+Therme zeigt Störung F.28
+SRV-2026-001
+· 1 Anlage
+Familie Hoffmann
+Einfamilienhaus
+Normal
+Neu
+1–1
+von
+1
+Nicht eingestempelt

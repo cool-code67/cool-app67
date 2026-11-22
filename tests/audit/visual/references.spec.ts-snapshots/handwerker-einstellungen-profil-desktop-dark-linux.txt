@@ -1,0 +1,42 @@
+Haustechnik Krämer GmbH
+Organisation beitreten
+Dashboard
+Aufgaben
+Kalender
+Zeiterfassung
+Qualifikationen
+Aufträge
+Problem melden
+F2
+KS
+Kevin Schmid
+kevin.schmid@haustechnik-kraemer.de
+Einstellungen
+Persönlich
+Profil
+Name und Profilbild
+Konto & Sicherheit
+E-Mail und Passwort
+Aufträge & Projekte
+Persönliche Tabellenansicht
+Organisation
+Mitarbeiter
+Freigaben und Vertretungen
+Profil
+Persönliche Angaben, die appweit als Anzeigename verwendet werden.
+Persönliche Einstellungen
+Profilbild
+Lade ein Bild hoch und passe den Ausschnitt vor dem Speichern genau so an, wie es später in der App erscheinen soll.
+KS
+Unterstützt werden gängige Bildformate bis 5 MB. Vor dem Speichern kannst du dein Bild zuschneiden und heranzoomen.
+Profilbild hochladen
+Anzeigename
+Diese Angaben erscheinen in der Sidebar und an weiteren Stellen der App als dein Name.
+Vorname
+*
+Pflichtfeld
+Nachname
+*
+Pflichtfeld
+Profil speichern
+Nicht eingestempelt

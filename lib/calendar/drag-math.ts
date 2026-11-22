@@ -1,0 +1,78 @@
+/**
+ * Pure geometry for the calendar drag engine (P1-24a). The engine keeps no
+ * React state during a drag; these helpers turn pointer positions into
+ * slots against maps the views compute once at drag start.
+ */
+
+/**
+ * Index of the interval that contains `position` in a sorted list of
+ * interval starts (`starts[i]` to `starts[i + 1]`), or null outside.
+ */
+export function indexAtOffset(starts: readonly number[], position: number): number | null {
+  if (starts.length < 2 || position < (starts[0] ?? 0) || position >= (starts[starts.length - 1] ?? 0))
+    return null;
+  let low = 0;
+  let high = starts.length - 2;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if ((starts[middle] ?? 0) <= position) low = middle;
+    else high = middle - 1;
+  }
+  return low;
+}
+
+/** Snap minutes of the day to a step (15 by default, 5 with the fine modifier). */
+export function snapMinutes(minutes: number, step: number): number {
+  const snapped = Math.round(minutes / step) * step;
+  return Math.max(0, Math.min(24 * 60, snapped));
+}
+
+const DRAG_THRESHOLD_PX = 5;
+const AUTO_SCROLL_EDGE_PX = 40;
+const AUTO_SCROLL_MAX_PX_PER_FRAME = 24;
+
+/**
+ * Scroll velocity for a pointer inside a scroll container: negative near
+ * the start edge, positive near the end edge, zero elsewhere, growing
+ * linearly toward the edge.
+ */
+export function autoScrollVelocity(position: number, start: number, end: number): number {
+  if (end - start <= AUTO_SCROLL_EDGE_PX * 2) return 0;
+  // A pointer outside the container (over a side panel, the header) scrolls nothing.
+  if (position < start || position > end) return 0;
+  if (position < start + AUTO_SCROLL_EDGE_PX) {
+    const depth = Math.min(1, Math.max(0, (start + AUTO_SCROLL_EDGE_PX - position) / AUTO_SCROLL_EDGE_PX));
+    return -Math.round(depth * AUTO_SCROLL_MAX_PX_PER_FRAME);
+  }
+  if (position > end - AUTO_SCROLL_EDGE_PX) {
+    const depth = Math.min(1, Math.max(0, (position - (end - AUTO_SCROLL_EDGE_PX)) / AUTO_SCROLL_EDGE_PX));
+    return Math.round(depth * AUTO_SCROLL_MAX_PX_PER_FRAME);
+  }
+  return 0;
+}
+
+/** True once the pointer left the threshold circle around its start. */
+const AUTO_SCROLL_DWELL_MS = 150;
+
+/**
+ * The container scrolls only after the pointer has stayed in the edge zone for a moment, so a card
+ * carried across the edge from a side panel lands where the planner sees it.
+ */
+export function autoScrollDue(edgeSince: number | null, now: number): boolean {
+  return edgeSince !== null && now - edgeSince >= AUTO_SCROLL_DWELL_MS;
+}
+
+export function exceedsDragThreshold(
+  start: { x: number; y: number },
+  current: { x: number; y: number },
+): boolean {
+  const dx = current.x - start.x;
+  const dy = current.y - start.y;
+  return dx * dx + dy * dy >= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX;
+}
+
+export function formatMinutesOfDay(minutes: number): string {
+  const clamped = Math.max(0, Math.min(24 * 60, Math.round(minutes)));
+  const hours = Math.floor(clamped / 60);
+  return `${String(hours).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`;
+}

@@ -1,0 +1,70 @@
+Haustechnik Krämer GmbH
+Organisation erstellen
+Dashboard
+Aufgaben
+3
+3 offene Aufgaben und Benachrichtigungen
+Kalender
+Zeiterfassung
+Qualifikationen
+Anfragen
+Aufträge
+Dokumente
+Inventar
+Angebote
+Rechnungen
+Service
+Arbeitsvorlagen
+Mitarbeiter
+Kunden
+Problem melden
+F2
+MK
+Martin Krämer
+martin.kraemer@haustechnik-kraemer.de
+Einstellungen
+Persönlich
+Profil
+Name und Profilbild
+Konto & Sicherheit
+E-Mail und Passwort
+Aufträge & Projekte
+Persönliche Tabellenansicht
+Abonnement & Abrechnung
+Plan und Abrechnung
+Organisation
+Dashboard
+Startansicht und Widgets
+Organisation
+Allgemeine Organisationsdaten
+Dokumente & Briefpapier
+Angebote als PDF
+Kalender
+Kalenderansichten und Regeln
+Zeiterfassung
+Arbeitszeiten und Freigaben
+Mitarbeiter
+Freigaben und Vertretungen
+Kunden
+Kundenverwaltung und Defaults
+Datenexport
+Alle Daten herunterladen
+Aufträge & Projekte
+Steuert, welche Spalten du in der Aufträge-Ansicht innerhalb der aktiven Organisation sehen möchtest.
+Persönliche Einstellungen
+Sichtbare Spalten
+Entscheide pro Organisation selbst, welche Spalten deine Aufträge-Tabelle zeigen soll.
+Tabellenspalten
+Diese Auswahl gilt nur für dich innerhalb von
+Haustechnik Krämer GmbH
+.
+Auftragsnummer
+Titel / Beschreibung
+Kunde
+Status
+Priorität
+Mitarbeiter
+Datum
+Aktionen, Aufklappen und andere strukturelle Bedienelemente bleiben weiterhin immer sichtbar.
+Ansicht speichern
+Nicht eingestempelt

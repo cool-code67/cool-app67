@@ -1,0 +1,322 @@
+'use client';
+
+// P1-12: Parkplatz context. Deliberate parking should record WHY, WHO is
+// responsible, and WHEN to review. Dismissing keeps the job parked with the
+// visible "Kontext fehlt" state — nothing is fabricated. The success banner
+// belongs to the calendar container (`onSaved`), which also owns the undo.
+
+import { useState } from 'react';
+
+import { useClientRead } from '@/hooks/use-client-read';
+import { usePendingTask } from '@/hooks/use-server-action';
+import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorText } from '@/components/ui/error-text';
+import { Field } from '@/components/ui/field';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { SectionError } from '@/components/ui/section-error';
+import { Textarea } from '@/components/ui/textarea';
+import { describeFailure, SHARED_FAILURE_MESSAGES } from '@/lib/action-messages';
+import { calendarRefusalMessage } from '@/lib/calendar/messages';
+import { readInBackground } from '@/lib/data/background-read-client';
+import { setJobParkingContext, type ParkingResponsibleOption } from '@/lib/parking/actions';
+import {
+  PARKING_ERROR_MESSAGES,
+  PARKING_REASON_LABELS,
+  type JobParkingContext,
+  type JobParkingReason,
+} from '@/lib/parking/types';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+import { parseIsoLocalDate, toLocalDateString } from '@/lib/utils';
+import { parkWorkTarget } from '@/lib/work-lifecycle/actions';
+import { WORK_BLOCKER_REASONS } from '@/lib/work-lifecycle/types';
+
+const NO_RESPONSIBLE_OPTIONS: ParkingResponsibleOption[] = [];
+
+/** Field errors keyed by control id in visual order (focusFirstInvalidField). */
+type ParkingFieldErrors = Partial<Record<'parking-responsible' | 'parking-review-date', string>>;
+
+type ParkingContextDialogProps = {
+  jobId: string;
+  jobTitle: string;
+  existingContext: JobParkingContext | null;
+  expectedExecutionVersion: number;
+  isAlreadyParked: boolean;
+  onClose: () => void;
+  onSaveStart?: () => () => void;
+  onSaveFailed?: () => void;
+  onSaved: () => void;
+};
+
+/**
+ * A stored responsible person must remain selectable even when the option
+ * list fails to load or no longer contains them.
+ */
+function selectableResponsibleOptions(
+  responsibleId: string,
+  options: ParkingResponsibleOption[],
+  existingContext: JobParkingContext | null,
+): ParkingResponsibleOption[] {
+  return responsibleId !== '' && !options.some((option) => option.employeeRecordId === responsibleId)
+    ? [
+        {
+          employeeRecordId: responsibleId,
+          label: existingContext?.responsibleName ?? 'Aktuelle Person',
+        },
+        ...options,
+      ]
+    : options;
+}
+
+/** Edits the existing context, or parks the job with the new one. */
+function writeParkingContext({
+  jobId,
+  existingContext,
+  expectedExecutionVersion,
+  reason,
+  note,
+  responsibleId,
+  reviewDate,
+}: {
+  jobId: string;
+  existingContext: JobParkingContext | null;
+  expectedExecutionVersion: number;
+  reason: JobParkingReason;
+  note: string;
+  responsibleId: string;
+  reviewDate: Date | undefined;
+}) {
+  return existingContext
+    ? setJobParkingContext({
+        jobId,
+        reason,
+        note: note.trim() || null,
+        responsibleEmployeeRecordId: responsibleId,
+        nextReviewDate: reviewDate ? toLocalDateString(reviewDate) : '',
+      })
+    : parkWorkTarget({
+        targetType: 'job',
+        targetId: jobId,
+        expectedExecutionVersion,
+        reason,
+        ...(note.trim() ? { details: note.trim() } : {}),
+        responsibleEmployeeRecordId: responsibleId,
+        nextReviewDate: reviewDate ? toLocalDateString(reviewDate) : '',
+      });
+}
+
+/**
+ * Parking codes first, then the shared sentences; a work-lifecycle code from
+ * parkWorkTarget takes the calendar's sentence.
+ */
+function parkingFailureMessage(code: string): string {
+  return describeFailure(
+    code,
+    PARKING_ERROR_MESSAGES,
+    calendarRefusalMessage(code) ?? SHARED_FAILURE_MESSAGES.unexpected_error,
+  );
+}
+
+/** The dialog's fields, the responsible options and the save, a new park or a context edit. */
+function useParkingContextForm(props: ParkingContextDialogProps) {
+  const { jobId, existingContext, expectedExecutionVersion, onSaveStart, onSaveFailed, onSaved } = props;
+  const [reason, setReason] = useState<JobParkingReason>(existingContext?.reason ?? 'other');
+  const [note, setNote] = useState(existingContext?.note ?? '');
+  const [responsibleId, setResponsibleId] = useState<string>(
+    existingContext?.responsibleEmployeeRecordId ?? '',
+  );
+  const [reviewDate, setReviewDate] = useState<Date | undefined>(() =>
+    existingContext?.nextReviewDate ? parseIsoLocalDate(existingContext.nextReviewDate) : undefined,
+  );
+  const responsibleOptions = useClientRead({
+    read: (signal) => readInBackground('parking-responsible-options', {}, signal),
+    deps: [],
+    failureMessage: 'Die Personenliste konnte nicht geladen werden.',
+  });
+  const options = responsibleOptions.data?.options ?? NO_RESPONSIBLE_OPTIONS;
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ParkingFieldErrors>({});
+  const { run: runSave, isPending: isSaving } = usePendingTask();
+
+  const selectableOptions = selectableResponsibleOptions(responsibleId, options, existingContext);
+
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    const nextFieldErrors: ParkingFieldErrors = {
+      ...(responsibleId ? {} : { 'parking-responsible': 'Bitte wähle eine verantwortliche Person aus.' }),
+      ...(reviewDate ? {} : { 'parking-review-date': 'Bitte wähle ein Datum für die Wiedervorlage.' }),
+    };
+    setFieldErrors(nextFieldErrors);
+    if (focusFirstInvalidField(nextFieldErrors)) return;
+    await runSave(async () => {
+      const releaseOperation = onSaveStart?.();
+      try {
+        const result = await writeParkingContext({
+          jobId,
+          existingContext,
+          expectedExecutionVersion,
+          reason,
+          note,
+          responsibleId,
+          reviewDate,
+        });
+        if (!result.success) {
+          onSaveFailed?.();
+          setError(parkingFailureMessage(result.error));
+          return;
+        }
+        onSaved();
+      } catch {
+        onSaveFailed?.();
+        setError(
+          describeFailure(
+            'unexpected_error',
+            PARKING_ERROR_MESSAGES,
+            SHARED_FAILURE_MESSAGES.unexpected_error,
+          ),
+        );
+      } finally {
+        releaseOperation?.();
+      }
+    });
+  };
+
+  return {
+    reason,
+    setReason,
+    note,
+    setNote,
+    responsibleId,
+    setResponsibleId,
+    reviewDate,
+    setReviewDate,
+    responsibleOptions,
+    error,
+    fieldErrors,
+    setFieldErrors,
+    isSaving,
+    selectableOptions,
+    handleSave,
+  };
+}
+
+/** The reason select: ten reasons, so the registry requires a searchable control. */
+function ParkingReasonField({
+  reason,
+  onReasonChange,
+}: {
+  reason: JobParkingReason;
+  onReasonChange: (reason: JobParkingReason) => void;
+}): React.JSX.Element {
+  return (
+    <Field label="Grund" htmlFor="parking-reason" required>
+      {/* Ten reasons: at or above ten options the registry requires a searchable control. */}
+      <SearchableSelect
+        options={Object.entries(PARKING_REASON_LABELS).map(([value, label]) => ({
+          value,
+          label,
+        }))}
+        value={reason}
+        onChange={(value) => {
+          const nextReason = WORK_BLOCKER_REASONS.find((candidate) => candidate === value);
+          if (nextReason) onReasonChange(nextReason);
+        }}
+        placeholder="Grund auswählen"
+        searchPlaceholder="Grund suchen"
+        emptyMessage="Kein passender Grund gefunden"
+      />
+    </Field>
+  );
+}
+
+export function ParkingContextDialog(props: ParkingContextDialogProps) {
+  const { jobTitle, isAlreadyParked, onClose } = props;
+  const form = useParkingContextForm(props);
+  const { note, setNote, responsibleId, reviewDate, error, fieldErrors, setFieldErrors, isSaving } = form;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()} pending={isSaving}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Parkplatz-Kontext</DialogTitle>
+          <DialogDescription>
+            {`Warum ist „${jobTitle}“ geparkt, wer kümmert sich und wann wird wieder geprüft?`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={form.handleSave} noValidate className="space-y-4">
+          <ParkingReasonField reason={form.reason} onReasonChange={form.setReason} />
+
+          <Field label="Notiz (optional)" htmlFor="parking-note">
+            <Textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="z. B. Kunde meldet sich nach dem Urlaub"
+              maxLength={1000}
+            />
+          </Field>
+
+          <Field
+            label="Verantwortlich (Büro)"
+            htmlFor="parking-responsible"
+            required
+            error={fieldErrors['parking-responsible']}
+          >
+            <SearchableSelect
+              options={form.selectableOptions.map((option) => ({
+                value: option.employeeRecordId,
+                label: option.label,
+              }))}
+              value={responsibleId}
+              onChange={(value) => {
+                form.setResponsibleId(value);
+                setFieldErrors({});
+              }}
+              placeholder="Person auswählen"
+              searchPlaceholder="Person suchen …"
+              emptyMessage="Keine Person gefunden"
+            />
+          </Field>
+          {form.responsibleOptions.failure && <SectionError failure={form.responsibleOptions.failure} />}
+
+          <Field
+            label="Wiedervorlage"
+            htmlFor="parking-review-date"
+            required
+            error={fieldErrors['parking-review-date']}
+          >
+            <DatePicker
+              ariaLabel="Wiedervorlagedatum"
+              value={reviewDate}
+              onChange={(value) => {
+                form.setReviewDate(value);
+                setFieldErrors({});
+              }}
+              placeholder="Datum wählen"
+            />
+          </Field>
+
+          <ErrorText>{error}</ErrorText>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+              {isAlreadyParked ? 'Ohne Kontext lassen' : 'Abbrechen'}
+            </Button>
+            <Button pending={isSaving} type="submit" disabled={isSaving}>
+              Kontext speichern
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

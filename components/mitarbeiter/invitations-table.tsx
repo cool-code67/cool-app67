@@ -1,0 +1,316 @@
+'use client';
+
+import { EmptyState } from '@/components/ui/empty-state';
+import { Mail } from 'lucide-react';
+
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
+import { InlinePending } from '@/components/ui/inline-pending';
+import { ListRow } from '@/components/ui/list-row';
+import { PendingRow } from '@/components/ui/pending-row';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ColumnsTableHeader, hiddenHeader, type SkeletonColumn } from '@/components/ui/skeleton-table';
+import { useBusyIds } from '@/hooks/use-busy-id';
+import type { OptimisticListItem } from '@/hooks/use-optimistic-list';
+import { useSettleOnChange } from '@/hooks/use-settle-on-change';
+import { InviteActionsMenu } from './invite-actions-menu';
+import type { OrgRole } from '@/lib/roles';
+import { ROLE_LABELS } from '@/lib/roles';
+import { formatBerlin } from '@/lib/utils';
+
+export type Invite = {
+  id: string;
+  email: string;
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
+  invited_role: OrgRole;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+};
+
+const PENDING_LABEL = 'Einladung wird gesendet';
+
+const STATUS_LABELS = {
+  pending: {
+    label: 'Ausstehend',
+    className: 'bg-warning-soft text-warning-soft-foreground',
+  },
+  accepted: {
+    label: 'Akzeptiert',
+    className: 'bg-success-soft text-success-soft-foreground',
+  },
+  expired: {
+    label: 'Abgelaufen',
+    className: 'bg-muted text-muted-foreground',
+  },
+  cancelled: {
+    label: 'Storniert',
+    className: 'bg-destructive-soft text-destructive-soft-foreground',
+  },
+} satisfies Record<string, { label: string; className: string }>;
+const STATUS_LABEL_BY_CODE: Record<string, { label: string; className: string }> = STATUS_LABELS;
+
+// One column definition for the loaded table and its skeleton (design canon).
+// Invitation rows do nothing on click, so neither rows nor skeletons hover.
+const INVITATION_COLUMNS: readonly SkeletonColumn[] = [
+  { id: 'email', header: 'E-Mail', skeleton: <Skeleton className="h-5 w-48" /> },
+  {
+    id: 'role',
+    header: 'Rolle',
+    className: 'w-[140px]',
+    skeleton: <Skeleton className="h-[22px] w-20 rounded-full" />,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    className: 'w-[120px]',
+    skeleton: <Skeleton className="h-[22px] w-16 rounded-full" />,
+  },
+  {
+    id: 'invitedAt',
+    header: 'Eingeladen am',
+    className: 'w-[150px]',
+    skeleton: <Skeleton className="h-5 w-20" />,
+  },
+  {
+    id: 'expiresAt',
+    header: 'Läuft ab am',
+    className: 'w-[140px]',
+    skeleton: <Skeleton className="h-5 w-20" />,
+  },
+  {
+    id: 'actions',
+    header: hiddenHeader('Aktionen'),
+    className: 'w-[50px]',
+    skeleton: <Skeleton className="size-8 rounded" />,
+  },
+];
+
+function displayStatusFor(invite: Invite) {
+  const statusInfo = STATUS_LABEL_BY_CODE[invite.status] || STATUS_LABELS.pending;
+  const isExpired = invite.status === 'pending' && new Date(invite.expires_at) < new Date();
+  return { isExpired, displayStatus: isExpired ? STATUS_LABELS.expired : statusInfo };
+}
+
+function RoleBadge({ role, compact }: { role: OrgRole; compact?: boolean }) {
+  return (
+    <span
+      className={
+        compact
+          ? 'inline-flex items-center rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground'
+          : 'inline-flex items-center rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground'
+      }
+    >
+      {ROLE_LABELS[role]}
+    </span>
+  );
+}
+
+/** Mobile counterpart of `PendingRow`: the draft, dimmed, without actions. */
+function PendingInviteCard({ invite }: { invite: Invite }) {
+  return (
+    <ListRow unconfirmed role="status" aria-label={PENDING_LABEL} data-pending-row="" className="opacity-70">
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <InlinePending active label={PENDING_LABEL} />
+          <p className="min-w-0 font-medium truncate text-sm">{invite.email}</p>
+          <span
+            className={`shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${STATUS_LABELS.pending.className}`}
+          >
+            {STATUS_LABELS.pending.label}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          <RoleBadge role={invite.invited_role} compact />
+        </div>
+      </div>
+    </ListRow>
+  );
+}
+
+type RowBusy = {
+  isBusy: boolean;
+  run: <Result>(task: () => Promise<Result>) => Promise<Result>;
+};
+
+// Mobile card component for a single invite
+function InviteCard({
+  invite,
+  busy,
+  waitForChange,
+}: {
+  invite: Invite;
+  busy: RowBusy;
+  waitForChange: () => Promise<void>;
+}) {
+  const { isExpired, displayStatus } = displayStatusFor(invite);
+
+  return (
+    <ListRow>
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 font-medium truncate text-sm">{invite.email}</p>
+          <span
+            className={`shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${displayStatus.className}`}
+          >
+            {displayStatus.label}
+          </span>
+          <InlinePending active={busy.isBusy} />
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          <RoleBadge role={invite.invited_role} compact />
+          <span className="text-muted-foreground">·</span>
+          <span>Eingeladen: {formatBerlin(invite.created_at, 'shortYearDate')}</span>
+          <span className="text-muted-foreground">·</span>
+          <span>Läuft ab: {formatBerlin(invite.expires_at, 'shortYearDate')}</span>
+        </div>
+      </div>
+      <InviteActionsMenu
+        inviteId={invite.id}
+        inviteEmail={invite.email}
+        status={invite.status}
+        isExpired={isExpired}
+        busy={busy}
+        waitForChange={waitForChange}
+      />
+    </ListRow>
+  );
+}
+
+/** Desktop row of a draft invite until the server confirms it. */
+function PendingInviteRow({ invite }: { invite: Invite }) {
+  return (
+    <PendingRow
+      columns={INVITATION_COLUMNS}
+      label={PENDING_LABEL}
+      cells={{
+        email: <span className="font-medium">{invite.email}</span>,
+        role: <RoleBadge role={invite.invited_role} />,
+        status: (
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_LABELS.pending.className}`}
+          >
+            {STATUS_LABELS.pending.label}
+          </span>
+        ),
+        actions: <span className="block size-8" />,
+      }}
+    />
+  );
+}
+
+// Desktop table row for a single invite
+function InviteTableRow({
+  invite,
+  busy,
+  waitForChange,
+}: {
+  invite: Invite;
+  busy: RowBusy;
+  waitForChange: () => Promise<void>;
+}) {
+  const { isExpired, displayStatus } = displayStatusFor(invite);
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">
+        <span className="flex items-center gap-2">
+          {invite.email}
+          <InlinePending active={busy.isBusy} />
+        </span>
+      </TableCell>
+      <TableCell>
+        <RoleBadge role={invite.invited_role} />
+      </TableCell>
+      <TableCell>
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${displayStatus.className}`}
+        >
+          {displayStatus.label}
+        </span>
+      </TableCell>
+      <TableCell className="text-muted-foreground">{formatBerlin(invite.created_at, 'date')}</TableCell>
+      <TableCell className="text-muted-foreground">{formatBerlin(invite.expires_at, 'date')}</TableCell>
+      <TableCell>
+        <InviteActionsMenu
+          inviteId={invite.id}
+          inviteEmail={invite.email}
+          status={invite.status}
+          isExpired={isExpired}
+          busy={busy}
+          waitForChange={waitForChange}
+        />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+interface InvitationsTableProps {
+  /** Server invites plus the optimistic rows of invites just sent. */
+  rows: OptimisticListItem<Invite>[];
+}
+
+// No loading prop on purpose: the list never turns into a skeleton over data
+// it already has (feedback canon).
+export function InvitationsTable({ rows }: InvitationsTableProps) {
+  // Row actions mark only their row; after the server confirms, the row stays
+  // marked until the refreshed list lands. `rows` changes identity with the
+  // server list (and with the optimistic overlay, which a cancel or delete
+  // never touches), so it serves as the settle key.
+  const { run: runBusy, isBusy } = useBusyIds();
+  const waitForChange = useSettleOnChange(rows);
+  const rowBusy = (inviteId: string): RowBusy => ({
+    isBusy: isBusy(inviteId),
+    run: (task) => runBusy(inviteId, task),
+  });
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={Mail}
+        title="Noch keine Einladungen"
+        description="Lade jemanden über „Mitarbeiter einladen“ ein. Offene Einladungen erscheinen hier."
+      />
+    );
+  }
+
+  return (
+    <>
+      {/* Mobile view - Card layout */}
+      <div className="space-y-2 md:hidden">
+        {rows.map(({ item: invite, isOptimistic }) =>
+          isOptimistic ? (
+            <PendingInviteCard key={invite.id} invite={invite} />
+          ) : (
+            <InviteCard
+              key={invite.id}
+              invite={invite}
+              busy={rowBusy(invite.id)}
+              waitForChange={waitForChange}
+            />
+          ),
+        )}
+      </div>
+
+      {/* Desktop view - Table layout */}
+      <div className="hidden md:block">
+        <Table>
+          <ColumnsTableHeader columns={INVITATION_COLUMNS} />
+          <TableBody>
+            {rows.map(({ item: invite, isOptimistic }) =>
+              isOptimistic ? (
+                <PendingInviteRow key={invite.id} invite={invite} />
+              ) : (
+                <InviteTableRow
+                  key={invite.id}
+                  invite={invite}
+                  busy={rowBusy(invite.id)}
+                  waitForChange={waitForChange}
+                />
+              ),
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </>
+  );
+}

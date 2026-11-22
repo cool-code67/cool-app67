@@ -1,0 +1,563 @@
+import type { ActionFailure } from '@/lib/action-result';
+import type { ProfileReference } from '@/lib/profile-reference';
+import type { OrgRole } from '@/lib/roles';
+import type { BreakDayPosition, BreakPolicy, BreakPolicyValues } from '@/lib/time-tracking/settings';
+import type { TimeValidationCode, TimeValidationFailure } from '@/lib/time-tracking/validation-messages';
+import type { Database } from '@/lib/supabase/database.types';
+import { constrainedValue } from '@/lib/validation/constrained-value';
+
+// Database types
+export type TimeEntryRow = Database['public']['Tables']['time_entries']['Row'];
+
+// Entry type and status
+/** The entry types the time_entries.entry_type check constraint allows. */
+export const TIME_ENTRY_TYPES = ['clock_in', 'clock_out', 'break_start', 'break_end'] as const;
+export type TimeEntryType = (typeof TIME_ENTRY_TYPES)[number];
+export type TimeEntryStatus = Database['public']['Enums']['time_entry_status'];
+export type ClockStatus = 'clocked_out' | 'working' | 'on_break';
+
+export type TimeSegmentKind = 'work' | 'travel' | 'break' | 'standby' | 'callout' | 'internal_activity';
+
+export const TIME_ACTIVITY_LABELS = {
+  work: 'Arbeit',
+  travel: 'Fahrt',
+  break: 'Pause',
+  standby: 'Bereitschaft',
+  callout: 'Notdienst',
+  internal_activity: 'Intern',
+} as const satisfies Record<TimeSegmentKind, string>;
+
+export type TimeAllocationKind = 'job' | 'internal_activity' | 'unallocated' | 'none';
+
+export type TimeInternalActivity = 'internal_work' | 'meeting' | 'training' | 'other';
+
+export type TimeTravelRoute =
+  | 'company_to_site'
+  | 'home_to_site'
+  | 'site_to_site'
+  | 'site_to_company'
+  | 'other'
+  | 'unspecified';
+
+export type TimeTravelRole = 'driver' | 'passenger' | 'unspecified';
+export type TimeStandbyContext = 'on_site' | 'remote' | 'unspecified';
+
+export type TimeActivitySelection =
+  | {
+      kind: 'work' | 'callout';
+      allocationKind: 'job';
+      jobId: string;
+      internalType?: never;
+      travelRoute?: never;
+      travelRole?: never;
+      standbyContext?: never;
+    }
+  | {
+      kind: 'work' | 'callout';
+      allocationKind: 'unallocated';
+      jobId: null;
+      internalType?: never;
+      travelRoute?: never;
+      travelRole?: never;
+      standbyContext?: never;
+    }
+  | {
+      kind: 'travel';
+      allocationKind: 'job';
+      jobId: string;
+      travelRoute: TimeTravelRoute;
+      travelRole: TimeTravelRole;
+      internalType?: never;
+      standbyContext?: never;
+    }
+  | {
+      kind: 'travel';
+      allocationKind: 'unallocated';
+      jobId: null;
+      travelRoute: TimeTravelRoute;
+      travelRole: TimeTravelRole;
+      internalType?: never;
+      standbyContext?: never;
+    }
+  | {
+      kind: 'break';
+      allocationKind: 'none';
+      jobId?: never;
+      internalType?: never;
+      travelRoute?: never;
+      travelRole?: never;
+      standbyContext?: never;
+    }
+  | {
+      kind: 'standby';
+      allocationKind: 'none';
+      standbyContext: TimeStandbyContext;
+      jobId?: never;
+      internalType?: never;
+      travelRoute?: never;
+      travelRole?: never;
+    }
+  | {
+      kind: 'internal_activity';
+      allocationKind: 'internal_activity';
+      internalType: TimeInternalActivity;
+      jobId?: never;
+      travelRoute?: never;
+      travelRole?: never;
+      standbyContext?: never;
+    };
+
+export type TimeTransitionAction =
+  | 'start'
+  | 'switch'
+  | 'end'
+  | 'continue_legacy'
+  | 'end_legacy'
+  | 'recover_continue'
+  | 'recover_end';
+
+export const TIME_TRANSITION_ERROR_CODES = [
+  'time_transition_working_other_org',
+  'time_transition_stale_version',
+  'time_transition_idempotency_conflict',
+  'time_transition_not_authorized',
+  'time_transition_job_not_assigned',
+  'time_transition_job_unavailable',
+  'time_transition_break_mode_automatic',
+  'time_transition_recovery_ack_required',
+  'time_transition_legacy_state_changed',
+  'time_transition_job_terminal',
+  'time_transition_already_open',
+  'time_transition_legacy_open',
+  'time_transition_not_open',
+  'time_transition_employee_missing',
+  'time_transition_segment_required',
+  'time_transition_allocation_invalid',
+  'time_transition_travel_invalid',
+  'time_transition_standby_invalid',
+  'time_transition_recovery_state_changed',
+  'time_transition_invalid_input',
+  'time_transition_action_invalid',
+  'time_transition_failed',
+  'invalid_input',
+  'not_authenticated',
+  'not_a_member',
+  'no_active_org',
+  'on_approved_vacation',
+  'period_closed',
+] as const;
+
+export type TimeTransitionError = (typeof TIME_TRANSITION_ERROR_CODES)[number];
+
+export type TimeTransitionResult =
+  | {
+      success: true;
+      outcome: 'active' | 'ended' | 'no_change' | 'recovery_required';
+      sessionId: string | null;
+      segmentId: string | null;
+      version: number | null;
+      recoveryReason: string | null;
+      replayed: boolean;
+      legacyBridged: boolean;
+      notice?: 'sickness_reported_today';
+      /** The phone kept the action without the server's answer; it is not recorded yet (decision record 0010). */
+      kept?: true;
+    }
+  | ActionFailure<TimeTransitionError>;
+
+/**
+ * Application-level time entry type with camelCase properties
+ */
+export type TimeEntry = {
+  id: string;
+  userId: string;
+  organizationId: string;
+  entryType: TimeEntryType;
+  timestamp: string;
+  isManual: boolean;
+  jobId: string | null;
+  status: TimeEntryStatus;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Present for P1-21 compatibility projections from canonical segments. */
+  activityKind?: TimeSegmentKind | undefined;
+  activitySelection?: TimeActivitySelection | undefined;
+  canonicalSegmentId?: string | undefined;
+  /** Stable optimistic-lock source for a correction request. */
+  sourceKind?: 'legacy_entry' | 'canonical_segment' | 'correction_application' | undefined;
+  sourceVersion?: string | undefined;
+  /** Present when this entry is projected from an approved correction. */
+  correctionApplicationId?: string | undefined;
+  correctionSourceFingerprint?: string | undefined;
+  pendingCorrectionRequestId?: string | undefined;
+  pendingCorrectionKind?: Database['public']['Enums']['time_correction_kind'] | undefined;
+  isProvisionalCorrection?: boolean | undefined;
+};
+
+/**
+ * A work session calculated from paired clock-in/clock-out events
+ * Can also represent orphan entries (unpaired clock_in or clock_out)
+ */
+export type WorkSession = {
+  clockIn: TimeEntry | null; // null for orphan clock_out
+  clockOut: TimeEntry | null; // null if session is open or orphan clock_in
+  durationMinutes: number | null; // null if session is open or orphan
+  /** Job linked to this session (derived from clockIn entry) */
+  jobId: string | null;
+  /** Entry type that started this work segment (`clock_in` or `break_end`) */
+  startEntryType?: Extract<TimeEntryType, 'clock_in' | 'break_end'> | null;
+  /** Entry type that ended this work segment (`break_start` or `clock_out`) */
+  endEntryType?: Extract<TimeEntryType, 'break_start' | 'clock_out'> | null;
+  /** True if this is an orphan entry (unpaired clock_out without preceding clock_in) */
+  isOrphan?: boolean;
+  /**
+   * Pending state of the session:
+   * - 'none': All entries are approved
+   * - 'partial': Some entries are pending (e.g., clock_in approved, clock_out pending)
+   * - 'full': All entries are pending (awaiting approval)
+   */
+  pendingState?: 'none' | 'partial' | 'full';
+};
+
+export type WorkSessionBreak = {
+  breakStart: TimeEntry;
+  breakEnd: TimeEntry | null;
+};
+
+export type InteractiveCalendarSession = WorkSession & {
+  calendarBlockId?: string;
+  sourceEntries?: TimeEntry[];
+  breaks?: WorkSessionBreak[];
+  /** The break rule that applied to the block's day. */
+  breakPolicy?: BreakPolicyValues | undefined;
+  /** Where the block sits in its day's presence that counts toward the automatic break. */
+  breakDayPosition?: BreakDayPosition | undefined;
+  isCompositeBlock?: boolean;
+  isOnBreakBlock?: boolean;
+  employeeName?: string | null;
+  employeeRole?: OrgRole;
+};
+
+export type BreakSession = {
+  breakStart: TimeEntry;
+  breakEnd: TimeEntry | null;
+  durationMinutes: number | null;
+  isOpen?: boolean;
+  pendingState?: 'none' | 'partial' | 'full';
+};
+
+/**
+ * Input for adding a manual entry
+ */
+export type ManualEntryInput = {
+  entryType: TimeEntryType;
+  timestamp: string; // ISO timestamp
+};
+
+/**
+ * Parameters for adding manual entries
+ */
+export type AddManualEntryParams = {
+  organizationId: string;
+  targetUserId: string;
+  entries: ManualEntryInput[];
+  /** Optional job for the work block started by a clock_in entry. */
+  jobId?: string;
+};
+
+/**
+ * Parameters for querying time entries
+ */
+export type GetTimeEntriesParams = {
+  organizationId: string;
+  from: string; // ISO date
+  to: string; // ISO date
+  userId?: string; // Filter by user (admin/manager only)
+  status?: TimeEntryStatus;
+};
+
+/**
+ * Result types for server actions
+ */
+export type ClockJobInfo = {
+  id: string;
+  title: string;
+  jobNumber: string | null;
+  status: string;
+  projectName: string | null;
+  clientName: string | null;
+};
+
+export type WeeklyTimeDataPoint = {
+  date: string;
+  label: string;
+  totalMinutes: number;
+  workMinutes: number;
+  breakMinutes: number;
+  overtimeMinutes: number;
+  /** Activity categories overlap totals; they are explanatory, not additive. */
+  travelMinutes?: number;
+  /** Included in totalMinutes but excluded from productive work minutes. */
+  standbyMinutes?: number;
+  /** Included in productive work minutes. */
+  calloutMinutes?: number;
+  /** Included in productive work minutes. */
+  internalMinutes?: number;
+  /**
+   * Resolved daily target (P1-04) for this day; absent when the caller did not
+   * resolve targets, in which case the legacy 8h boundary applied.
+   */
+  target?: import('@/lib/personnel/targets').DailyTarget | undefined;
+};
+
+export type WeeklyTimeLabel = {
+  dateRange: string;
+  kw: string;
+};
+
+export type ClockTimelineSegment = {
+  type: 'work' | 'break';
+  minutes: number;
+};
+
+export type LiveClockState = {
+  organizationId: string;
+  /** Today's rule: the live totals need no earlier versions. */
+  breakPolicy: BreakPolicyValues;
+  status: ClockStatus;
+  isClockedIn: boolean;
+  isOnBreak: boolean;
+  clockInTime: string | null;
+  statusStartedAt: string | null;
+  breakStartTime: string | null;
+  todayMinutes: number;
+  workMinutes: number;
+  breakMinutes: number;
+  timelineSegments: ClockTimelineSegment[];
+  activeJobId: string | null;
+  activeJobInfo: ClockJobInfo | null;
+  captureModel: 'canonical' | 'legacy' | 'none';
+  sessionId: string | null;
+  sessionVersion: number | null;
+  currentSegmentId: string | null;
+  currentActivity: TimeActivitySelection | null;
+  /**
+   * The last non-break activity of the open session, so a break can resume
+   * the job it interrupted without asking again. Equals `currentActivity`
+   * while not on a break; null when the session has no such segment yet or
+   * nothing is running.
+   */
+  resumeActivity: TimeActivitySelection | null;
+  /** Job context of `resumeActivity`; equals `activeJobInfo` while not on a break. */
+  resumeJobInfo: ClockJobInfo | null;
+  recoveryReason: string | null;
+  legacyOpen: boolean;
+  standbyMinutes: number;
+  travelMinutes: number;
+  calloutMinutes: number;
+  internalMinutes: number;
+  fetchedAt: string;
+};
+
+export type ZeiterfassungOverview = {
+  clockState: LiveClockState;
+  /** The rule with its earlier versions, for the week's past days. */
+  breakPolicy: BreakPolicy;
+  weekData: WeeklyTimeDataPoint[];
+  todayIndex: number;
+  weekLabel: WeeklyTimeLabel;
+  /** Monday-first resolved daily targets for the current week (P1-04). */
+  weekTargets?: import('@/lib/personnel/targets').DailyTarget[];
+};
+
+export type AddManualEntryResult =
+  | { success: true; entries: TimeEntry[] }
+  /** `otherOrgName` only when the caller is a current member of that organization. */
+  | (ActionFailure<'working_in_other_org'> & { otherOrgName?: string })
+  | TimeValidationActionFailure
+  | ActionFailure;
+
+export type ReviewEntryResult = { success: true; reviewed: number } | ActionFailure;
+
+export type UpdateEntryResult =
+  | { success: true; entry: TimeEntry }
+  | TimeValidationActionFailure
+  | ActionFailure;
+
+export type DeleteEntryResult = { success: true } | ActionFailure;
+
+/** A withdrawn pending submission: how many of its entries left the time record. */
+export type WithdrawSubmissionResult = { success: true; withdrawn: number } | ActionFailure;
+
+export type GetTimeEntriesResult =
+  | {
+      success: true;
+      entries: TimeEntry[];
+      /** Proposed entries for calendar overlays; excluded from official totals. */
+      provisionalEntries?: TimeEntry[];
+      participants?: JobTimeParticipant[];
+    }
+  | ActionFailure;
+
+/** A person who recorded time on a job. */
+export type JobTimeParticipant = ProfileReference;
+
+/**
+ * A pending session awaiting approval (may be a single entry or a pair)
+ */
+export type PendingSession = {
+  /** Unique ID for the session (uses clockIn.id or single entry id) */
+  id: string;
+  userId: string;
+  firstName: string | null;
+  lastName: string | null;
+  clockIn: TimeEntry | null;
+  clockOut: TimeEntry | null;
+  /** Every entry the session owns, breaks included; a review covers all of them. */
+  entryIds: string[];
+  /** Entry date for display */
+  date: string;
+  createdAt: string;
+  /** Resolved job title (if a job is linked to this session) */
+  jobTitle: string | null;
+};
+
+export type GetPendingSessionsResult = { success: true; sessions: PendingSession[] } | ActionFailure;
+
+/**
+ * Validation result for overlap checks
+ */
+export type ValidationResult = { valid: true } | { valid: false; failure: TimeValidationFailure };
+
+/** A time rule refusal as an action answers it: the code, with the instants it names beside it. */
+export type TimeValidationActionFailure = ActionFailure<TimeValidationCode> & TimeValidationFailure;
+
+/**
+ * Roles that a manager can manage (roles below manager)
+ */
+/** An entry's state in an audit event of an Admin's own change. */
+export type AuditedEntryState = {
+  entryType: TimeEntryType;
+  timestamp: string;
+  jobId: string | null;
+  status: TimeEntryStatus;
+};
+
+/** An Admin's own direct edit or deletion of a time entry; a deletion has no after state. */
+export type TimeEntryAuditEvent = {
+  id: string;
+  entryId: string;
+  actorId: string;
+  action: 'edit' | 'delete';
+  createdAt: string;
+  before: AuditedEntryState;
+  after: AuditedEntryState | null;
+};
+
+export type GetTimeEntryAuditEventsResult = { success: true; events: TimeEntryAuditEvent[] } | ActionFailure;
+
+export const MANAGED_ROLES: OrgRole[] = ['employee'];
+
+/**
+ * Convert database row to application type
+ */
+export function toTimeEntry(row: TimeEntryRow): TimeEntry {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    entryType: constrainedValue(TIME_ENTRY_TYPES, row.entry_type, 'time_entries.entry_type'),
+    timestamp: row.timestamp,
+    isManual: row.is_manual,
+    jobId: row.job_id ?? null,
+    status: row.status,
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    sourceKind: 'legacy_entry',
+    sourceVersion: row.updated_at,
+  };
+}
+
+/**
+ * Convert multiple database rows to application types
+ */
+export function toTimeEntries(rows: TimeEntryRow[]): TimeEntry[] {
+  return rows.map(toTimeEntry);
+}
+
+// ============================================
+// Change Request Types
+// ============================================
+
+export type ChangeRequestRow = Database['public']['Tables']['entry_change_requests']['Row'];
+type ChangeRequestType = Database['public']['Enums']['entry_change_type'];
+type ChangeRequestStatus = Database['public']['Enums']['change_request_status'];
+
+/**
+ * Application-level change request type with camelCase properties
+ */
+export type ChangeRequest = {
+  id: string;
+  entryId: string;
+  pairedEntryId: string | null;
+  organizationId: string;
+  requestedBy: string;
+  changeType: ChangeRequestType;
+  proposedTimestamp: string | null;
+  /** Original timestamp before edit - used to revert on rejection */
+  originalTimestamp: string | null;
+  status: ChangeRequestStatus;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Change request with entry and requester info for display
+ */
+export type ChangeRequestWithDetails = ChangeRequest & {
+  entry: TimeEntry;
+  pairedEntry: TimeEntry | null;
+  requesterFirstName: string | null;
+  requesterLastName: string | null;
+};
+
+/**
+ * Result types for change request actions
+ */
+export type RequestChangeResult = { success: true; request: ChangeRequest } | ActionFailure;
+
+export type ReviewChangeRequestResult = { success: true; request: ChangeRequest } | ActionFailure;
+
+export type GetChangeRequestsResult = { success: true; requests: ChangeRequestWithDetails[] } | ActionFailure;
+
+/**
+ * Convert database row to application type
+ */
+export function toChangeRequest(row: ChangeRequestRow): ChangeRequest {
+  return {
+    id: row.id,
+    entryId: row.entry_id,
+    pairedEntryId: row.paired_entry_id,
+    organizationId: row.organization_id,
+    requestedBy: row.requested_by,
+    changeType: row.change_type,
+    proposedTimestamp: row.proposed_timestamp,
+    originalTimestamp: row.original_timestamp,
+    status: row.status,
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Map of entry IDs to their pending change requests
+ */
+export type EntryChangeRequestMap = Record<string, ChangeRequest>;

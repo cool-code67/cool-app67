@@ -1,0 +1,26 @@
+Menü öffnen
+Zeiterfassung
+Zeiterfassung
+Zeitkonto
+Perioden
+Regeln & Export
+Zeitregeln & Lohnexport
+Jede Änderung gilt ab einem Datum. Frühere Versionen bleiben nachvollziehbar.
+Arbeitszeitregel
+Der Startsatz nutzt die sechs Aktivitätsarten und 0, 50 oder 100 Prozent. Weitere Sätze und Prozentwerte können später ergänzt werden. Jeder Tag gilt nach der Version mit dem spätesten Beginn bis zu diesem Tag.
+Name
+*
+Pflichtfeld
+Gültig ab
+*
+Pflichtfeld
+01
+.
+01
+.
+2026
+Standardversion bestätigen
+Neue Ausnahmeregel anlegen
+Vorschlag 01.01.2026: der erste Tag des ältesten Monats ohne Abschluss. Ein Monat lässt sich nur abschließen, wenn Regel und Zeitkonto spätestens an seinem ersten Tag beginnen.
+Individuelle Regeln
+Nicht eingestempelt

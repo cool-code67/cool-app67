@@ -1,0 +1,206 @@
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from 'bun:test';
+
+import {
+  maintenanceCompletionSchema,
+  maintenanceCoverageSchema,
+  maintenancePlanSchema,
+  maintenanceVisitMissedSchema,
+  maintenanceVisitSchema,
+} from './validation';
+
+const IDENTIFIERS = {
+  planId: '11111111-1111-4111-8111-111111111111',
+  revisionId: '22222222-2222-4222-8222-222222222222',
+  clientId: '33333333-3333-4333-8333-333333333333',
+  siteId: '44444444-4444-4444-8444-444444444444',
+  templateVersionId: '55555555-5555-4555-8555-555555555555',
+  equipmentId: '66666666-6666-4666-8666-666666666666',
+  idempotencyKey: '77777777-7777-4777-8777-777777777777',
+} as const;
+
+const COMPLETE_VISIT = {
+  dueWorkId: IDENTIFIERS.planId,
+  expectedVersion: 2,
+  scopeOutcome: 'complete',
+  completedOn: '2026-10-01',
+  workArtifactRevisionIds: [IDENTIFIERS.equipmentId],
+  reason: 'Wartung abgeschlossen',
+  defects: [],
+  nextAction: null,
+  nextActionOwnerId: null,
+  nextActionTargetDate: null,
+  nextActionNote: '',
+  idempotencyKey: IDENTIFIERS.idempotencyKey,
+} as const;
+
+const VALID_PLAN = {
+  ...IDENTIFIERS,
+  status: 'active',
+  effectiveFromDate: '2026-09-01',
+  firstDueDate: '2026-10-01',
+  intervalMonths: 12,
+  dueWindowBeforeDays: 14,
+  dueWindowAfterDays: 14,
+  plannedDurationMinutes: 120,
+  nextDueBasis: 'planned_due_date',
+  reason: 'Wartungsplan angelegt',
+  equipmentIds: [IDENTIFIERS.equipmentId],
+} as const;
+
+describe('maintenance validation boundaries', () => {
+  // The first due date is bounded relative to today; a fixed day keeps the fixtures valid.
+  beforeAll(() => setSystemTime(new Date('2026-10-28T10:00:00Z')));
+  afterAll(() => setSystemTime());
+
+  test('accepts one exact site, template version and equipment set', () => {
+    expect(maintenancePlanSchema.safeParse(VALID_PLAN).success).toBe(true);
+  });
+
+  test('rejects a first due date before the effective date', () => {
+    const result = maintenancePlanSchema.safeParse({
+      ...VALID_PLAN,
+      firstDueDate: '2026-08-31',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.path).toEqual(['firstDueDate']);
+  });
+
+  test('rejects a first due date more than five years back, which would generate unbounded due work', () => {
+    const result = maintenancePlanSchema.safeParse({
+      ...VALID_PLAN,
+      effectiveFromDate: '2021-10-27',
+      firstDueDate: '2021-10-27',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.path).toEqual(['firstDueDate']);
+    expect(
+      maintenancePlanSchema.safeParse({
+        ...VALID_PLAN,
+        effectiveFromDate: '2021-10-28',
+        firstDueDate: '2021-10-28',
+      }).success,
+    ).toBe(true);
+  });
+
+  test('rejects an empty equipment scope', () => {
+    const result = maintenancePlanSchema.safeParse({
+      ...VALID_PLAN,
+      equipmentIds: [],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.path).toEqual(['equipmentIds']);
+  });
+
+  test('rejects duplicate equipment identities', () => {
+    const result = maintenancePlanSchema.safeParse({
+      ...VALID_PLAN,
+      equipmentIds: [IDENTIFIERS.equipmentId, IDENTIFIERS.equipmentId],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.path).toEqual(['equipmentIds']);
+  });
+
+  test('keeps operational coverage dates bounded and internally consistent', () => {
+    expect(
+      maintenanceCoverageSchema.safeParse({
+        coverageId: IDENTIFIERS.planId,
+        clientId: IDENTIFIERS.clientId,
+        siteId: IDENTIFIERS.siteId,
+        status: 'active',
+        validFrom: '2027-01-01',
+        validUntil: '2026-12-31',
+        idempotencyKey: IDENTIFIERS.idempotencyKey,
+      }).success,
+    ).toBe(false);
+  });
+
+  test('requires aligned visit identities and explicit completion evidence', () => {
+    expect(
+      maintenanceVisitSchema.safeParse({
+        dueWorkIds: [IDENTIFIERS.planId],
+        expectedVersions: [1],
+        reason: 'Wartungsauftrag verknüpft',
+        idempotencyKey: IDENTIFIERS.idempotencyKey,
+      }).success,
+    ).toBe(true);
+    expect(maintenanceCompletionSchema.safeParse(COMPLETE_VISIT).success).toBe(true);
+    expect(
+      maintenanceCompletionSchema.safeParse({ ...COMPLETE_VISIT, workArtifactRevisionIds: [] }).success,
+    ).toBe(false);
+  });
+
+  test('rejects visit batches without one expected version per due item', () => {
+    const batch = {
+      dueWorkIds: [IDENTIFIERS.planId, IDENTIFIERS.revisionId],
+      expectedVersions: [1],
+      reason: 'Wartungsauftrag verknüpft',
+      idempotencyKey: IDENTIFIERS.idempotencyKey,
+    };
+    const result = maintenanceVisitSchema.safeParse(batch);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['expectedVersions']);
+    expect(maintenanceVisitSchema.safeParse({ ...batch, expectedVersions: [1, 2] }).success).toBe(true);
+  });
+
+  test('a missed visit needs a note only for „Anderer Grund“, and a given note has three characters', () => {
+    const missed = {
+      dueWorkId: IDENTIFIERS.planId,
+      expectedVersion: 3,
+      missedReason: 'customer_absent',
+      note: '',
+      idempotencyKey: IDENTIFIERS.idempotencyKey,
+    };
+    expect(maintenanceVisitMissedSchema.safeParse(missed).success).toBe(true);
+    expect(maintenanceVisitMissedSchema.safeParse({ ...missed, note: ' x ' }).success).toBe(false);
+    expect(maintenanceVisitMissedSchema.safeParse({ ...missed, missedReason: 'other' }).success).toBe(false);
+    expect(
+      maintenanceVisitMissedSchema.safeParse({ ...missed, missedReason: 'other', note: 'Schlüssel fehlte' })
+        .success,
+    ).toBe(true);
+    expect(maintenanceVisitMissedSchema.safeParse({ ...missed, missedReason: 'job_cancelled' }).success).toBe(
+      false,
+    );
+  });
+
+  test('an unfinished visit names a Mangel and its next action; a complete visit names none', () => {
+    const unfinished = {
+      ...COMPLETE_VISIT,
+      scopeOutcome: 'unresolved',
+      defects: ['Umwälzpumpe defekt'],
+      nextAction: 'return_visit',
+      nextActionOwnerId: IDENTIFIERS.clientId,
+      nextActionTargetDate: '2026-10-15',
+    } as const;
+    const parse = (value: object) => maintenanceCompletionSchema.safeParse(value).success;
+    expect(parse(unfinished)).toBe(true);
+    expect(parse({ ...unfinished, scopeOutcome: 'partial' })).toBe(true);
+    expect(parse({ ...unfinished, nextAction: null })).toBe(false);
+    expect(parse({ ...unfinished, defects: [] })).toBe(false);
+    expect(parse({ ...unfinished, defects: ['ab'] })).toBe(false);
+    expect(parse({ ...unfinished, defects: Array.from({ length: 11 }, () => 'Mangel') })).toBe(false);
+    expect(parse({ ...unfinished, nextActionOwnerId: null })).toBe(false);
+    expect(parse({ ...unfinished, nextActionTargetDate: null })).toBe(false);
+    // The target lies after the visit; a month end and a leap day are ordinary dates.
+    expect(parse({ ...unfinished, nextActionTargetDate: '2026-10-01' })).toBe(false);
+    expect(parse({ ...unfinished, completedOn: '2028-02-28', nextActionTargetDate: '2028-02-29' })).toBe(
+      true,
+    );
+    expect(parse({ ...unfinished, completedOn: '2026-10-31', nextActionTargetDate: '2026-11-01' })).toBe(
+      true,
+    );
+    // Only a Rückkehr has a bound beyond the visit, the regular next due date, which the database checks.
+    expect(
+      parse({ ...unfinished, nextAction: 'offer_replacement', nextActionTargetDate: '2028-01-15' }),
+    ).toBe(true);
+    const none = { ...unfinished, nextAction: 'none', nextActionOwnerId: null, nextActionTargetDate: null };
+    expect(parse({ ...none, nextActionNote: 'Kunde kümmert sich selbst' })).toBe(true);
+    expect(parse({ ...none, nextActionNote: '' })).toBe(false);
+    expect(parse({ ...COMPLETE_VISIT, defects: ['Umwälzpumpe defekt'] })).toBe(false);
+    expect(parse({ ...COMPLETE_VISIT, nextAction: 'warranty_check' })).toBe(false);
+  });
+});
