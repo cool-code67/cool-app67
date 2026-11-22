@@ -1,0 +1,607 @@
+import { expect, type Locator, type Page } from '@playwright/test';
+import {
+  formatInventoryQuantity,
+  getInventoryUnitLabel,
+  INVENTORY_ITEM_TYPE_LABELS,
+  type InventoryItemType,
+} from '../../../../lib/inventory/types';
+import type { InventoryUnitCode } from '../../../../lib/inventory/units';
+import { getInventoryLocationByName, type PersistedInventoryLocation } from '../db/inventory';
+import { dismissDialog } from './interaction';
+import {
+  confirmed,
+  expectBannerAfter,
+  listEntry,
+  listPager,
+  selectFromSearchable,
+  SHARED_COPY,
+  visibleText,
+} from './shared';
+
+/** Copy of the Lager area that no pure product module owns. Type and unit labels come from lib/inventory/types. */
+export const INVENTORY_COPY = {
+  importNewLocation: 'neues Lager',
+  importUnknownUnit: (unit: string) => `Unbekannte Einheit: „${unit}“.`,
+  importRepeatWarning: 'Diese Datei wurde schon am',
+  rowActions: 'Aktionen',
+  withdraw: 'Entnehmen',
+  billable: 'Abrechenbar',
+  materialDemand: 'Bedarf',
+  allTypes: 'Alle Typen',
+  allLocations: 'Alle Lager',
+  insufficientStock: /Bestand.*reicht nicht aus/,
+  /** The „Von“ and „Nach“ cells of a movement (components/inventar/inventory-row-format.ts). */
+  movementSource: { external: 'Externe Quelle' },
+  movementTarget: { correctionOut: 'Korrektur/Ausgang' },
+  material: {
+    section: 'Material & Inventar',
+    planSaved: 'Die Materialplanung wurde gespeichert.',
+    noDirectProjectMaterial: 'Noch kein direktes Projektmaterial erfasst.',
+    inheritedFromJobs: 'Aus Aufträgen übernommen',
+    projectTotal: 'Projekt gesamt',
+  },
+} as const;
+
+const INVENTORY_LABELS = {
+  searchItem: 'Artikel suchen',
+  typeFilter: 'Nach Typ filtern',
+  locationFilter: 'Nach Lager filtern',
+  pendingLocation: 'Lager wird angelegt',
+  pendingMaterialLine: 'Wird gespeichert',
+  newSupplier: 'Neuen Lieferanten anlegen',
+  applySupplier: 'Übernehmen',
+  planMaterial: 'Material planen',
+  takeFromStock: 'Aus Lager entnehmen',
+  importCsv: 'CSV importieren',
+  importWholesaler: 'Großhandel importieren',
+  importPreview: 'Vorschau anzeigen',
+  importBook: 'Jetzt buchen',
+  importDone: 'Fertig',
+  importReport: 'Bericht herunterladen',
+  importRepeatConfirm: 'Trotzdem fortfahren',
+} as const;
+
+/** The /inventar dialogs, each named by its heading. */
+const INVENTORY_DIALOGS = {
+  createItem: 'Artikel anlegen',
+  editItem: 'Artikel bearbeiten',
+  createLocation: 'Lager anlegen',
+  adjustStock: 'Bestand ändern',
+  importCsv: INVENTORY_LABELS.importCsv,
+  importWholesaler: INVENTORY_LABELS.importWholesaler,
+  quickCreateLocation: 'Lager erstellen',
+  quickCreateSupplier: INVENTORY_LABELS.newSupplier,
+} as const;
+type InventoryDialog = keyof typeof INVENTORY_DIALOGS;
+
+/** An /inventar dialog as an open layer, named by its title. */
+export function inventoryDialogLayer(page: Page, dialog: InventoryDialog): Locator {
+  return page.getByRole('dialog', { name: INVENTORY_DIALOGS[dialog], exact: true });
+}
+
+/** The pickers of the item dialog with their inline create action (select-with-create). */
+const ITEM_DIALOG_PICKERS = {
+  location: { field: 'Lager', create: 'Neues Lager erstellen' },
+  supplier: { field: 'Lieferant', create: INVENTORY_LABELS.newSupplier },
+} as const;
+type ItemDialogPicker = keyof typeof ITEM_DIALOG_PICKERS;
+
+/** The picker trigger in the open item dialog, named by its field label. */
+export function itemDialogPicker(dialog: Locator, picker: ItemDialogPicker): Locator {
+  return dialog.getByRole('combobox', { name: ITEM_DIALOG_PICKERS[picker].field, exact: true });
+}
+
+/** The create action of the open picker; the picker list is portaled to the page. */
+export function itemDialogPickerCreateAction(page: Page, picker: ItemDialogPicker): Locator {
+  return page.getByRole('button', { name: ITEM_DIALOG_PICKERS[picker].create, exact: true });
+}
+
+/** The /inventar views in tab order. */
+export const INVENTORY_VIEWS = ['items', 'locations', 'planned', 'movements'] as const;
+type InventoryView = (typeof INVENTORY_VIEWS)[number];
+const INVENTORY_TABS = {
+  items: 'Alle Artikel',
+  locations: 'Lager',
+  planned: 'Geplant',
+  movements: 'Bewegungen',
+} as const satisfies Record<InventoryView, string>;
+
+/** The row actions menu of an item on /inventar. */
+const INVENTORY_ROW_ACTIONS = {
+  edit: SHARED_COPY.action.edit,
+  adjustStock: INVENTORY_DIALOGS.adjustStock,
+} as const;
+
+/** The material line actions on a job and the dialog each one opens. */
+export const JOB_MATERIAL_ACTIONS = {
+  take: { trigger: 'Entnahme buchen', heading: 'Entnahme buchen', submit: 'Entnahme buchen' },
+  use: { trigger: 'Verbraucht', heading: 'Verbrauch buchen', submit: 'Verbrauch buchen' },
+  return: { trigger: 'Zurücklegen', heading: 'Material zurücklegen', submit: 'Zurücklegen' },
+} as const;
+type JobMaterialAction = keyof typeof JOB_MATERIAL_ACTIONS;
+
+export function inventoryDialog(page: Page, dialog: InventoryDialog): Locator {
+  return page
+    .getByRole('dialog')
+    .filter({ has: page.getByRole('heading', { name: INVENTORY_DIALOGS[dialog] }) });
+}
+
+/** The fields of the item, location and stock dialogs, by their DOM id. */
+const INVENTORY_FIELD_IDS = {
+  itemName: 'inventory-item-name',
+  itemType: 'inventory-item-type',
+  itemUnit: 'inventory-item-unit',
+  itemCategory: 'inventory-item-category',
+  itemSupplier: 'inventory-item-supplier',
+  itemInternalSku: 'inventory-item-internal-sku',
+  itemBarcode: 'inventory-item-barcode',
+  itemManufacturer: 'inventory-item-manufacturer',
+  itemSupplierNumber: 'inventory-item-supplier-number',
+  itemMinimumStock: 'inventory-item-minimum-stock',
+  itemTargetStock: 'inventory-item-target-stock',
+  itemPurchasePrice: 'inventory-item-purchase-price',
+  itemSalePrice: 'inventory-item-sale-price',
+  itemDescription: 'inventory-item-description',
+  itemNotes: 'inventory-item-notes',
+  locationName: 'inventory-location-name',
+  locationType: 'inventory-location-type',
+  locationDescription: 'inventory-location-description',
+  stockQuantity: 'inventory-stock-quantity',
+  stockReason: 'inventory-stock-reason',
+} as const;
+
+/** A field of an open inventory dialog. */
+export function inventoryField(dialog: Locator, field: keyof typeof INVENTORY_FIELD_IDS): Locator {
+  return dialog.locator(`#${INVENTORY_FIELD_IDS[field]}`);
+}
+
+/** The CSV file input of the import dialog. */
+export function inventoryImportFileInput(dialog: Locator): Locator {
+  return dialog.locator('input[type="file"]');
+}
+
+/** The column picker of the import dialog for one item field (`name`, `quantity`, ...). */
+export function inventoryImportColumnPicker(dialog: Locator, field: string): Locator {
+  return dialog.locator(`#inventory-import-${field}`);
+}
+
+export function createItemButton(page: Page): Locator {
+  return page.getByRole('button', { name: INVENTORY_DIALOGS.createItem, exact: true });
+}
+
+export function createLocationButton(page: Page): Locator {
+  return page.getByRole('button', { name: INVENTORY_DIALOGS.createLocation, exact: true });
+}
+
+/** The header button that opens the wholesaler import. */
+export function wholesalerImportButton(page: Page): Locator {
+  return page.getByRole('button', { name: INVENTORY_LABELS.importWholesaler, exact: true });
+}
+
+export function csvImportButton(page: Page): Locator {
+  return page.getByRole('button', { name: INVENTORY_LABELS.importCsv });
+}
+
+/** A step button of the import dialog: preview, book, done, the report download or the repeat decision. */
+export function csvImportButtonOf(
+  dialog: Locator,
+  action: 'importPreview' | 'importBook' | 'importDone' | 'importReport' | 'importRepeatConfirm',
+): Locator {
+  return dialog.getByRole('button', { name: INVENTORY_LABELS[action], exact: true });
+}
+
+/** The button that chooses the import file, the dialog's first control; its field label names it. */
+export function csvImportFileButton(dialog: Locator): Locator {
+  return dialog.locator('#inventory-import-file');
+}
+
+/** The import dialog once the repeat check of its chosen file has answered (`clear`, `repeat` or `failed`). */
+export function csvImportRepeatChecked(dialog: Locator): Locator {
+  return dialog.locator('[data-import-repeat-check="clear"], [data-import-repeat-check="repeat"]');
+}
+
+/** One row of the import preview or result, found by the article name it shows. */
+export function csvImportRow(dialog: Locator, text: string): Locator {
+  return confirmed(dialog.getByTestId('inventory-import-row').filter({ hasText: text }));
+}
+
+export function inventoryTab(page: Page, view: InventoryView): Locator {
+  return page.getByRole('tab', { name: INVENTORY_TABS[view], exact: true });
+}
+
+/** The item search on /inventar and in the material dialogs. */
+export function itemSearchField(scope: Page | Locator): Locator {
+  return scope.getByLabel(INVENTORY_LABELS.searchItem);
+}
+
+export function itemTypeFilter(page: Page): Locator {
+  return page.getByLabel(INVENTORY_LABELS.typeFilter);
+}
+
+export function itemLocationFilter(page: Page): Locator {
+  return page.getByLabel(INVENTORY_LABELS.locationFilter);
+}
+
+/** The optimistic card of a location that is still being created. */
+export function pendingLocationStatus(page: Page): Locator {
+  return page.getByRole('status', { name: INVENTORY_LABELS.pendingLocation });
+}
+
+/** The pending mark of a job material line whose booking is not confirmed yet. */
+export function materialLinePendingStatus(line: Locator): Locator {
+  return line.getByRole('status', { name: INVENTORY_LABELS.pendingMaterialLine, exact: true });
+}
+
+/** A table row on /inventar (items or movements) that mentions this text. */
+export function inventoryRow(page: Page, text: string): Locator {
+  return confirmed(page.getByRole('row').filter({ hasText: text }));
+}
+
+const ITEM_LIST_COPY = {
+  pager: 'Artikelseiten',
+  itemCreated: 'Der Artikel wurde angelegt.',
+  itemSaved: 'Der Artikel wurde gespeichert.',
+  itemName: 'Name',
+} as const;
+
+/** The pagination of the /inventar item list. */
+export function inventoryItemPager(page: Page): Locator {
+  return listPager(page, ITEM_LIST_COPY.pager);
+}
+
+/** The item whose name shows exactly this name: its table row, or its card on a phone. */
+export function inventoryItemRow(page: Page, name: string): Locator {
+  return listEntry(page.getByRole('main'), { has: page.getByText(name, { exact: true }) });
+}
+
+export function inventoryItemCreatedMessage(page: Page): Locator {
+  return visibleText(page, ITEM_LIST_COPY.itemCreated);
+}
+
+/** Chooses an item type in the /inventar type filter. */
+export async function chooseInventoryItemTypeFilter(page: Page, type: InventoryItemType): Promise<void> {
+  await itemTypeFilter(page).click();
+  await page.getByRole('option', { name: INVENTORY_ITEM_TYPE_LABELS[type], exact: true }).click();
+}
+
+/** Renames an item through its row's edit dialog and waits for the saved confirmation. */
+export async function renameInventoryItem(page: Page, oldName: string, newName: string): Promise<void> {
+  await openItemRowAction(page, inventoryItemRow(page, oldName), 'edit');
+  const dialog = inventoryDialog(page, 'editItem');
+  const name = dialog.getByRole('textbox', { name: ITEM_LIST_COPY.itemName, exact: true });
+  await expect(name).toBeEnabled();
+  await name.fill(newName);
+  await dialog.getByRole('button', { name: SHARED_COPY.action.save, exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText(ITEM_LIST_COPY.itemSaved, { exact: true })).toBeVisible();
+}
+
+/** The „Aktionen“ menu button of an item row. */
+export function inventoryRowActionsButton(row: Locator): Locator {
+  return row.getByRole('button', { name: INVENTORY_COPY.rowActions, exact: true });
+}
+
+/** One item of the open item row menu. */
+export function inventoryRowActionItem(page: Page, action: keyof typeof INVENTORY_ROW_ACTIONS): Locator {
+  return page.getByRole('menuitem', { name: INVENTORY_ROW_ACTIONS[action], exact: true });
+}
+
+/** Opens one action of an item row's „Aktionen“ menu. */
+export async function openItemRowAction(
+  page: Page,
+  row: Locator,
+  action: keyof typeof INVENTORY_ROW_ACTIONS,
+): Promise<void> {
+  await row.getByRole('button', { name: INVENTORY_COPY.rowActions, exact: true }).click();
+  await page.getByRole('menuitem', { name: INVENTORY_ROW_ACTIONS[action] }).click();
+}
+
+/** One location card in the „Lager“ view, a region named by the location. */
+export function inventoryLocationCard(page: Page, locationName: string): Locator {
+  return confirmed(page.getByRole('main').getByRole('region', { name: locationName, exact: true }));
+}
+
+/** One item's tile in the project's „Projekt gesamt“ totals. */
+export function projectMaterialTotal(page: Page, itemId: string): Locator {
+  return confirmed(
+    page
+      .getByRole('region', { name: INVENTORY_COPY.material.projectTotal, exact: true })
+      .locator(`[data-row-id="${itemId}"]`),
+  );
+}
+
+/** The billable pill text of a project total with this quantity. */
+export function billableQuantityPattern(quantity: number): RegExp {
+  return new RegExp(`${INVENTORY_COPY.billable}\\s+${quantity}`);
+}
+
+/**
+ * The quantity input of the material rows inside a material dialog. The rows
+ * have no accessible name per row; the generated id suffix is the contract.
+ */
+export function materialRowQuantity(dialog: Locator): Locator {
+  return dialog.locator('input[id$="-quantity"]');
+}
+
+/** The notes of the material rows inside a material dialog. */
+export function materialRowNotes(dialog: Locator): Locator {
+  return dialog.locator('textarea[id$="-notes"]');
+}
+
+/** The location picker trigger of the material rows inside a material dialog. */
+export function materialRowLocation(dialog: Locator): Locator {
+  return dialog.locator('button[id$="-location"]');
+}
+
+/** The work page's action that takes material from stock; pass the field work pack to scope it. */
+export function takeFromStockButton(scope: Page | Locator): Locator {
+  return scope.getByRole('button', { name: INVENTORY_LABELS.takeFromStock });
+}
+
+/** A material row's taken quantity: „2 Stück entnommen“. */
+export function materialTakenText(quantity: number, unit = 'piece'): string {
+  return `${formatInventoryQuantity(quantity, unit)} entnommen`;
+}
+
+/** A material row's used quantity: „1 Stück verbraucht“. */
+export function materialUsedText(quantity: number, unit = 'piece'): string {
+  return `${formatInventoryQuantity(quantity, unit)} verbraucht`;
+}
+
+/** A material row's returned quantity: „1 Stück zurück“. */
+export function materialReturnedText(quantity: number, unit = 'piece'): string {
+  return `${formatInventoryQuantity(quantity, unit)} zurück`;
+}
+
+export function jobMaterialLine(page: Page, itemName: string): Locator {
+  return confirmed(page.getByRole('main').getByTestId('job-material-line').filter({ hasText: itemName }));
+}
+
+export function jobMaterialLineAction(line: Locator, action: JobMaterialAction): Locator {
+  return line.getByRole('button', { name: JOB_MATERIAL_ACTIONS[action].trigger });
+}
+
+export function materialPlanButton(page: Page): Locator {
+  return page.getByRole('button', { name: INVENTORY_LABELS.planMaterial });
+}
+
+/** The material plan dialog as an open layer, named by its title. */
+export function materialPlanLayer(page: Page): Locator {
+  return page.getByRole('dialog', { name: INVENTORY_LABELS.planMaterial, exact: true });
+}
+
+function materialPlanDialog(page: Page): Locator {
+  return page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: INVENTORY_LABELS.planMaterial }),
+  });
+}
+
+function materialPlanSavedBanner(page: Page): Locator {
+  return page.getByRole('alert').filter({ hasText: INVENTORY_COPY.material.planSaved });
+}
+
+/**
+ * Plans material from the open job or project detail and waits for the saved
+ * banner and the closed dialog.
+ */
+export async function planMaterialOnDetailPage(
+  page: Page,
+  input: { itemName: string; locationName: string; quantity: number },
+): Promise<void> {
+  const button = materialPlanButton(page);
+  await expect(button).toBeEnabled();
+  await button.click();
+  const dialog = materialPlanDialog(page);
+  await expect(dialog).toBeVisible();
+  await itemSearchField(dialog).fill(input.itemName);
+  await dialog.getByRole('button').filter({ hasText: input.itemName }).click();
+  await materialRowQuantity(dialog).fill(String(input.quantity));
+  await selectFromSearchable(page, materialRowLocation(dialog), input.locationName);
+  await dialog.getByRole('button', { name: SHARED_COPY.action.save }).click();
+  // The dialog closes with the click; the banner confirms the write.
+  await expect(materialPlanSavedBanner(page)).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+}
+
+/**
+ * Creates a Lager on /inventar and returns its saved row once the server
+ * confirmed it. The dialog closes with the click while the save is still in
+ * flight, so a caller that navigates next would abort the save without this wait.
+ */
+export async function createInventoryLocation(
+  page: Page,
+  options: { orgId: string; name: string },
+): Promise<PersistedInventoryLocation> {
+  const { orgId, name } = options;
+  await page.goto('/inventar');
+  await createLocationButton(page).click();
+  const dialog = inventoryDialog(page, 'createLocation');
+  await dialog.locator('#inventory-location-name').fill(name);
+  await dialog.getByRole('button', { name: SHARED_COPY.action.save }).click();
+  await expect(dialog).toHaveCount(0);
+  await inventoryTab(page, 'locations').click();
+  await expect(inventoryLocationCard(page, name)).toBeVisible();
+  await expect(pendingLocationStatus(page)).toHaveCount(0);
+  const location = await getInventoryLocationByName(orgId, name);
+  expect(location.isActive).toBe(true);
+  return location;
+}
+
+export async function createInventoryItem(
+  page: Page,
+  options: {
+    name: string;
+    /** The unit is chosen here: once the article has stock, it keeps its unit. */
+    unit?: InventoryUnitCode;
+    locationName?: string;
+    initialQuantity?: number;
+    supplierName?: string;
+  },
+): Promise<void> {
+  if (options.initialQuantity !== undefined) {
+    if (!options.locationName) {
+      throw new Error('createInventoryItem: initialQuantity requires a locationName');
+    }
+    if (!Number.isFinite(options.initialQuantity)) {
+      throw new Error('createInventoryItem: initialQuantity must be finite');
+    }
+  }
+
+  await page.goto('/inventar');
+  await createItemButton(page).click();
+  const dialog = inventoryDialog(page, 'createItem');
+  await dialog.locator('#inventory-item-name').fill(options.name);
+  if (options.unit) {
+    await selectFromSearchable(
+      page,
+      dialog.locator('#inventory-item-unit'),
+      getInventoryUnitLabel(options.unit),
+    );
+  }
+  if (options.locationName) {
+    await selectFromSearchable(
+      page,
+      dialog.locator('#inventory-item-initial-location'),
+      options.locationName,
+    );
+    await dialog.locator('#inventory-item-initial-quantity').fill(String(options.initialQuantity ?? 0));
+  }
+  if (options.supplierName) {
+    // SelectWithCreate: the action row opens a quick-create dialog that stages
+    // the new supplier name; the supplier row is created on item save.
+    await dialog.locator('#inventory-item-supplier').click();
+    await page.getByRole('button', { name: INVENTORY_LABELS.newSupplier, exact: true }).click();
+    const supplierDialog = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', { name: INVENTORY_LABELS.newSupplier }),
+    });
+    await supplierDialog.locator('#inventory-new-supplier-name').fill(options.supplierName);
+    await supplierDialog.getByRole('button', { name: INVENTORY_LABELS.applySupplier }).click();
+    await expect(supplierDialog).toHaveCount(0, { timeout: 10_000 });
+  }
+  await dialog.getByRole('button', { name: SHARED_COPY.action.save }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+export async function takeMaterialOnJobPage(
+  page: Page,
+  jobNumber: string,
+  itemName: string,
+  quantity: number,
+): Promise<void> {
+  await page.goto(`/auftraege/${jobNumber}`);
+  await expect(visibleText(page, INVENTORY_COPY.material.section)).toBeVisible();
+  await takeFromStockButton(page).click();
+  await expect(page.getByRole('heading', { name: JOB_MATERIAL_ACTIONS.take.heading })).toBeVisible();
+
+  // Pick the item from the search list; a row with quantity 1 appears.
+  await page.getByRole('dialog').getByRole('button').filter({ hasText: itemName }).first().click();
+  await page.locator('input[id^="material-row-"][id$="-quantity"]').fill(String(quantity));
+
+  // The line rows outside the dialog also carry an "Entnahme buchen" button,
+  // so the confirm click must stay scoped to the dialog.
+  await page.getByRole('dialog').getByRole('button', { name: JOB_MATERIAL_ACTIONS.take.submit }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+export async function returnMaterialOnJobPage(
+  page: Page,
+  jobNumber: string,
+  itemName: string,
+  quantity: number,
+): Promise<void> {
+  await page.goto(`/auftraege/${jobNumber}`);
+  await expect(visibleText(page, INVENTORY_COPY.material.section)).toBeVisible();
+  await jobMaterialLine(page, itemName)
+    .locator('button:enabled')
+    .filter({ hasText: JOB_MATERIAL_ACTIONS.return.trigger })
+    .first()
+    .click();
+  await expect(page.getByRole('heading', { name: JOB_MATERIAL_ACTIONS.return.heading })).toBeVisible();
+
+  await page.locator('input[id^="material-row-"][id$="-quantity"]').fill(String(quantity));
+  await page.getByRole('dialog').getByRole('button', { name: JOB_MATERIAL_ACTIONS.return.submit }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+export async function planMaterialOnJobPage(
+  page: Page,
+  jobNumber: string,
+  itemName: string,
+  locationName: string,
+  quantity: number,
+): Promise<void> {
+  await page.goto(`/auftraege/${encodeURIComponent(jobNumber)}`);
+  await materialPlanButton(page).click();
+  const dialog = materialPlanDialog(page);
+  await itemSearchField(dialog).fill(itemName);
+  await dialog.getByRole('button').filter({ hasText: itemName }).first().click();
+  await materialRowQuantity(dialog).first().fill(String(quantity));
+  await selectFromSearchable(page, materialRowLocation(dialog).first(), locationName);
+  // The dialog closes and the line shows with the click; the banner confirms
+  // the write, and a refusal reopens the dialog instead.
+  await expectBannerAfter(page, INVENTORY_COPY.material.planSaved, () =>
+    dialog.getByRole('button', { name: SHARED_COPY.action.save }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+}
+
+/** The article dialog's „Lieferanten“ and „Preise“ (components/inventar/article-*). */
+const ARTICLE_TERMS_COPY = {
+  suppliersTab: 'Lieferanten',
+  pricesTab: 'Preise',
+  editSupplier: 'Bearbeiten',
+  supplierDialog: 'Lieferant bearbeiten',
+  supplierSaved: 'Der Lieferant wurde gespeichert.',
+  savePrice: 'Preis speichern',
+  priceSaved: 'Der Preis wurde gespeichert.',
+  priceKinds: { purchase: 'Einkaufspreis', sale: 'Verkaufspreis' },
+} as const;
+
+/** Closes the open article dialog with Escape: its tabs saved each change already. */
+export async function closeArticleDialog(dialog: Locator): Promise<void> {
+  await dismissDialog(dialog);
+}
+
+/** One supplier's row in the open article dialog's „Lieferanten“ tab, after opening the tab. */
+export async function articleSupplierRow(dialog: Locator, supplierName: string): Promise<Locator> {
+  await dialog.getByRole('tab', { name: ARTICLE_TERMS_COPY.suppliersTab, exact: true }).click();
+  return confirmed(dialog.getByRole('listitem').filter({ hasText: supplierName }));
+}
+
+/** The preferred supplier's mark on its row. */
+export const ARTICLE_PREFERRED_SUPPLIER = 'Bevorzugt';
+
+/** Sets the article number of one supplier of the open article dialog, in its „Lieferanten“ tab. */
+export async function setArticleSupplierNumber(
+  page: Page,
+  dialog: Locator,
+  supplierName: string,
+  articleNumber: string,
+): Promise<void> {
+  const row = await articleSupplierRow(dialog, supplierName);
+  await row.getByRole('button', { name: ARTICLE_TERMS_COPY.editSupplier, exact: true }).click();
+  const supplierDialog = page.getByRole('dialog', { name: ARTICLE_TERMS_COPY.supplierDialog, exact: true });
+  await supplierDialog.locator('#article-supplier-number').fill(articleNumber);
+  await expectBannerAfter(page, ARTICLE_TERMS_COPY.supplierSaved, () =>
+    supplierDialog.getByRole('button', { name: SHARED_COPY.action.save, exact: true }).click(),
+  );
+  await expect(supplierDialog).toHaveCount(0);
+  await expect(row).toContainText(articleNumber);
+}
+
+/** Records a price from today in the open article dialog's „Preise“ tab and waits for it as today's price. */
+export async function addArticlePriceFromToday(
+  page: Page,
+  dialog: Locator,
+  price: { kind: keyof typeof ARTICLE_TERMS_COPY.priceKinds; amount: string; shows: string },
+): Promise<void> {
+  await dialog.getByRole('tab', { name: ARTICLE_TERMS_COPY.pricesTab, exact: true }).click();
+  await dialog.locator('#article-price-kind').click();
+  await page.getByRole('option', { name: ARTICLE_TERMS_COPY.priceKinds[price.kind], exact: true }).click();
+  await dialog.locator('#article-price-amount').fill(price.amount);
+  await expectBannerAfter(page, ARTICLE_TERMS_COPY.priceSaved, () =>
+    dialog.getByRole('button', { name: ARTICLE_TERMS_COPY.savePrice, exact: true }).click(),
+  );
+  const current = confirmed(dialog.getByRole('region', { name: 'Aktuelle Preise' }));
+  await expect(current).toContainText(price.shows);
+}

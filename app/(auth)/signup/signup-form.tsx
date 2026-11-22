@@ -1,0 +1,344 @@
+'use client';
+
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMemo, useState } from 'react';
+import { useForm, useWatch, type Control, type UseFormReturn } from 'react-hook-form';
+import { useRouter } from 'next/navigation';
+import { z } from '@/lib/zod';
+
+import { PasswordRequirements } from '@/components/password/PasswordRequirements';
+import { PasswordStrengthMeter } from '@/components/password/PasswordStrengthMeter';
+import { maskEmail } from '@/components/auth/mask-email';
+import { Button } from '@/components/ui/button';
+import { ErrorText } from '@/components/ui/error-text';
+import { Field } from '@/components/ui/field';
+import { Form, FormField } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
+import { untilPageLeaves, usePendingTask } from '@/hooks/use-server-action';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { invalidateProfileCache } from '@/lib/auth/actions';
+import { openVerificationStep } from '@/lib/auth/verification-step';
+import {
+  getPasswordRequirements,
+  getPasswordStrengthLevel,
+  passwordSchema,
+  translateSupabasePasswordError,
+} from '@/lib/validation/password';
+
+const signupSchema = z.object({
+  firstName: z.string().min(2, 'Der Vorname muss mindestens 2 Zeichen lang sein.'),
+  lastName: z.string().min(2, 'Der Nachname muss mindestens 2 Zeichen lang sein.'),
+  email: z.string().email('Bitte gib eine gültige E-Mail-Adresse ein.'),
+  password: passwordSchema,
+});
+
+type SignupValues = z.infer<typeof signupSchema>;
+
+const VERIFICATION_STEP_FAILED =
+  'Der Bestätigungsschritt ließ sich nicht öffnen. Melde dich mit deiner E-Mail-Adresse und deinem Passwort an, um einen neuen Code zu erhalten.';
+
+// Marks every invalid field on the form and returns the first one to focus.
+function flagInvalidSignupFields(
+  form: UseFormReturn<SignupValues>,
+  values: SignupValues,
+  isInviteSignup: boolean,
+  invitedEmail: string | null,
+  passwordRequirements: { allMet: boolean },
+): keyof SignupValues | null {
+  let firstInvalidField: keyof SignupValues | null = null;
+
+  // Validate name fields manually
+  if (values.firstName.length < 2) {
+    form.setError('firstName', {
+      type: 'manual',
+      message: 'Der Vorname muss mindestens 2 Zeichen lang sein.',
+    });
+    firstInvalidField ??= 'firstName';
+  }
+
+  if (values.lastName.length < 2) {
+    form.setError('lastName', {
+      type: 'manual',
+      message: 'Der Nachname muss mindestens 2 Zeichen lang sein.',
+    });
+    firstInvalidField ??= 'lastName';
+  }
+
+  // Validate email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(values.email)) {
+    form.setError('email', {
+      type: 'manual',
+      message: 'Bitte gib eine gültige E-Mail-Adresse ein.',
+    });
+    firstInvalidField ??= 'email';
+  }
+
+  // If this is an invite signup, ensure the email matches the invited email
+  // This is a client-side safety check (server will also validate)
+  if (isInviteSignup && invitedEmail && values.email.toLowerCase() !== invitedEmail.toLowerCase()) {
+    form.setError('email', {
+      type: 'manual',
+      message: `Diese Einladung ist für ${maskEmail(invitedEmail)} bestimmt.`,
+    });
+    firstInvalidField ??= 'email';
+  }
+
+  // The requirements checklist under the field already names what is
+  // missing; focusing the field is the only extra signal needed.
+  if (!passwordRequirements.allMet) {
+    firstInvalidField ??= 'password';
+  }
+
+  return firstInvalidField;
+}
+
+function SignupNameFields({
+  control,
+  hasAttemptedSubmit,
+}: {
+  control: Control<SignupValues>;
+  hasAttemptedSubmit: boolean;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
+      <FormField
+        control={control}
+        name="firstName"
+        render={({ field, fieldState }) => (
+          <Field label="Vorname" required error={hasAttemptedSubmit ? fieldState.error?.message : undefined}>
+            <Input autoComplete="given-name" placeholder="Max" {...field} />
+          </Field>
+        )}
+      />
+      <FormField
+        control={control}
+        name="lastName"
+        render={({ field, fieldState }) => (
+          <Field label="Nachname" required error={hasAttemptedSubmit ? fieldState.error?.message : undefined}>
+            <Input autoComplete="family-name" placeholder="Mustermann" {...field} />
+          </Field>
+        )}
+      />
+    </div>
+  );
+}
+
+function SignupEmailField({
+  control,
+  isInviteSignup,
+  hasAttemptedSubmit,
+}: {
+  control: Control<SignupValues>;
+  isInviteSignup: boolean;
+  hasAttemptedSubmit: boolean;
+}) {
+  return (
+    <FormField
+      control={control}
+      name="email"
+      render={({ field, fieldState }) => (
+        <Field
+          label="E-Mail"
+          required
+          description={isInviteSignup ? 'Die E-Mail-Adresse ist durch die Einladung vorgegeben.' : undefined}
+          error={hasAttemptedSubmit ? fieldState.error?.message : undefined}
+        >
+          <Input
+            {...field}
+            type="text"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="beispiel@firma.de"
+            readOnly={isInviteSignup}
+            className={isInviteSignup ? 'bg-muted cursor-not-allowed' : ''}
+          />
+        </Field>
+      )}
+    />
+  );
+}
+
+/** Creates the account, stores the session when Auth returns one, and opens the verification step. */
+async function submitSignup({
+  supabase,
+  router,
+  form,
+  values,
+  isInviteSignup,
+  inviteCode,
+  setFormError,
+}: {
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+  router: ReturnType<typeof useRouter>;
+  form: UseFormReturn<SignupValues>;
+  values: SignupValues;
+  isInviteSignup: boolean;
+  inviteCode: string;
+  setFormError: (message: string | null) => void;
+}): Promise<void> {
+  try {
+    // Store invite_code in user metadata if this is an invite-based signup
+    // This allows us to redeem the invite even if the user closes the window
+    // and logs in elsewhere (as long as they signed up via the invite link)
+    const { data, error } = await supabase.auth.signUp({
+      email: values.email,
+      password: values.password,
+      options: {
+        data: {
+          first_name: values.firstName,
+          last_name: values.lastName,
+          // Only store invite_code if this is an invite-based signup
+          ...(isInviteSignup && inviteCode ? { pending_invite_code: inviteCode } : {}),
+        },
+      },
+    });
+
+    if (error) {
+      const normalizedMessage = error.message?.toLowerCase() ?? '';
+      const isPasswordError = normalizedMessage.includes('password');
+
+      if (isPasswordError) {
+        const friendly = translateSupabasePasswordError(error);
+        form.setError('password', { type: 'server', message: friendly });
+        form.resetField('password', {
+          keepDirty: false,
+          keepError: true,
+          defaultValue: '',
+        });
+        setFormError(null);
+      } else {
+        setFormError('Registrierung fehlgeschlagen. Bitte überprüfe deine Angaben.');
+      }
+      return;
+    }
+
+    // The profile row, with the names from the metadata above, comes from
+    // the Auth insert trigger (public.handle_new_user); the browser has no
+    // profile INSERT grant.
+    if (data.session) {
+      await fetch('/auth/callback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event: 'SIGNED_IN',
+          session: data.session,
+        }),
+      });
+      // The action identifies the caller from the server session, so it can
+      // only invalidate the profile once the callback has set the cookies.
+      await invalidateProfileCache();
+    }
+
+    if (await openVerificationStep(router, values.email, inviteCode)) {
+      router.refresh();
+      return untilPageLeaves();
+    }
+    setFormError(VERIFICATION_STEP_FAILED);
+  } catch {
+    // A rejected request (network) must not leave the button spinning.
+    setFormError('Registrierung fehlgeschlagen. Bitte versuche es erneut.');
+  }
+}
+
+interface SignupFormProps {
+  inviteCode?: string;
+  invitedEmail?: string | null;
+}
+
+export function SignupForm({ inviteCode = '', invitedEmail = null }: SignupFormProps) {
+  // Determine if this is an invite-based signup (email should be locked)
+  const isInviteSignup = !!inviteCode && !!invitedEmail;
+  const router = useRouter();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const [formError, setFormError] = useState<string | null>(null);
+  const { run: runSubmit, isPending: isSubmitting } = usePendingTask();
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+
+  const form = useForm<SignupValues>({
+    resolver: zodResolver(signupSchema),
+    mode: 'onChange',
+    reValidateMode: 'onChange',
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      email: invitedEmail ?? '',
+      password: '',
+    },
+  });
+
+  const passwordValue =
+    useWatch({
+      control: form.control,
+      name: 'password',
+    }) ?? '';
+  const passwordRequirements = useMemo(() => getPasswordRequirements(passwordValue), [passwordValue]);
+  const passwordStrength = useMemo(() => getPasswordStrengthLevel(passwordValue), [passwordValue]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHasAttemptedSubmit(true);
+    setFormError(null);
+    form.clearErrors('password');
+
+    const values = form.getValues();
+    const firstInvalidField = flagInvalidSignupFields(
+      form,
+      values,
+      isInviteSignup,
+      invitedEmail,
+      passwordRequirements,
+    );
+
+    if (firstInvalidField) {
+      form.setFocus(firstInvalidField);
+      return;
+    }
+
+    await runSubmit(() =>
+      submitSignup({ supabase, router, form, values, isInviteSignup, inviteCode, setFormError }),
+    );
+  };
+
+  return (
+    <Form {...form}>
+      <form className="grid gap-4" method="post" onSubmit={handleSubmit} noValidate>
+        <SignupNameFields control={form.control} hasAttemptedSubmit={hasAttemptedSubmit} />
+
+        <SignupEmailField
+          control={form.control}
+          isInviteSignup={isInviteSignup}
+          hasAttemptedSubmit={hasAttemptedSubmit}
+        />
+
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field, fieldState }) => (
+            // Client-side rules are already visible in the requirements
+            // checklist; only server rejections (e.g. the leaked-password
+            // check) carry information the checklist cannot show.
+            <Field
+              label="Passwort"
+              required
+              error={fieldState.error?.type === 'server' ? fieldState.error.message : undefined}
+            >
+              <PasswordInput {...field} autoComplete="new-password" />
+              <PasswordStrengthMeter className="mt-2" level={passwordStrength} />
+              <PasswordRequirements className="mt-2" requirements={passwordRequirements} />
+            </Field>
+          )}
+        />
+
+        <ErrorText>{formError}</ErrorText>
+
+        <Button className="w-full" disabled={isSubmitting} type="submit">
+          {isSubmitting ? 'Konto wird erstellt…' : 'Registrieren'}
+        </Button>
+      </form>
+    </Form>
+  );
+}

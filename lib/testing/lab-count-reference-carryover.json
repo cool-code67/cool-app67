@@ -1,0 +1,4 @@
+{
+  "reason": "A carry-over entry re-keys one lab reference to a new measurement digest when the measured code changed without changing what it counts; each entry names its own reason.",
+  "entries": []
+}

@@ -1,0 +1,136 @@
+# Performance
+
+This doc owns how WerkFlow measures speed: journeys, lab counts, payload budgets, layout stability, and the procedure to make a flow faster. [Realtime and caching](realtime-and-caching.md) owns feedback, freshness and latency targets. [Testing](testing.md#deadlines-and-measured-scenarios) owns wall-clock scenarios.
+
+Most cost sits in data loading: which reads a route render runs, how many renders one save causes, how many bytes reach the browser. The lab counts those, because a count repeats exactly between runs and a millisecond does not. A count never decides alone. Freshness comes first, and a person judges what the user sees.
+
+## How to work
+
+### Add a journey
+
+A journey is a step one role repeats many times a day, measured from the user's action to the usable result.
+
+1. Take the step from a feature spec and its catalog flows. Add it to `JOURNEYS` in `lib/testing/journeys.ts` with its role, start action, usable result and catalog flow ids. Wrong turn: a journey that starts when a component mounts. The span starts at the click, the tap or the navigation.
+2. Add a lab step: a row in `LAB_STEPS` in `lib/testing/lab-steps.ts` with its absolute budgets (such as one route render for a save), and one test in the role's spec under `tests/audit/lab/` that calls `recordLabStep` with that id. Locators and setup go to `tests/audit/support/lab-journeys.ts`.
+3. Add a wall-clock scenario only when the usable result has a target kind in `tests/golden/support/browser-observation.ts` and the measured protocol knows the spec. Both are frozen digest inputs, so a new spec file gets lab steps only. Wrong turn: a journey with only a wall-clock scenario. Noise hides a regression of a few requests; a count does not.
+4. Run the group five times on one build (`bun run test:verify --group audit:lab:<name> --fresh`), then `bun scripts/lab-counts.ts calibrate --runs <five run keys> --reason "<basis>"`. It keeps only metrics that stayed within tolerance. Switch the step to `comparison: 'required'`.
+
+### Improve a flow
+
+1. **Measure on the user's span.** Run the journey's lab group and read its table and the run's `lab-diagnosis.ndjson` (route renders, gateway paths).
+2. **Name the cause from the data path.** Look for a read twice in one render, a route render the action response already carried, an effect read through the Server Action queue, a read that blocks first paint but is not needed to act, a list re-rendered for one row (`componentRenders`), and idle work. Wrong turn: removing a request because the count shows it. Ask first what it keeps current.
+3. **Keep the freshness contract.** Every read that keeps shown data current stays. Reorder so what the user needs to act arrives first. Wrong turn: buying a lower count with staler data.
+4. **Write the guard first.** A convention test, a contract or a lab budget fails on the slow version. Confirm it fails on the current tree.
+5. **Change, rebuild, measure again.** State the result as absolute numbers before and after, for count and time. A percentage appears only beside the numbers (`bun scripts/lab-counts.ts report --runs <run keys>`).
+6. **Refuse complexity for a tiny win.** When the gain is a few milliseconds or bytes and the code grows, drop the change and record the decision.
+7. **Lower the reference.** Run `bun scripts/lab-counts.ts ratchet --run <run key>` and commit the file with the change. An unlowered win is room for the next regression.
+8. **Let the owner feel it.** For a user-visible change, name the journey and where to try it on staging under "For the owner to look at" ([Decide or ask](../../AGENTS.md#decide-or-ask)). The entry blocks no merge.
+
+### Read a lab table
+
+Each lab group prints one table per step with reference, value, ceiling, floor and status per metric.
+
+- `regressed` or `budget-exceeded`: more work than the reference or budget allows. Find the cause; never raise the reference.
+- `ratchet-pending`: less work than the floor allows. It fails in every run, CI included, so the change that lowered the count lowers its reference with the command the table names. When CI fails but your own run measures inside the tolerance, `accept` your run's value and name CI's value as the reason.
+- `grew` or `shrank`: bytes above the ceiling or below the floor (a deliberate cut, or missing data). A shape's bytes sum its requests, so a shape with more requests than its reference prints them `ungated`: the step's `requests` count judges that change. With fewer requests, bytes above the ceiling still fail. Open the response, then `bun scripts/lab-counts.ts accept --run <run key> --step <id> --target <shape> --reason "<what changed>"`. A framework upgrade can shrink every payload at once: compare `backendByPath` and rows with the last passing run, open one response, and accept each target naming that comparison.
+- `measurement-missing`: a bounded value was not recorded. It fails like a regression.
+- `shape-added` or `shape-removed`: a new or stopped request. Either is a behavior change that needs its reason.
+
+### Change a lab reference
+
+1. A lower count needs no reason: `ratchet` lowers it.
+2. A higher count, a larger payload or a smaller one needs `accept` with a reason a reviewer can check. The lead decides it, or the PR's own thread outside an epic, and lists it under "For the owner to look at" ([Decide or ask](../../AGENTS.md#decide-or-ask)). The reason names the intended behavior change. A `regressed` count is never accepted to pass.
+3. A changed lab test, recorder module or workload file orphans its references: [move them to the new digest](#move-a-reference-to-a-new-digest).
+4. `gate` and `reject` move a metric in or out of the gate with its evidence. A count that takes two values on one step leaves that step with `ungate`; never widen its tolerance. `calibrate` keeps that ungate; only `gate --step <id>` with new stability evidence from that step reverses it.
+
+### Move a reference to a new digest
+
+A reference counts only under the digests of the code and the workload it measured. The unit suite derives both digests from the tree (`lib/testing/reference-digests.ts`) and fails the PR that moves one. The failure names the references and prints the fix.
+
+A workload digest hashes its files with the workload a run archived. `lib/testing/workload-archive/` keeps the reviewed archives byte for byte, so never reformat them.
+
+- **The seeded workload did not change**, as with a type-only edit to `tests/audit/support/performance-profile.ts`: run `bun scripts/lab-counts.ts rekey-workload --from <old digest> --reason "<why the seeded rows stay the same>"`. It re-keys lab and wall-clock references, keeps every value and needs no local stack. A wrong claim fails the next run that measures it.
+- **The workload changed:** calibrate the lab steps from five runs on one build, then copy a run's `performance-workload.json` or `planning-benchmark-workload.json` into `lib/testing/workload-archive/`. This takes a local stack; without one, hand the change over.
+- **The measured code changed but not what it counts:** put the printed entry, with its reason, into `lib/testing/lab-count-reference-carryover.json` or `lib/testing/performance-reference-carryover.json`. An entry applies once, from the stored digest, so it replaces an earlier entry for the same reference.
+- **The measured code changed what it counts:** recalibrate from five runs.
+- **A wall-clock reference needs recalibrating:** only the machine it names can do that. From another machine, set the scenario's `comparison` to `'calibrating'`, and leave the reference to that machine. The check reads no machine field.
+
+The check sees edits to digest inputs. A change elsewhere that alters what a seed writes, and a new browser version in a reference's context, still surface in the next lab run.
+
+### Check layout stability
+
+`audit:layout` records every layout shift on each audited page and names the region that moved. A page is usable when no skeleton is left and the main thread settled. A shift after that fails, unless an input came within 500 ms before it. A high streaming score points at a `loading.tsx` or Suspense fallback whose box differs from its content: fix the skeleton, not the measurement.
+
+### Database work of a hot read
+
+The lab world holds six weeks of visits and time and no documents, so a read that walks an organization's history costs there what a read that seeks its window costs. `sql:hot-read-volume` (`supabase/tests/hot_read_volume.sql`) runs each hot read in its app call shape on an organization with a year of closed history and on one without, and compares the rows each touched per table.
+
+1. Add a read that a daily journey runs on a table that grows with history to its `reads`, with the tables it bounds by organization.
+2. When it fails, fix the predicate or the index. `history_reads` is a [shrink-only list](testing.md#grow-a-shrink-only-list); werk-flow/werkflow-planning#340 owns its entries' fixes.
+
+Wrong turn: an EXPLAIN check that the read uses an index. The Plantafel week seeks one and still walks every earlier visit. Wrong turn: comparing plans across runs or table sizes. The planner's choice on a small seed flips between runs, with or without ANALYZE, so the test compares the two organizations under one plan: it measures them back to back and locks the measured tables, whose statistics and sizes the planner reads.
+
+## What each instrument proves
+
+- **Wall-clock scenarios** (`audit:performance:*`) are a manual tool for one machine. They hold every sample to its budget and compare the median with a reference recorded on that machine, and run alone. No schedule judges their timing. CI's nightly run, the release gate and the [date look-ahead](recovery-and-incidents.md#monitoring) run them with `--untimed`: each step must complete and confirm every sample, while deadlines, budgets and reference comparisons are only recorded, because a shared runner's load makes wall clock noise. A UI change that breaks a scenario's step thus reaches `CI alert: nightly` the next morning. A pull request never runs them. `bun run test:verify --group audit:performance:<name> --untimed` runs the same check on Boat. Boat cannot judge timing either: its machines share hosts, and on one build and one CPU model whole groups ran 1.6 to 2.3 times slower on some runs, past any useful tolerance. Lab counts catch a slowdown from more work instead. A moved digest fails on its PR. A change to what the reference records about the machine, such as its memory or CPU, shows only at the next `--fresh` run, as "no reviewed baseline"; recalibrate then. Without `--fresh`, a run can reuse an earlier pass. Anything it does not record shows as slower readings and no warning: a laptop on battery runs far slower and breaks budgets, so measure on mains power.
+- **Lab counts** (`audit:lab:*`) prove a step does the same work as its reference. A count does not show when a page became usable, and it counts background reads that cost the user nothing. Read it with the wall-clock time. Every change plan that touches product code runs them ([selection](testing.md#how-selection-works)), so a regression fails its own PR.
+- **Payload budgets**: the ceiling catches growth, the floor lost data.
+- **Hot read volume** (`sql:hot-read-volume`) proves a read touches no more rows when its organization gains history. A read that drops its organization filter is a tenant leak, which the SQL security and list-page groups prove. It sees index entries returned, not walked past, so it also requires a whole (not partial) index that leads with `organization_id` on each table a read bounds.
+- **Frames at rest** (`tests/audit/support/frames-at-rest.ts`, one test in each lab group) prove that a settled page stops drawing: the field worker's pages while the clock runs, and the office's and the owner's. The test counts the frames the browser produced in three seconds, so it sees what no lab count shows: an animation without end, a transition a timer restarts, a `requestAnimationFrame` loop. A running clock stays far under the limit, and an endless animation exceeds it tenfold, so the limit is absolute and has no reference. Its control starts an endless animation and fails when the count misses it.
+
+A metric earns its gate by two jobs: it repeats across five runs within tolerance, and moving it in a recorded experiment moved the time the user waits.
+
+## Rules for references
+
+- A count reference moves down without review. Only `ratchet` and `calibrate` write it. Never edit `lib/testing/lab-count-references.json` by hand: every reference replays from its history, and a hand edit fails.
+- A count of ten or more keeps a tolerance of one or 2 %, whichever is larger.
+- A payload is judged by decoded bytes and rows. Per-shape request counts, the encoded size of a streamed text response and prefetch shapes print only, because they follow timing.
+- A lab step fails when it released a live read that a dialog held since before the step (`<html data-live-read-held>`). Settle the page before you open the dialog: `settleLiveShell` waits until no live read is queued or running.
+- A request shape is named by its route pattern or background-read kind, never by ids or query values.
+
+## Prefetch
+
+A prefetch loads a route's static shell, loading state and code before the click. It never carries data.
+
+- A link inside a page keeps the framework's prefetch in view. Turning it off made navigations slower in the lab.
+- A table row that navigates on click warms its destination through `rowIntentPrefetch` (`lib/ui/row-intent.ts`) on the first pointer movement inside the row and on focus. A pointer enter alone is no intent: rows that move under a resting pointer after a save would prefetch inside the save. Any `pointermove` counts, because the first move after a navigation reports zero movement.
+- Sidebar links prefetch on intent only, because a prefetch in view re-reads every sidebar route after each invalidation.
+- A prefetch with data is refused: the detail would show data from the moment of the hover without an unconfirmed marker.
+- A calendar entry opens its overview from the window the board already holds.
+
+## Accepted limits
+
+- A cold start renders its route twice: the document and the join catch-up's refresh, which covers writes made before the database listener was ready.
+- The clock button shows „—“ until it hydrates; a guess would flash a false state.
+- The live pulse (`animate-live`, `animate-ping`) stays where a block, a person or a job runs right now. The browser draws every frame while one shows, on the compositor alone. No page of the frames-at-rest test shows one.
+- There is no real-user telemetry. It needs the owner's consent for the analytics it implies.
+
+## Taste defaults
+
+Tier 3 defaults. Diverge after the owner tried the alternative.
+
+- Reveal finished units: a whole row, list or card.
+- A route shows its `loading.tsx` skeleton in the first frame. A delayed skeleton needs a measured load distribution that shows most loads finish before the delay.
+- A skeleton has the box of its content.
+- An idle animation uses only `transform` and `opacity` and stops under `prefers-reduced-motion`.
+- Main-thread work over 50 ms leaves the interaction path: split it, defer it, or move it to a worker.
+- A list row, board row or day cell re-renders only when something it shows changed: its memo compares every prop (`lib/ui/memo-equality.ts`).
+
+## Never
+
+- Lower a count by removing, delaying or throttling a read that keeps shown data current.
+- Raise a reference, a ceiling, a budget or a tolerance to make a run pass.
+- Leave an animation running on a page at rest, or put a transition on a value a timer changes. The clock redraws once a second; a 500 ms transition on its ring repainted half of every second.
+- Gate on a metric that failed the stability or relevance job.
+- Add a client cache of server data that outlives a navigation without an unconfirmed marker and a read on every load.
+- Enable viewport prefetch for a sidebar link, or prefetch a route's dynamic data on intent.
+- Report a speedup as a percentage alone.
+- Re-export a library's whole namespace from a module the client imports. A namespace object keeps everything the library exports; name the members, as `lib/zod-members.ts` does.
+- Import `react-dom/client` in product code. Next's bootstrap owns it, and a second importer, even a lazy one, makes the bundler cut React's DOM renderer out of the start-up chunk: one more script on every cold start. Render into a host a layout mounts (`components/shared/unsent-work-host.tsx`).
+- Render a client component inside a server primitive every page uses (`PageShell`, `PageBody`, the page headers). Its client reference and the route's chunk list ride in every route payload. Run page-wide client behavior once in the app shell.
+
+## Verify your work
+
+1. With `bun run test:server local` running, run `bun run test:verify`: its plan takes both lab groups for any product change. Run a wall-clock group the plan names with `--group audit:performance:<name>` on a quiet machine.
+2. A change plan runs `audit:layout:<area>` for each area whose pages or dialogs render a changed file. For a list page or a shared control that more areas render, run `bun run test:verify --group audit:layout` and `--group audit:layout:<area>` for each area it reaches.
+3. Commit the lowered or accepted references with the change. Record the journey decision, the numbers and the person's verdict in the slice record.

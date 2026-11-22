@@ -1,0 +1,306 @@
+import { randomUUID } from 'node:crypto';
+import { createAdminClient, persisted, type Persisted } from './shared';
+
+export interface SeedCustomerContact {
+  name: string;
+  role?: string;
+  phone?: string;
+  email?: string;
+  isPrimary?: boolean;
+}
+
+export interface SeedCustomerSite {
+  name: string;
+  street?: string;
+  postalCode?: string;
+  city?: string;
+  accessNotes?: string;
+  notes?: string;
+  primaryContactName?: string;
+  isPrimary?: boolean;
+}
+
+export interface SeededCustomer {
+  clientId: string;
+  /** Contact ids by contact name. */
+  contactIds: ReadonlyMap<string, string>;
+  /** Site ids by site name. */
+  siteIds: ReadonlyMap<string, string>;
+}
+
+/**
+ * Inserts a customer with its contacts and work sites as the given actor. A
+ * test that claims a later customer flow prepares its customer here instead of
+ * walking the creation dialogs another test already proves.
+ */
+export async function seedCustomer(input: {
+  orgId: string;
+  actorId: string;
+  name: string;
+  clientType?: 'privat' | 'gewerblich';
+  address?: string;
+  contacts?: readonly SeedCustomerContact[];
+  sites?: readonly SeedCustomerSite[];
+}): Promise<SeededCustomer> {
+  const admin = createAdminClient();
+  const clientId = randomUUID();
+  await admin
+    .from('clients')
+    .insert({
+      id: clientId,
+      organization_id: input.orgId,
+      name: input.name,
+      client_type: input.clientType ?? 'privat',
+      address: input.address ?? null,
+    })
+    .throwOnError();
+  const contactIds = new Map<string, string>();
+  for (const contact of input.contacts ?? []) {
+    const contactId = randomUUID();
+    await admin
+      .from('client_contacts')
+      .insert({
+        id: contactId,
+        organization_id: input.orgId,
+        client_id: clientId,
+        created_by: input.actorId,
+        name: contact.name,
+        role: contact.role ?? null,
+        phone: contact.phone ?? null,
+        email: contact.email ?? null,
+        is_primary: contact.isPrimary ?? false,
+      })
+      .throwOnError();
+    contactIds.set(contact.name, contactId);
+  }
+  const siteIds = new Map<string, string>();
+  for (const site of input.sites ?? []) {
+    const siteId = randomUUID();
+    const primaryContactId = site.primaryContactName ? contactIds.get(site.primaryContactName) : undefined;
+    if (site.primaryContactName && !primaryContactId) {
+      throw new Error(`seedCustomer: site ${site.name} names unknown contact ${site.primaryContactName}`);
+    }
+    await admin
+      .from('client_sites')
+      .insert({
+        id: siteId,
+        organization_id: input.orgId,
+        client_id: clientId,
+        created_by: input.actorId,
+        name: site.name,
+        street: site.street ?? null,
+        postal_code: site.postalCode ?? null,
+        city: site.city ?? null,
+        access_notes: site.accessNotes ?? null,
+        notes: site.notes ?? null,
+        primary_contact_id: primaryContactId ?? null,
+        is_primary: site.isPrimary ?? false,
+      })
+      .throwOnError();
+    siteIds.set(site.name, siteId);
+  }
+  return { clientId, contactIds, siteIds };
+}
+
+/**
+ * Adds a contact to an existing customer and records a do-not-contact
+ * instruction for that customer, so contacting the person raises the contact
+ * warning before anything is written. Returns the contact id.
+ */
+export async function seedDoNotContactPolicy(input: {
+  orgId: string;
+  actorId: string;
+  clientId: string;
+  contact: SeedCustomerContact;
+  instruction: string;
+}): Promise<string> {
+  const admin = createAdminClient();
+  const contactId = randomUUID();
+  await admin
+    .from('client_contacts')
+    .insert({
+      id: contactId,
+      organization_id: input.orgId,
+      client_id: input.clientId,
+      created_by: input.actorId,
+      name: input.contact.name,
+      role: input.contact.role ?? null,
+      phone: input.contact.phone ?? null,
+      email: input.contact.email ?? null,
+      is_primary: input.contact.isPrimary ?? false,
+    })
+    .throwOnError();
+  await admin
+    .from('client_communication_settings')
+    .insert({
+      organization_id: input.orgId,
+      client_id: input.clientId,
+      created_by: input.actorId,
+      updated_by: input.actorId,
+      do_not_contact_instruction: input.instruction,
+    })
+    .throwOnError();
+  return contactId;
+}
+
+// P1-10: authoritative relationship records and their append-only histories.
+// The browser proves visible behavior; these observations prove actor/history
+// facts. supabase/tests/customer_relationships.sql owns the manager-only RLS boundary.
+export async function getCustomerRelationshipState(
+  orgId: string,
+  customerName: string,
+): Promise<{
+  clientId: string;
+  followUps: Array<{
+    id: string;
+    title: string;
+    status: string;
+    ownerUserId: string;
+    completedBy: string | null;
+    cancelledBy: string | null;
+    sourceType: string | null;
+    sourceId: string | null;
+  }>;
+  followUpEventTypes: string[];
+  preferenceEventTypes: string[];
+  communicationSettings: {
+    preferredContactId: string | null;
+    preferredChannel: string | null;
+    doNotContactInstruction: string | null;
+    contactTimeNote: string | null;
+    languageNote: string | null;
+    accessibilityNote: string | null;
+  } | null;
+  communicationPreferences: Array<{
+    contactId: string | null;
+    channel: string;
+    purpose: string;
+    state: string;
+  }>;
+}> {
+  const admin = createAdminClient();
+  const { data: client, error: clientError } = await admin
+    .from('clients')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('name', customerName)
+    .single();
+  if (clientError || !client) {
+    throw new Error(`Customer ${customerName} not found: ${clientError?.message}`);
+  }
+  const [followUps, followUpEvents, preferenceEvents, settings, preferences] = await Promise.all([
+    admin
+      .from('client_follow_ups')
+      .select('id,title,status,owner_user_id,completed_by,cancelled_by,source_type,source_id')
+      .eq('organization_id', orgId)
+      .eq('client_id', client.id)
+      .order('created_at', { ascending: true }),
+    admin
+      .from('client_follow_up_events')
+      .select('event_type')
+      .eq('organization_id', orgId)
+      .eq('client_id', client.id)
+      .order('created_at', { ascending: true }),
+    admin
+      .from('client_communication_preference_events')
+      .select('event_type')
+      .eq('organization_id', orgId)
+      .eq('client_id', client.id)
+      .order('created_at', { ascending: true }),
+    admin
+      .from('client_communication_settings')
+      .select(
+        'preferred_contact_id,preferred_channel,do_not_contact_instruction,contact_time_note,language_note,accessibility_note',
+      )
+      .eq('organization_id', orgId)
+      .eq('client_id', client.id)
+      .maybeSingle(),
+    admin
+      .from('client_communication_preferences')
+      .select('contact_id,channel,purpose,state,created_at')
+      .eq('organization_id', orgId)
+      .eq('client_id', client.id)
+      .order('created_at', { ascending: true }),
+  ]);
+  const firstError =
+    followUps.error ?? followUpEvents.error ?? preferenceEvents.error ?? settings.error ?? preferences.error;
+  if (firstError) {
+    throw new Error(`Customer relationship observation failed: ${firstError.message}`);
+  }
+  return {
+    clientId: client.id,
+    followUps: (followUps.data ?? []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      ownerUserId: row.owner_user_id,
+      completedBy: row.completed_by ?? null,
+      cancelledBy: row.cancelled_by ?? null,
+      sourceType: row.source_type ?? null,
+      sourceId: row.source_id ?? null,
+    })),
+    followUpEventTypes: (followUpEvents.data ?? []).map((row) => row.event_type),
+    preferenceEventTypes: (preferenceEvents.data ?? []).map((row) => row.event_type),
+    communicationSettings: settings.data
+      ? {
+          preferredContactId: settings.data.preferred_contact_id ?? null,
+          preferredChannel: settings.data.preferred_channel ?? null,
+          doNotContactInstruction: settings.data.do_not_contact_instruction ?? null,
+          contactTimeNote: settings.data.contact_time_note ?? null,
+          languageNote: settings.data.language_note ?? null,
+          accessibilityNote: settings.data.accessibility_note ?? null,
+        }
+      : null,
+    communicationPreferences: (preferences.data ?? []).map((row) => ({
+      contactId: row.contact_id ?? null,
+      channel: row.channel,
+      purpose: row.purpose,
+      state: row.state,
+    })),
+  };
+}
+
+export type PersistedCustomer = Persisted<{ clientId: string; name: string }>;
+
+/**
+ * The customer an Objekt is filed under, or with `role` the holder of its
+ * open role of that kind, read back by the Objekt number, which is unique in
+ * the organization.
+ */
+export async function getObjektCustomer(
+  orgId: string,
+  sourceNumber: string,
+  role?: 'eigentuemer' | 'hausverwaltung' | 'rechnungsempfaenger',
+): Promise<PersistedCustomer> {
+  const admin = createAdminClient();
+  const site = await admin
+    .from('client_sites')
+    .select('id, client_id')
+    .eq('organization_id', orgId)
+    .eq('source_number', sourceNumber)
+    .single();
+  if (site.error) throw new Error(`Objekt ${sourceNumber} lookup failed: ${site.error.message}`);
+  let clientId = site.data.client_id;
+  if (role) {
+    const holder = await admin
+      .from('client_site_roles')
+      .select('holder_client_id')
+      .eq('organization_id', orgId)
+      .eq('site_id', site.data.id)
+      .eq('role', role)
+      .is('ends_on', null)
+      .single();
+    if (holder.error)
+      throw new Error(`Objekt ${sourceNumber} ${role} lookup failed: ${holder.error.message}`);
+    clientId = holder.data.holder_client_id;
+  }
+  const client = await admin
+    .from('clients')
+    .select('id, name')
+    .eq('organization_id', orgId)
+    .eq('id', clientId)
+    .single();
+  if (client.error)
+    throw new Error(`Customer of Objekt ${sourceNumber} lookup failed: ${client.error.message}`);
+  return persisted({ clientId: client.data.id, name: client.data.name });
+}

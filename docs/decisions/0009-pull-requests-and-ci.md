@@ -1,0 +1,266 @@
+# 0009 — Pull requests, CI as the gate, staging on main
+
+- **Status:** accepted (2026-10-26) — supersedes [decision 0008](0008-development-workflow.md) and the publication gate of [decision 0007](0007-independent-test-groups.md)
+- **Date:** 2026-10-26
+- **Owner:** Product owner (Tamay), decided on 2026-10-25 after the research into how T3 Code runs its CI and pull-request flow
+- **Affects:** every change, publish and release; `AGENTS.md` holds the always-on rules, [testing.md](../technical/testing.md) the CI gate, [environments.md](../technical/environments.md) the migration rule, release and rollback
+
+## Reason for the change
+
+Decision 0008 fit one developer on one checkout: local `main`, local gates, a push to publish. Coding agents now work in parallel, each in its own T3 Code worktree, and one checkout with one local `main` serializes them. The local publication gate grew to carry that load: an evidence ledger with a hash chain, review records and their coverage, deletion-pass and advisory-age conditions in the pre-push hook. It ran on the machine whose agents it judged, cost a full local verification and a CodeRabbit CLI review for every push, and still let the first push from Linux through when the hook lost its executable bit. Decision 0008 named the trigger: "a production incident caused by a push that skipped the gates: reconsider GitHub Actions as the enforcing robot." The repository is public, so GitHub Actions on GitHub-hosted runners and the CodeRabbit app cost nothing.
+
+## Decision
+
+| Branch | Role | Database | How it moves |
+| --- | --- | --- | --- |
+| a task branch | one task in its own worktree, one small pull request | the local stack (tests), DEV through `bun run env:dev` | the agent pushes it and opens the PR |
+| `main` | the staging trunk | DEV | squash merge of a PR with a green `Check`; the owner merges |
+| `production` | production | PROD | only the owner's `release` workflow fast-forwards it to a green `main` commit |
+
+1. Every task is a worktree, a branch and a small pull request that solves one problem. Nobody commits to `main` directly. Merges are squash merges, so `main` stays linear.
+2. CI on GitHub Actions is the gate. One aggregate job, `Check`, is the required status check. It runs every static gate, the unit suite, the component contracts, every SQL group against the Supabase CLI stack on the runner, and the browser groups the runner's own selection picks for the diff against the PR base. It fails open: an unreadable diff or a changed tooling input runs every browser group. A push to `main` and a nightly run take every browser group. `scripts/verify.ts` stays the engine, locally and in CI.
+3. Wall-clock performance groups do not run on shared runners, whose load makes medians noise; they stay local release checks ([performance.md](../technical/performance.md)).
+4. Reviews move to the CodeRabbit app on pull requests. The agent babysits its PR: it verifies every bot finding against the source, fixes the real ones, dismisses the false ones with a written reason, and stops when `Check` and the bots are green on the latest commit. `bun run review` stays as an optional local pre-check.
+5. The local publication gate retires: the pre-push gate logic, the evidence ledger, the review records and their coverage, the advisory-age condition. Their guarantees move into CI as Tier 2, enforced by the required check. The deletion pass moves into the PR template and stays a Tier 3 review point.
+6. Migrations: at most one per PR, with its regenerated types. CI applies every migration to its throwaway stack. DEV receives migrations only when a PR merges to `main`, from a workflow with DEV credentials, before staging deploys. PROD receives them only through the `release` workflow, before production deploys. Migrations are expand-only within a release; a drop or rename is a later release's contract step, so a Vercel Instant Rollback of the code is always safe.
+7. A release happens only through the `release` workflow, which the owner starts, or an agent starts when the owner asks for a release in its thread.
+8. The owner merges pull requests at first.
+
+## Where the local gate's guarantees went
+
+| Pre-push condition | Now |
+| --- | --- |
+| A passing automatic plan on the pushed tree | Tier 2: `Check` on the PR, required by the ruleset on `main` and kept up to date with `main` before merge |
+| A CodeRabbit review covering every pushed file | Tier 3: the CodeRabbit app reviews every PR; the babysit rule requires every finding answered before hand-back |
+| A `Deletion pass:` line in every commit | Tier 3: the PR template's Deletion pass section, judged in review |
+| A dependency advisory pass under 24 hours old | Tier 2: `static:dependencies` in every CI run |
+| No shrink-only list grew | Tier 2: `lib/testing/publication/shrink-only-lists.test.ts` in CI's unit job, against the merge base with the trunk |
+| A push to `main` needed the release plan and the canary | Tier 2: the `release` workflow requires a green `Check` on the `main` commit, which ran every browser group; the canary and the wall-clock groups stay Tier 3 release checks |
+| A wall-clock group passed on pushed product files it measures | Tier 3: a local release check on a quiet machine |
+| The evidence ledger, its hash chain and review records | Not needed: CI's evidence lives on GitHub, outside the machine whose agents it judges |
+| The refusal of `--no-verify` and `core.hooksPath` overrides | Tier 1: the rulesets refuse a direct push to `main` or `production` on the server |
+
+The edit guard stays where it protects a running local verification: it refuses an agent edit to a proof input while a test operation holds the workspace lock, and a stack reset while any worktree holds the stack.
+
+## What was considered and rejected
+
+- Keeping the local gate beside CI: two gates that disagree are worse than one, and the local gate's trust model (evidence on the machine whose agents it judges) does not improve with age.
+- Blacksmith or Depot runners: faster, but GitHub-hosted runners are free for a public repository and fast enough while shards keep a typical PR well under 20 minutes. Revisit when CI time blocks merges.
+- A merge queue: one owner merges; "branch up to date before merge" gives the same guarantee at this volume.
+- Running wall-clock performance groups in CI: shared runners make their medians follow the neighbor's load.
+
+## Configuration this decision needs
+
+- GitHub (the repository owner account `werk-flow` sets it): a ruleset on `main` with pull requests, the required check `Check`, up-to-date branches, linear history, no force pushes and squash merges only; a ruleset on `production` that only the `release` workflow's deploy key bypasses; automatic deletion of merged branches; the Actions secrets the workflows name.
+- Vercel: the production branch is `production`; Git deployments of `main` are off in `vercel.json`, so staging deploys from the workflow after DEV's migrations; pull-request previews stay automatic.
+
+## Revisit triggers
+
+- A second person merges: reconsider review requirements on the ruleset.
+- CI time for a typical PR passes 20 minutes: more shards, or faster runners.
+- The repository turns private: GitHub Actions minutes and the CodeRabbit plan cost money.
+
+## Related Docs
+
+- [testing.md](../technical/testing.md) — the CI gate and the local commands.
+- [environments.md](../technical/environments.md) — the migration rule, release and rollback.
+- [coderabbit.md](../technical/coderabbit.md) — reviews on pull requests.
+
+## Amendment 2026-10-26: the owner can approve list growth
+
+The table's ratchet row had no path for a list growth the owner approved, and the ruleset on `main` has no bypass. The owner adds the label `approved: list growth` to such a PR. CI's unit job then waives the growth, and the PR diff shows it. The owner owns the label: agents use the owner's GitHub account, so the label rule binds them only through review (Tier 3). [testing.md](../technical/testing.md#grow-a-shrink-only-list) holds the procedure.
+
+## Amendment 2026-10-26: one CodeRabbit review per code pull request
+
+The owner narrowed rule 4. A pull request that changes product code, tests, migrations or security-relevant code gets one CodeRabbit app review, requested once at the end when `Check` is green, not after every fix. A pull request that changes only docs, agent instructions or CI workflow files merges on a green `Check` with the agent's own review. Requests after every fix spent the app's rate limit, and an early request restarts its window. [coderabbit.md](../technical/coderabbit.md#babysit-a-pull-request) owns the procedure, the rate-limit rule and the order when several pull requests wait.
+
+## Amendment 2026-10-26: merges without an up-to-date branch
+
+The owner turned off "require branches to be up to date before merging" on the `main` ruleset. A green `Check` on the PR's latest commit is enough to merge; the branch need not contain the newest `main`. This supersedes three statements above: the "kept up to date with `main` before merge" part of the plan row in "Where the local gate's guarantees went", the reason given for rejecting a merge queue, and "up-to-date branches" in the GitHub ruleset settings. Two checks catch a merge that breaks `main`: `Check` runs again on every push to `main` (`.github/workflows/ci.yml`), and the `release` workflow refuses a `main` commit without a successful `Check` (`.github/workflows/release.yml`). A merge queue stays rejected while one owner merges.
+
+## Amendment 2026-10-26: review levels, sol-loop, and merges under "full send"
+
+The owner replaced the code-or-docs split of the CodeRabbit amendment above with three review levels, and narrowed rule 8. CodeRabbit reviews were the slowest wait in the owner's day, and every ready PR waited for the owner's merge even when nothing in it needed the owner's eyes.
+
+1. The agent chooses a PR's level from its diff and states it in the description; the owner may raise it, and the agent never goes below the rule. Level 0 is a change with no behavior effect (docs, comments, copy typos, agent instructions, formatting) and needs the agent's own read. Level 1, the default for every behavior change, needs a `sol-loop` review: GPT Sol, started through T3 Code's `delegate_task`, reviews the change in rounds before the PR opens. Level 2 (security, authentication, permissions and RLS, migrations, personal data, data deletion, the Zeitkonto, time and payroll logic) needs `sol-loop` and then one CodeRabbit app review, requested once after Sol approved and `Check` is green, never while the app reports a rate limit. Level 0 and 1 never request or wait for CodeRabbit.
+2. Rule 8 now reads: the owner merges, unless the owner said "full send" in the task's thread. Then the agent merges with a squash merge once the merge gate passes, and never with an admin bypass. Without it, an agent stops when the PR is ready ("full stop" behavior). No skill releases, runs the `release` workflow or writes to PROD.
+3. Each `sol-loop` records the usage T3 Code reports, or "not exposed", in the PR description, so the owner can judge whether the ChatGPT Plus plan suffices. On a Sol rate limit the agent asks the owner and substitutes no other model.
+
+The skills `sol-loop`, `full-send`, `full-stop`, `file-pr` and `leaving-pr-comments`, adapted from t3dotgg/tstack under its MIT license, carry the procedures. [coderabbit.md](../technical/coderabbit.md#choose-the-review-level) owns the levels, the babysit procedure and the merge gate. The levels are Tier 3 until the check that the [enforcement-ladder backlog](../technical/enforcement-ladder-backlog.md#testing-and-review) describes lands.
+
+## Amendment 2026-10-29: who merges and who releases
+
+The owner aligned the rules with current practice.
+
+1. Rule 8 now reads: the coordinator thread merges a PR that meets the merge gate, or the PR's own thread does when the owner said "full send" there. The owner may merge any PR. A "full stop" PR waits until the owner has read it. Nobody merges with an admin bypass.
+2. Rule 7 now reads: a release runs when the owner or the coordinator thread asks for it ("release main"). The releasing thread checks production afterwards and rolls the app back through Vercel if it breaks. The database is never rolled back.
+
+## Amendment 2026-10-29: main runs the diff selection, a full run gates the release
+
+Every push to `main` ran every browser group in 14 shards, the free plan's whole job budget, so each merge queued behind the last one. The owner decided on 2026-10-29:
+
+1. A push to `main` plans its browser groups by diff against the previous `main` commit, like a PR. A push whose previous commit git cannot read runs every browser group. This supersedes "A push to `main` and a nightly run take every browser group" in rule 2.
+2. A full run is `ci.yml` called with `full` from a job named `Full run`: nightly on `main`, by hand, and in the release.
+3. The `release` workflow ships a commit only when the newest `Full run / Check` of a nightly or release run on `main` at exactly that commit is green. It reuses a nightly or manual one; without one it runs the full suite first and ships only on green. This replaces "a green `Check` on the `main` commit" in the table row on the release plan and in the amendment on merges without an up-to-date branch. A merge that breaks a group its diff did not select now surfaces in the nightly run or at the release, not on the push.
+
+## Amendment 2026-10-29: threads merge their own PRs, and a queue requests CodeRabbit reviews
+
+The owner removed the need for one coordinator thread to stay alive. A watcher in the coordinator's thread requested CodeRabbit reviews in a fixed order and woke the coordinator to merge, so reviews and merges stopped whenever that thread stopped.
+
+1. Rule 8 now reads: a PR's own thread squash-merges it once the merge gate passes. A "full stop" PR, or one that changes `AGENTS.md`, waits until the owner has read and merged it. The owner may merge any PR. Nobody merges with an admin bypass.
+2. Rule 4 now reads: a level 2 PR whose `Check` is green and whose `sol-loop` approved gets the label `needs-coderabbit`. Its thread never requests the review itself. A scheduled queue outside any thread requests one review at a time, oldest label first, while the app's rate-limit window allows, and messages the PR's thread. [coderabbit.md](../technical/coderabbit.md#the-coderabbit-queue) owns the procedure.
+
+## Amendment 2026-10-29: a weekday release rhythm
+
+The owner decided on 2026-10-29 that releases follow a fixed weekday rhythm instead of waiting for a request:
+
+1. Rule 7 now reads: the `release` workflow runs every weekday at 07:00 Berlin and releases only when `main` moved since `production` and is green: its newest full run passed, or it has none yet and the release's own full run passes. Otherwise it changes nothing. A red full run is repaired on `main`, never rerun by the schedule. The owner or the coordinator thread may still start a release by hand ("release main"). More release times a weekday are one schedule line each.
+
+## Amendment 2026-10-30: the rhythm's conditions bind scheduled runs
+
+The conditions of the amendment above bind the scheduled run only. A release started by hand goes on as before: it ships `main`'s head after a green full run, its own when the newest is not green, also when `main` has not moved since `production`.
+
+## Amendment 2026-10-30: no Vercel deployments of pull-request branches
+
+On 2026-10-30 the Vercel account reached the Hobby plan's 100 deployments a day, almost all of them previews of pull-request branches, and the limit blocked the owner's other projects. The owner decided:
+
+1. Vercel deploys from Git only the `production` branch (`git.deploymentEnabled` in `vercel.json`). Pull-request branches never deploy, also after a Vercel Pro upgrade; this supersedes "pull-request previews stay automatic" in "Configuration this decision needs". `main` deploys only through `.github/workflows/staging.yml`, after DEV's migrations, as before.
+2. The owner tries a user-visible change on staging after its merge, not on a preview of its branch.
+
+## Amendment 2026-11-05: agents release on their own
+
+The owner decided on 2026-11-05 that no step waits for approval just because it moves code. Rule 7 now reads: besides the weekday run, an agent may start the `release` workflow when `main` is green, the change is not risky and it should not wait, such as for a bug fix. The workflow's gates, the check of production and the rollback stay as they are. Code still reaches `main` and `production` only through a pull request and the `release` workflow.
+
+## Amendment 2026-11-06: a scheduled release holds for its time
+
+The owner expects the weekday release at 07:00 Berlin, the time decided on 2026-10-30, and GitHub starts this repository's scheduled runs up to 10 hours late. The cron line of `release.yml` now fires the evening before, and the run waits in its `Hold` job until 07:00. This changes "More release times a weekday are one schedule line each": a further time also needs its own hold.
+
+## Amendment 2026-11-06: a tiny change rides along
+
+A change of a few lines with no behavior effect goes into a PR that has to run anyway. It gets its own PR only when none is open.
+
+## Amendment 2026-11-06: secret scanning alerts, and does not block
+
+GitHub secret scanning runs on this repository in alert mode. Push protection stays off, because test data could stop an agent mid-push.
+
+## Amendment 2026-11-07: live by 05:00
+
+The owner decided on 2026-11-07 that a new version is live on PROD by 05:00 Berlin every weekday, because field workers clock in early. This replaces the 07:00 of the amendments of 2026-10-29 and 2026-11-06. The cron lines of `release.yml` and `nightly.yml` fire at 17:00 Berlin the evening before, and the release holds until 03:30, so a run that GitHub starts 10 hours late still ends its own full run before 05:00, even behind a nightly full run on the same commit. Every gate stays: a scheduled run ships only a commit with a green full run, and it decides as before.
+
+## Amendment 2026-11-10: full runs prove the wall-clock steps, untimed
+
+Rule 3 kept the wall-clock groups off shared runners, so nothing ran their steps between releases. A test helper change broke `audit:performance:calendar-live` on `main` for days (werk-flow/werkflow-app#338). The CI lead decided on werk-flow/werkflow-planning#29: the nightly run and the release gate run every `audit:performance:*` group with `--untimed`. A missing step or an unconfirmed sample fails the run. No deadline, budget or reference comparison fails it, so rule 3's reason stands: a shared runner judges no median. A pull request never runs these groups. The release gate reuses the nightly's `Full run / Check`, so a broken wall-clock step also stops the release, as a broken daily journey should. [testing.md](../technical/testing.md#ci) owns the rule.
+
+## Amendment 2026-11-13: the repositories belong to an organization
+
+On 2026-11-13 the repositories moved from the personal account `werk-flow` into the organization `werk-flow` (owner decisions 16 and 23 in werk-flow/werkflow-planning). An owner of that organization now sets the rulesets of the GitHub line above, not the personal account, which lives on as `werk-flow-temp` without access. The rulesets themselves are unchanged.
+
+## Amendment 2026-11-13: browser groups run last, once a draft is marked ready
+
+PR runs of `ci.yml` took a median 31 minutes, and more than half of them were cancelled by a newer push during review: the browser shards are the long pole, every other job ends in about 5 minutes. The owner decided on 2026-11-13 that browser tests run last (werk-flow/werkflow-planning#423).
+
+1. A thread opens its PR as a draft. A push to a draft runs every job of `ci.yml` except the browser shards and the midnight wait.
+2. When the level's reviews are done and every finding has a disposition, the thread marks the PR ready (`gh pr ready`). The `ready_for_review` event runs the diff-selected browser groups once, with every other job, on the same commit.
+3. A push to a PR that is not a draft runs everything, as before. Marking a PR a draft again starts no run.
+4. The merge gate is unchanged. On a draft, `Check` fails while the plan holds browser groups, so it never reads as green with them skipped. A draft whose diff selects no browser group has nothing held, and its `Check` passes.
+
+## Amendment 2026-11-13: CodeRabbit reviews the draft while Sol's first round runs
+
+Sol reviewed before the PR opened and CodeRabbit only after, so CodeRabbit's fixes reran CI and Sol never saw them (on 2026-11-12 and 13, 127 pushes and 16,466 job-minutes came after a PR's first CodeRabbit review). During the CodeRabbit trial, a thread opens its draft before Sol's first round and labels it `needs-coderabbit` at once, so CodeRabbit reviews the draft while that round runs. The thread answers both reviewers' findings in one push. The queue asks CodeRabbit again only when the thread labels the PR again after a complete fix round, and the thread marks the PR ready once the reviews are done.
+
+## Amendment 2026-11-13: sol-loop has a hard budget of 3 rounds
+
+Sol rounds had no effective limit: from 2026-11-10 to 13, 77 PRs took 237 rounds, one took 16, and 19 went over their budget, mostly through extra rounds a lead granted. 36 of 38 Sol-approved PRs still got CodeRabbit findings afterwards. The owner decided on 2026-11-13 (werk-flow/werkflow-planning#431):
+
+1. Every PR gets at most 3 Sol rounds, at every level and in the CodeRabbit trial. This replaces level 2's 5 rounds and the trial's 1 round for level 1. No lead grants an extra round.
+2. Round 1 runs while CodeRabbit reviews the draft, one push answers both, round 2 confirms it, and round 3 runs only for a blocker or should that round 2 left open. A push that leaves the PR's own diff unchanged, such as a merge of `main`, gets no round.
+3. A finding still disputed after the last round goes to the owner through the question tool, with each side and a recommendation.
+4. The PR description no longer records Sol's usage. This supersedes item 3 of the amendment on review levels; the rule on a Sol rate limit stays.
+
+The `sol-loop` skill owns the procedure.
+
+## Amendment 2026-11-13: a merge queue
+
+Threads now merge in parallel. In the 24 hours before 2026-11-13 14:05 UTC, 40 PRs merged, 65 PR runs followed a merge of `main` into the branch, and `ci.yml` spent 771 job-minutes per merged PR. The owner decided on 2026-11-13 (werk-flow/werkflow-planning#426) that a GitHub merge queue lands every PR. This supersedes the merge-queue rejection under "What was considered and rejected" and "A merge queue stays rejected while one owner merges" in the amendment on merges without an up-to-date branch.
+
+1. The ruleset on `main` requires the merge queue, with squash merges. A thread runs `gh pr merge <n> --squash --auto` once the merge gate holds. The queue runs `ci.yml` on the PR on top of `main` and of the PRs ahead of it, and lands it when that run's `Check` passes. It replaces "merge `origin/main` and wait for green again" for a PR that does not conflict; a conflicting PR still merges `origin/main` first. [coderabbit.md](../technical/coderabbit.md#the-merge-gate) owns the procedure.
+2. The queue's run plans its browser groups by the diff against the queue's base. It is never a draft. Its Unit job takes the `approved: list growth` label of any PR in its group, because each PR's own `Check` already held its growth to its own label.
+3. A push to `main` whose tree equals the tree of a green queue run of `ci.yml` runs no browser group, because that run ran them on this tree. The trees match while the commits differ. When the lookup fails, the push plans by its diff as before. The nightly and release full runs are unchanged.
+4. The queue's sizes:
+   - Build concurrency 2. A queue run with browser shards takes about 30 minutes, and 40 merges a day reach about 3 an hour at peak. One run at a time would let the queue grow all afternoon; two clear 4 an hour.
+   - Two runs hold at most 30 of the 60 jobs GitHub Team runs at once (8 browser shards and 7 other jobs each), so PR runs keep half. A third run would leave PR runs about 15 jobs and doubles the runs a failure discards, since every entry behind a failed one builds again.
+   - Groups of 1 to 2 entries with no wait, so a lone PR never waits for company.
+   - `ALLGREEN`: each entry's own run must pass, so a failure names its PR, and no PR lands on a later entry's result.
+   - A check timeout of 150 minutes: the longest midnight hold (about 75 minutes), a browser shard's 45-minute timeout and the jobs before it.
+5. Revisit the sizes when the queue regularly waits over an hour (build concurrency 3), or when the weekly `CI queue` check fails (fewer).
+
+## Amendment 2026-11-20: browser groups run once, in the queue
+
+GitHub Actions has been blocked for the organization since 2026-11-14, and a stand-in runner on the owner's Mac runs the jobs of `ci.yml`. The first round of external CI reviews found that a PR's browser groups ran twice, on the ready PR and again in the merge queue, that a draft's `Check` failed by design, and that the job bodies lived only in the workflow, so the stand-in copied them by hand (werk-flow/werkflow-planning#503). The owner decided on 2026-11-20:
+
+1. **D1.** A PR's run, draft or ready, runs only the fast tier: the static gates, Unit, the build, the SQL groups and the component contracts. Its `Check` reports that tier, green or red. Browser groups run once per PR, in the integration run: the queue's run of the PR on top of `main`, or, on a runner without a queue, the PR's run on its up-to-date head. Ready means "enter the queue". Boat `test:verify` of the selected browser groups stays the agent's early warning. This supersedes the amendment "browser groups run last, once a draft is marked ready".
+2. **D4.** Feature PRs keep their place in the stand-in's queue, and the PRs of the CI hill climb follow. Those PRs group their work into as few reviewable PRs as possible, because each PR that touches a CI file costs about two hours of full run on the Mac. For that epic this overrides one problem per PR.
+
+With D1, a push to `main` whose tree a passed integration run tested runs no job, and its `Check` cites that run; this extends item 3 of the amendment "a merge queue". A CI runner's passed SQL, component or browser-shard result also stands for the same job on a byte-identical tree. `lib/testing/ci/dag.ts` holds the jobs, and `scripts/ci/job.ts` runs each job's body on any runner. [testing.md](../technical/testing.md#ci) owns the rules.
+
+A browser shard now starts after the Fast job, whose 30-minute timeout the midnight hold adds to its lead, so the longest hold grows from about 75 to 105 minutes. When GitHub's merge queue returns, its check timeout from the amendment "a merge queue" needs about 165 minutes instead of 150.
+
+## Amendment 2026-11-20: a tooling change runs a sample, then a full run of `main`
+
+The first round of external CI reviews found that a tooling input sent almost half of all merged PRs to a full browser plan (werk-flow/werkflow-planning#503). The owner decided on 2026-11-20 (D3), which narrows "a changed tooling input runs every browser group" in rule 2:
+
+1. A change to the CI workflow, its actions, its job bodies, the runner or selection modules, or a development tool runs its affected groups, the runner pilots and at least one group of every shard kind (visual, layout, lab, critical). A full run of `main` starts right after it lands.
+2. Every group still runs for `supabase/config.toml`, `next.config.ts`, `playwright*.config.ts` and a runtime or Playwright dependency change.
+3. Daytime full runs on `main` keep the 3-hour bound, but skip a slot when nothing untested landed since the last one.
+4. The release still needs a green full run on its exact commit.
+
+[testing.md](../technical/testing.md#ci) owns the rules.
+
+## Amendment 2026-11-21: limits stay the repository's on every runner
+
+The stand-in runner needed threefold test and Playwright timeouts as an owner exception on 2026-11-16, while tests still held wall-clock limits that a slower machine missed. Every runner runs the limits the repository sets. No timeout or budget factor carries over to a new runner without its own decision. A test holds no wall-clock duration below a fixed number outside a measured scenario, and `test-hygiene/no-fixed-time-limit` fails on one (werk-flow/werkflow-planning#507).
+
+## Amendment 2026-11-21: the stand-in's own merge queue
+
+The stand-in has no merge queue, so the ruleset requires an up-to-date branch, and every merge makes each other ready PR fetch `main` and run again (werk-flow/werkflow-planning#503). The owner decided on 2026-11-20 (D2):
+
+1. Our own merge queue lands PRs in batches of up to 4 and bisects a failed batch, so the failure names its PR. When Actions returns, GitHub's merge queue with group size 4 replaces it.
+2. The owner turns off "require branches to be up to date" only after the queue is built, tested on the stand-in and in use.
+
+`bun scripts/ci/queue.ts` is that queue (werk-flow/werkflow-planning#509). A thread queues its PR with `gh pr merge <n> --squash --auto`. The queue squashes up to four queued PRs onto `main` in queue order and runs the integration run once on the tip. On green it lands them through GitHub's own squash merge, never a bypass, and only when `main` has not moved and its tree after each merge equals the tested one. A PR with `approved: list growth` runs in a batch of its own, so a batch never borrows another PR's waiver; this narrows item 2 of the amendment "a merge queue". Before each merge it marks the PR's head `Queue`: a commit status until the CI App exists, then the App's check run (`scripts/ci/publish-check.ts queue`). Once the ruleset requires `Queue`, pinned to the App like `Check`, no PR merges outside the queue. `lib/testing/ci/queue.ts` owns the rules.
+
+## Amendment 2026-11-21: the queue's mark and a partial landing
+
+A `Queue` success that outlived a merge would let GitHub's auto-merge take the PR on any later `main` (werk-flow/werkflow-planning#509). Before it marks a PR, the queue turns the PR's auto-merge off, so only the queue's own merge can use the mark; when it cannot, it posts no mark. A mark whose merge did not happen is withdrawn, and a withdrawal that fails freezes the queue until a person clears it.
+
+Item 1 lands up to 4 PRs one squash merge at a time, so the batch's own `main` commits are not tested one by one; the batch's tip is. When a landing stops partway, `main`'s own run of that commit runs its jobs, since no pass of that tree exists unless a run tested it. The next tick starts from that `main`, and the release still needs a green full run on its exact commit.
+
+## Amendment 2026-11-21: a landed head's mark and a failed read
+
+GitHub reads a head's checks for a merge whose test merge commit has none. So once strict is off, a `Queue` success left on a merged head would pass that same head onto a later `main` without a queue run, for example when a change lands again after a revert. The queue withdraws every mark after its merge too, before it clears the mark or lands the next PR, and a tick withdraws a mark a crashed tick left whether its PR merged or not. A withdrawal that fails freezes the queue.
+
+A read or call that fails between two merges stops the landing as a `partial` landing with the last merge the queue confirmed, and the tick needs a person. `main` still moved, so its run of `main`'s head starts as after any landing.
+
+## Amendment 2026-11-21: a merge whose `main` cannot be read
+
+When `main` cannot be read right after a merge, the queue asks GitHub for the PR's merge commit. A merged PR counts as landed with its tree unverified, and the `partial` stop names that commit. When GitHub cannot answer either, the `partial` stop says a merge may have landed. Either way the tick needs a person, and `main`'s run of `main`'s head starts as after any landing.
+
+## Amendment 2026-11-21: reuse binds to the landing, and the queue retries before it blames
+
+The second round of external CI reviews found that a same-tree pass could stand for a push with another base or plan, that a batch could hide a migration-order conflict between its own PRs, and that a setup failure or a single flaky run could name an innocent PR (werk-flow/werkflow-planning#503):
+
+1. A push reuses an integration pass only for the same landing: the same tree, base commit and planned work, in that run's newest attempt. On GitHub Actions, only a queue run of the same commit counts. This narrows item 3 of the amendment "a merge queue" and the reuse of the amendment "browser groups run once, in the queue".
+2. The queue checks each PR's migrations against the batch prefix it lands on, and leaves a PR that would land out of order for a later tick.
+3. A run without a verdict, a browser setup failure alone included, gets one retry on the next tick; a second needs a person. A red batch whose shorter prefixes passed runs once more before its last PR is named.
+4. While `main` requires up-to-date branches, the queue updates the oldest queued PR that is behind `main`, one at a time.
+5. The nightly full run skips a head that already has a full run.
+
+`lib/testing/ci/reuse.ts`, `scripts/ci/queue.ts` and `lib/testing/ci/schedule.ts` own the rules.
+
+## Amendment 2026-11-21: a retry belongs to its work
+
+A retry record names the work its run tested: the base commit, the batch's PRs at their heads, and the tree. Only that work's second run without a verdict needs a person; other work gets its own retry. Each record keeps the verdicts of the records before it, so a tree that answered otherwise on the same base before the retries is still a contradiction for a person. A tick that settles clears the record. `lib/testing/ci/queue-retry.ts` owns the rule.
+
+## Amendment 2026-11-21: every outstanding retry stays
+
+This narrows "a retry belongs to its work". The record holds every outstanding retry, one per work, and recording one work's retry never removes another's: otherwise a batch and its prefix that take turns ending without a verdict would retry forever. A retry stays until its work reaches a verdict or a tick settles. `lib/testing/ci/queue-retry.ts` owns the rule.

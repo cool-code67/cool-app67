@@ -1,0 +1,98 @@
+import { expect, test as base, type Browser, type Page } from '@playwright/test';
+
+import { resolve } from 'node:path';
+import { workspaceAppOrigin } from '../../../lib/testing/runner/app-port';
+import { testBusinessDate } from '../../../lib/testing/runner/business-date';
+import type { SessionRole } from './sessions';
+import { resetPersistedPreferences } from './preferences-reset';
+import { openRolePage, revealStreamedContentAfterEachLoad } from './streamed-content';
+import { loadWorld, type TestWorld } from './world';
+
+type GoldenFixtures = {
+  world: TestWorld;
+  /**
+   * The run's Berlin business date (YYYY-MM-DD), read when the test starts. Specs derive "today",
+   * "yesterday" and every offset from it, never from the wall clock or at module load.
+   */
+  businessDate: string;
+  /** Automatic: the world's persisted per-user preferences are gone before every test. */
+  freshPreferences: void;
+  adminPage: Page;
+  bueroPage: Page;
+  employeePage: Page;
+  outsiderPage: Page;
+};
+
+const DEFAULT_BASE_URL = workspaceAppOrigin(resolve(__dirname, '../../..'));
+
+async function rolePage(
+  browser: Browser,
+  baseUrl: string,
+  role: SessionRole,
+  provide: (page: Page) => Promise<void>,
+): Promise<void> {
+  const { context, page } = await openRolePage({
+    browser,
+    baseUrl,
+    world: loadWorld(),
+    role,
+  });
+  let provideError: unknown;
+  try {
+    await provide(page);
+  } catch (error) {
+    provideError = error;
+  }
+
+  let cleanupError: unknown;
+  try {
+    await context.close();
+  } catch (error) {
+    cleanupError ??= error;
+  }
+  // Playwright treats the contexts of a disconnected browser as closed, so close() alone would
+  // pass after a browser crash, and so would the worker's own browser.close().
+  if (!browser.isConnected()) {
+    cleanupError ??= new Error(
+      `The browser disconnected before the ${role} page closed: it crashed or was killed.`,
+    );
+  }
+
+  if (provideError) {
+    if (cleanupError) console.warn(`[golden] ${role} fixture cleanup also failed: ${String(cleanupError)}`);
+    throw provideError;
+  }
+  if (cleanupError) throw cleanupError;
+}
+
+export const test = base.extend<GoldenFixtures>({
+  world: async ({}, provide) => {
+    await provide(loadWorld());
+  },
+  businessDate: async ({}, provide) => {
+    await provide(testBusinessDate());
+  },
+  page: async ({ page }, provide) => {
+    revealStreamedContentAfterEachLoad(page);
+    await provide(page);
+  },
+  freshPreferences: [
+    async ({}, provide) => {
+      // Reads the world itself: the audit lane replaces the world in its own automatic fixture first.
+      const world = loadWorld();
+      await resetPersistedPreferences([world.orgId, world.outsider.orgId]);
+      await provide();
+    },
+    { auto: true },
+  ],
+  adminPage: async ({ browser, baseURL }, provide) =>
+    rolePage(browser, baseURL ?? DEFAULT_BASE_URL, 'admin', provide),
+  bueroPage: async ({ browser, baseURL }, provide) =>
+    rolePage(browser, baseURL ?? DEFAULT_BASE_URL, 'buero', provide),
+  employeePage: async ({ browser, baseURL }, provide) =>
+    rolePage(browser, baseURL ?? DEFAULT_BASE_URL, 'employee', provide),
+  outsiderPage: async ({ browser, baseURL }, provide) =>
+    rolePage(browser, baseURL ?? DEFAULT_BASE_URL, 'outsider', provide),
+});
+
+export { expect };

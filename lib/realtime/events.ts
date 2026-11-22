@@ -1,0 +1,76 @@
+import { isUuid } from '@/lib/validation/uuid';
+import { REALTIME_TABLES, type RealtimeTable } from './tables';
+
+/** One row change as the realtime provider delivers it; both rows null marks a synthetic resync. */
+export type RealtimeChangeEvent = {
+  table: RealtimeTable;
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  new: Record<string, unknown> | null;
+  old: Record<string, unknown> | null;
+};
+
+function isRealtimeTable(value: unknown): value is RealtimeTable {
+  return typeof value === 'string' && REALTIME_TABLES.some((table) => table === value);
+}
+
+/** Server RLS owns authorization. Reject malformed/misrouted transport records
+ * before passing the same minimal DELETE shape to existing invalidation users. */
+export function normalizeRealtimeDeletion(value: unknown, activeOrgId: string): RealtimeChangeEvent | null {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !('table_name' in value) ||
+    !isRealtimeTable(value.table_name) ||
+    !('organization_id' in value) ||
+    value.organization_id !== activeOrgId ||
+    !('row_id' in value) ||
+    typeof value.row_id !== 'string' ||
+    !isUuid(value.row_id)
+  )
+    return null;
+  return {
+    table: value.table_name,
+    eventType: 'DELETE',
+    new: null,
+    old: { id: value.row_id, organization_id: activeOrgId },
+  };
+}
+
+// One debounce per feature across its subscribed tables. The provider delivers
+// identities immediately; useLiveView and useRealtimeRouterRefresh retain this
+// shared guard. Do not shorten it: a shorter window races cache invalidation.
+export const REALTIME_DEBOUNCE_MS = 150;
+
+function isSyntheticRealtimeEvent(event: RealtimeChangeEvent): boolean {
+  return event.new === null && event.old === null;
+}
+
+/**
+ * The event filter of a view of one row: that row's change, or a change
+ * that names no row (a DELETE fallback), never another row of the table.
+ */
+export function isEventForRow(event: RealtimeChangeEvent, rowId: string): boolean {
+  const row = event.new ?? event.old;
+  return !row?.id || row.id === rowId;
+}
+
+export function shouldScheduleRealtimeRefresh(
+  event: RealtimeChangeEvent,
+  eventFilter?: (event: RealtimeChangeEvent) => boolean,
+): boolean {
+  return isSyntheticRealtimeEvent(event) || !eventFilter || eventFilter(event);
+}
+
+// Upper bound on how long a sustained event stream may defer a scheduled
+// read or route refresh. The trailing debounce above still
+// coalesces bursts; this only caps the deferral so a stream of related
+// changes cannot postpone freshness until it pauses.
+export const REALTIME_MAX_DEFER_MS = 1_000;
+
+// A focus or visibility return triggers one catch-up only after the tab was
+// away at least this long while the socket stayed subscribed (pre-Wave-3 step
+// 3, decision D5). Shorter absences (a glance at another window) cannot have
+// missed events the open socket did not deliver, and the earlier 50 ms rule
+// serialized five to eight reads on every such return. Reconnects keep their
+// immediate catch-up regardless of this threshold.
+export const REALTIME_FOCUS_CATCH_UP_MIN_ABSENCE_MS = 30_000;

@@ -1,0 +1,479 @@
+import type { ActionFailure, ActionResult } from '@/lib/action-result';
+import type { ProfileReference } from '@/lib/profile-reference';
+import { Constants, type Database, type Json } from '@/lib/supabase/database.types';
+
+export const DOCUMENT_STORAGE_BUCKET = 'organization-documents';
+export const DOCUMENT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+
+export const DOCUMENT_CATEGORIES = ['photo', 'contract', 'invoice', 'offer', 'report', 'other'] as const;
+
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  photo: 'Fotos',
+  contract: 'Verträge',
+  invoice: 'Rechnungen',
+  offer: 'Angebote',
+  report: 'Berichte',
+  other: 'Sonstige',
+};
+
+/** The owner's retention schedule: one class, ten years from the end of the document's year. */
+export type DocumentRetentionClass = Database['public']['Enums']['document_retention_class'];
+
+export const DOCUMENT_RETENTION_CLASSES = Constants.public.Enums.document_retention_class;
+
+export const DOCUMENT_RETENTION_CLASS_LABELS: Record<DocumentRetentionClass, string> = {
+  ten_years: '10 Jahre',
+};
+
+/**
+ * What the archive keeps of a document: its document date (`Belegdatum`), its
+ * retention class and end, and whether it is filed (`festgeschrieben`). Only
+ * Admin and Büro receive it.
+ */
+export type DocumentArchive = {
+  documentDate: string;
+  retentionClass: DocumentRetentionClass | null;
+  /** The last day of the period; permanent deletion is possible from the day after. */
+  retentionEndsOn: string | null;
+  filedAt: string | null;
+  filer: DocumentUploader | null;
+};
+
+/**
+ * Where a legacy original came from: the source system, such as Sykasoft, and
+ * the number that system gave it. Every reader of the document receives it.
+ */
+export type DocumentOrigin = {
+  sourceSystem: string | null;
+  sourceReference: string | null;
+};
+
+/** The longest source system and old number `update_document_origin` accepts, after trimming. */
+export const DOCUMENT_SOURCE_SYSTEM_MAX_LENGTH = 80;
+export const DOCUMENT_SOURCE_REFERENCE_MAX_LENGTH = 120;
+
+/** The document date and retention class Admin and Büro set until the document is filed. */
+export type DocumentRetentionTerms = Pick<DocumentArchive, 'documentDate' | 'retentionClass'>;
+
+export type DocumentFolderRow = Database['public']['Tables']['document_folders']['Row'];
+export type DocumentRow = Database['public']['Tables']['documents']['Row'];
+export type DocumentLinkRow = Database['public']['Tables']['document_links']['Row'];
+export type DocumentAuditEventRow = Database['public']['Tables']['document_audit_events']['Row'];
+export type DocumentVersionRow = Database['public']['Tables']['document_versions']['Row'];
+
+export type DocumentUploader = ProfileReference;
+
+/** What a document link records about an employee; no role or split name is read for it. */
+export type DocumentEmployee = {
+  userId: string;
+  name: string;
+  email: string | null;
+};
+
+export type DocumentContextTarget =
+  | { kind: 'job'; jobId: string }
+  | { kind: 'project'; projectId: string }
+  | { kind: 'client'; clientId: string }
+  | { kind: 'employee'; employeeId: string }
+  | { kind: 'request'; requestId: string }
+  | { kind: 'equipment'; equipmentId: string }
+  | { kind: 'service_case'; serviceCaseId: string }
+  | { kind: 'maintenance_coverage'; maintenanceCoverageId: string };
+
+export type DocumentUploadTarget =
+  | { kind: 'library'; folderId?: string | null }
+  | (DocumentContextTarget & { folderId?: string | null });
+
+export type DocumentFolder = {
+  id: string;
+  organizationId: string;
+  parentFolderId: string | null;
+  name: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  creator: DocumentUploader | null;
+};
+
+export type DocumentLink = {
+  id: string;
+  organizationId: string;
+  documentId: string;
+  jobId: string | null;
+  projectId: string | null;
+  clientId: string | null;
+  employeeId: string | null;
+  requestId: string | null;
+  equipmentId: string | null;
+  serviceCaseId: string | null;
+  maintenanceCoverageId: string | null;
+  jobTitle: string | null;
+  jobNumber: string | null;
+  projectName: string | null;
+  projectNumber: string | null;
+  clientName: string | null;
+  employeeName: string | null;
+  employeeEmail: string | null;
+  requestNumber: string | null;
+  requestSummary: string | null;
+  equipmentNumber: string | null;
+  equipmentName: string | null;
+  serviceCaseNumber: string | null;
+  serviceCaseSummary: string | null;
+  maintenanceCoverageNumber: string | null;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type OrganizationDocument = {
+  id: string;
+  organizationId: string;
+  folderId: string | null;
+  category: DocumentCategory;
+  storageBucket: string;
+  storagePath: string;
+  originalFileName: string;
+  displayName: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  uploadedBy: string;
+  copiedFromDocumentId: string | null;
+  currentVersionNumber: number;
+  deletedAt: string | null;
+  deletedBy: string | null;
+  deleteReason: string | null;
+  metadata: Json;
+  createdAt: string;
+  updatedAt: string;
+  uploader: DocumentUploader | null;
+  links: DocumentLink[];
+  origin: DocumentOrigin;
+  /** Null for a caller who is not Admin or Büro. */
+  archive: DocumentArchive | null;
+};
+
+export const DOCUMENT_LIBRARY_VIEWS = [
+  'all',
+  'unorganized',
+  'work',
+  'jobs',
+  'projects',
+  'clients',
+  'employees',
+  'folders',
+  'photos',
+  'contracts',
+  'invoices',
+  'offers',
+  'reports',
+  'other',
+  'trash',
+] as const;
+
+export type DocumentLibraryView = (typeof DOCUMENT_LIBRARY_VIEWS)[number];
+
+export const DOCUMENT_LIBRARY_LINK_FILTERS = [
+  'all',
+  'unlinked',
+  'jobs',
+  'projects',
+  'clients',
+  'employees',
+] as const;
+
+export type DocumentLibraryLinkFilter = (typeof DOCUMENT_LIBRARY_LINK_FILTERS)[number];
+
+export type DocumentLibraryCategoryFilter = DocumentCategory | 'all';
+
+export const DOCUMENT_LIBRARY_SORTS = [
+  'name',
+  'created_at',
+  'updated_at',
+  'size_bytes',
+  'type',
+  'category',
+] as const;
+
+export type DocumentLibrarySort = (typeof DOCUMENT_LIBRARY_SORTS)[number];
+
+export type DocumentLibraryResult = ActionResult<{
+  page: number;
+  total: number;
+  folderPage: number;
+  folderTotal: number;
+  breadcrumbs: DocumentFolder[];
+  folders: DocumentFolder[];
+  documents: OrganizationDocument[];
+}>;
+
+export type DocumentListResult = ActionResult<{ documents: OrganizationDocument[] }>;
+
+export type DocumentMutationResult = ActionResult;
+
+export type UpdateDocumentLinksInput = {
+  documentId: string;
+  addJobIds?: string[];
+  addProjectIds?: string[];
+  addClientIds?: string[];
+  addEmployeeIds?: string[];
+  addEquipmentIds?: string[];
+  addServiceCaseIds?: string[];
+  addMaintenanceCoverageIds?: string[];
+  removeLinkIds?: string[];
+};
+
+/** All or nothing: a failure changed no link. */
+export type UpdateDocumentLinksResult = ActionResult<{ addedCount: number; removedCount: number }>;
+
+export type LinkDocumentsToTargetInput = {
+  documentIds: string[];
+  jobId?: string;
+  projectId?: string;
+  clientId?: string;
+  employeeId?: string;
+  equipmentId?: string;
+  serviceCaseId?: string;
+  maintenanceCoverageId?: string;
+};
+
+export type LinkDocumentsToTargetResult =
+  | { success: true; linkedCount: number }
+  | (ActionFailure & { linkedCount: number; failedCount: number });
+
+export type ProjectJobDocumentGroup = {
+  jobId: string;
+  jobNumber: string | null;
+  jobTitle: string;
+  documents: OrganizationDocument[];
+};
+
+export type ProjectDocumentsOverviewResult = ActionResult<{
+  projectDocuments: OrganizationDocument[];
+  jobDocumentGroups: ProjectJobDocumentGroup[];
+}>;
+
+export type DocumentResult = ActionResult<{ document: OrganizationDocument }>;
+
+export type FolderResult = ActionResult<{ folder: DocumentFolder }>;
+
+export type SignedDocumentUrlResult = ActionResult<{ signedUrl: string }>;
+
+type DocumentUploadTicket = {
+  documentId: string;
+  storagePath: string;
+  uploadUrl: string;
+};
+
+export type DocumentUploadTicketResult = ActionResult<{ ticket: DocumentUploadTicket }>;
+
+type DocumentVersionUploadTicket = {
+  documentId: string;
+  versionNumber: number;
+  /** The upload's own identity: a retry finds the version this upload saved by it. */
+  uploadId: string;
+  storagePath: string;
+  uploadUrl: string;
+};
+
+export type DocumentVersionUploadTicketResult = ActionResult<{ ticket: DocumentVersionUploadTicket }>;
+
+export type DocumentAuditEvent = {
+  id: string;
+  organizationId: string;
+  documentId: string | null;
+  folderId: string | null;
+  actorId: string | null;
+  eventType: string;
+  eventPayload: Json;
+  createdAt: string;
+  actor: DocumentUploader | null;
+};
+
+export type DocumentVersion = {
+  id: string;
+  organizationId: string;
+  documentId: string;
+  versionNumber: number;
+  storageBucket: string;
+  storagePath: string;
+  originalFileName: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  uploadedBy: string;
+  createdAt: string;
+  uploader: DocumentUploader | null;
+};
+
+export type DocumentDetailsResult =
+  | {
+      success: true;
+      document: OrganizationDocument;
+      auditEvents: DocumentAuditEvent[];
+      versions: DocumentVersion[];
+    }
+  | (ActionFailure & { document?: OrganizationDocument });
+
+export type VersionResult = ActionResult<{ version: DocumentVersion }>;
+
+export function toDocumentFolder(
+  row: DocumentFolderRow,
+  creator: DocumentUploader | null = null,
+): DocumentFolder {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    parentFolderId: row.parent_folder_id,
+    name: row.name,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    creator,
+  };
+}
+
+export function toDocumentLink(
+  row: DocumentLinkRow,
+  context?: {
+    jobTitle?: string | null;
+    jobNumber?: string | null;
+    projectName?: string | null;
+    projectNumber?: string | null;
+    clientName?: string | null;
+    employeeName?: string | null;
+    employeeEmail?: string | null;
+    requestNumber?: string | null;
+    requestSummary?: string | null;
+    equipmentNumber?: string | null;
+    equipmentName?: string | null;
+    serviceCaseNumber?: string | null;
+    serviceCaseSummary?: string | null;
+    maintenanceCoverageNumber?: string | null;
+  },
+): DocumentLink {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    documentId: row.document_id,
+    jobId: row.job_id,
+    projectId: row.project_id,
+    clientId: row.client_id,
+    employeeId: row.employee_id,
+    requestId: row.request_id,
+    equipmentId: row.equipment_id,
+    serviceCaseId: row.service_case_id,
+    maintenanceCoverageId: row.maintenance_coverage_id,
+    jobTitle: context?.jobTitle ?? null,
+    jobNumber: context?.jobNumber ?? null,
+    projectName: context?.projectName ?? null,
+    projectNumber: context?.projectNumber ?? null,
+    clientName: context?.clientName ?? null,
+    employeeName: context?.employeeName ?? null,
+    employeeEmail: context?.employeeEmail ?? null,
+    requestNumber: context?.requestNumber ?? null,
+    requestSummary: context?.requestSummary ?? null,
+    equipmentNumber: context?.equipmentNumber ?? null,
+    equipmentName: context?.equipmentName ?? null,
+    serviceCaseNumber: context?.serviceCaseNumber ?? null,
+    serviceCaseSummary: context?.serviceCaseSummary ?? null,
+    maintenanceCoverageNumber: context?.maintenanceCoverageNumber ?? null,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+}
+
+export function toDocumentCategory(value: string | null | undefined): DocumentCategory {
+  return DOCUMENT_CATEGORIES.find((category) => category === value) ?? 'other';
+}
+
+export function toOrganizationDocument({
+  row,
+  uploader,
+  links,
+  archive,
+}: {
+  row: DocumentRow;
+  uploader: DocumentUploader | null;
+  links: DocumentLink[];
+  archive: DocumentArchive | null;
+}): OrganizationDocument {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    folderId: row.folder_id,
+    category: toDocumentCategory(row.category),
+    storageBucket: row.storage_bucket,
+    storagePath: row.storage_path,
+    originalFileName: row.original_file_name,
+    displayName: row.display_name,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    uploadedBy: row.uploaded_by,
+    copiedFromDocumentId: row.copied_from_document_id,
+    currentVersionNumber: row.current_version_number,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
+    deleteReason: row.delete_reason,
+    metadata: row.metadata,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    uploader,
+    links,
+    origin: { sourceSystem: row.source_system, sourceReference: row.source_reference },
+    archive,
+  };
+}
+
+export function toDocumentArchive(row: DocumentRow, filer: DocumentUploader | null): DocumentArchive {
+  return {
+    documentDate: row.document_date,
+    retentionClass: row.retention_class,
+    retentionEndsOn: row.retention_ends_on,
+    filedAt: row.filed_at,
+    filer,
+  };
+}
+
+export function toDocumentAuditEvent({
+  row,
+  actor,
+}: {
+  row: DocumentAuditEventRow;
+  actor: DocumentUploader | null;
+}): DocumentAuditEvent {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    documentId: row.document_id,
+    folderId: row.folder_id,
+    actorId: row.actor_id,
+    eventType: row.event_type,
+    eventPayload: row.event_payload,
+    createdAt: row.created_at,
+    actor,
+  };
+}
+
+export function toDocumentVersion({
+  row,
+  uploader,
+}: {
+  row: DocumentVersionRow;
+  uploader: DocumentUploader | null;
+}): DocumentVersion {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    documentId: row.document_id,
+    versionNumber: row.version_number,
+    storageBucket: row.storage_bucket,
+    storagePath: row.storage_path,
+    originalFileName: row.original_file_name,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    uploadedBy: row.uploaded_by,
+    createdAt: row.created_at,
+    uploader,
+  };
+}

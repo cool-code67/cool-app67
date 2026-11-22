@@ -1,0 +1,56 @@
+import { defineConfig } from '@playwright/test';
+import { workspaceAppOrigin } from './lib/testing/runner/app-port';
+import { browserRunPaths } from './lib/testing/runs/run-paths';
+
+import { loadEnvLocal } from './tests/golden/support/env';
+import { configureRunEnvironment, currentRunKey } from './tests/golden/support/run-state';
+
+loadEnvLocal();
+configureRunEnvironment('golden');
+
+const runPaths = browserRunPaths(__dirname, currentRunKey());
+
+const quietReporter = process.env.WERKFLOW_QUIET_REPORTER === '1';
+const listingTests = process.argv.includes('--list');
+
+// Golden-gate harness (docs/technical/testing.md). Runs the GG-XX
+// business scenarios against a locally running app and the selected Supabase
+// target, local by default, using disposable organization-isolated fixture data.
+export default defineConfig({
+  testDir: './tests/golden',
+  globalSetup: './tests/golden/global-setup',
+  globalTeardown: './tests/golden/global-teardown',
+  // Measured per-scenario budgets (Stage C, 2026-08-29): the slowest test in
+  // the frozen Stage B local certifications measured 28 s (Golden) / 55 s
+  // (audit), so the 180 s local default carries >3x headroom and no scenario
+  // needs a per-test override. Cloud-target runs (wave-end, D11) measured up
+  // to ~2-3x slower under provider latency — they get 300 s (the budget the
+  // A5 cloud incident established). Do not
+  // add per-test setTimeout overrides without new measured evidence.
+  timeout: process.env.WERKFLOW_TEST_TARGET === 'cloud' ? 300_000 : 180_000,
+  expect: { timeout: 10_000 },
+  // The world is shared, mutable state: one worker runs the file's tests in declaration order.
+  workers: 1,
+  retries: 0,
+  reporter: listingTests
+    ? 'list'
+    : [
+        ...(quietReporter ? [] : ([['list']] as const)),
+        ['./tests/golden/support/run-reporter.ts'],
+        ['html', { open: 'never', outputFolder: runPaths.report }],
+      ],
+  outputDir: runPaths.results,
+  use: {
+    baseURL: workspaceAppOrigin(__dirname),
+    // Missing controls must fail at the action, not consume a whole scenario.
+    actionTimeout: 30_000,
+    navigationTimeout: 60_000,
+    viewport: { width: 1440, height: 900 },
+    locale: 'de-DE',
+    timezoneId: 'Europe/Berlin',
+    // Only the offline-shell audit runs the app's service worker (it opts in with test.use).
+    serviceWorkers: 'block',
+    screenshot: 'only-on-failure',
+    trace: process.env.WERKFLOW_RETAIN_PERFORMANCE_TRACE === '1' ? 'on' : 'retain-on-failure',
+  },
+});

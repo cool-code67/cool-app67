@@ -1,0 +1,132 @@
+import * as React from 'react';
+
+import { ScrollRegion } from '@/components/ui/scroll-region';
+import { unconfirmedMarker } from '@/lib/ui/unconfirmed';
+import { cn } from '@/lib/utils';
+
+type TableProps = React.HTMLAttributes<HTMLTableElement> & {
+  /**
+   * The German name of the table's scroll region. A table whose rows hold no
+   * focusable control passes it, so a keyboard user can reach and scroll a
+   * table wider than its region (WCAG 2.1.1, axe `scrollable-region-focusable`).
+   */
+  scrollLabel?: string;
+};
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(({ className, scrollLabel, ...props }, ref) => (
+  // A table scrolls sideways inside its own region from the tablet breakpoint; phones render ListRow cards.
+  <ScrollRegion
+    name="table"
+    className="relative w-full"
+    {...(scrollLabel ? { focusable: { label: scrollLabel } } : {})}
+  >
+    <table ref={ref} className={cn('w-full caption-bottom text-sm wrap-normal', className)} {...props} />
+  </ScrollRegion>
+));
+Table.displayName = 'Table';
+
+const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  ({ className, ...props }, ref) => (
+    <thead ref={ref} className={cn('[&_tr]:border-b', className)} {...props} />
+  ),
+);
+TableHeader.displayName = 'TableHeader';
+
+const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  ({ className, ...props }, ref) => (
+    <tbody ref={ref} className={cn('[&_tr:last-child]:border-0', className)} {...props} />
+  ),
+);
+TableBody.displayName = 'TableBody';
+
+const TableFooter = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  ({ className, ...props }, ref) => (
+    <tfoot
+      ref={ref}
+      className={cn('border-t bg-muted/50 font-medium [&>tr]:last:border-b-0', className)}
+      {...props}
+    />
+  ),
+);
+TableFooter.displayName = 'TableFooter';
+
+// Hover is opt-in (design canon, 2026-09-03): a row hovers only when a click
+// does something. `interactive` navigates or acts on click; `"select"` is the
+// Dokumente flavor where click selects and double-click opens (the `group`
+// reveals the selection circle). Skeleton rows pass the same value, so a
+// loading placeholder can never promise more or less than the loaded row.
+export type TableRowInteractive = boolean | 'select';
+
+export const TABLE_ROW_INTERACTIVE_CLASS = 'cursor-pointer transition-colors hover:bg-accent/50';
+export const TABLE_ROW_SELECT_CLASS = 'group cursor-default transition-colors hover:bg-accent/50';
+
+export function tableRowClassName(interactive: TableRowInteractive | undefined, className?: string): string {
+  return cn(
+    'border-b data-[state=selected]:bg-muted',
+    interactive === true && TABLE_ROW_INTERACTIVE_CLASS,
+    interactive === 'select' && TABLE_ROW_SELECT_CLASS,
+    className,
+  );
+}
+
+type TableRowProps = React.HTMLAttributes<HTMLTableRowElement> & {
+  interactive?: TableRowInteractive | undefined;
+  /** Loading placeholder row: same classes as the loaded row, hidden from assistive tech. */
+  skeleton?: boolean;
+  /** Stable identity for tests and row-scoped lookups; never styled. */
+  rowId?: string | undefined;
+  /** The row shows an optimistic layer's content, not yet an authoritative read (lib/ui/unconfirmed.ts). */
+  unconfirmed?: boolean | undefined;
+};
+
+const TableRow = React.forwardRef<HTMLTableRowElement, TableRowProps>(
+  ({ className, interactive, skeleton, rowId, unconfirmed, ...props }, ref) => (
+    <tr
+      ref={ref}
+      data-row-id={rowId}
+      data-skeleton={skeleton ? '' : undefined}
+      aria-hidden={skeleton ? true : undefined}
+      className={tableRowClassName(interactive, className)}
+      {...props}
+      {...unconfirmedMarker(unconfirmed)}
+    />
+  ),
+);
+TableRow.displayName = 'TableRow';
+
+const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<HTMLTableCellElement>>(
+  ({ className, ...props }, ref) => (
+    <th
+      ref={ref}
+      className={cn(
+        'h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
+TableHead.displayName = 'TableHead';
+
+const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
+  ({ className, ...props }, ref) => (
+    <td
+      ref={ref}
+      className={cn(
+        'p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
+TableCell.displayName = 'TableCell';
+
+const TableCaption = React.forwardRef<HTMLTableCaptionElement, React.HTMLAttributes<HTMLTableCaptionElement>>(
+  ({ className, ...props }, ref) => (
+    <caption ref={ref} className={cn('mt-4 text-sm text-muted-foreground', className)} {...props} />
+  ),
+);
+TableCaption.displayName = 'TableCaption';
+
+export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption };

@@ -1,0 +1,238 @@
+'use server';
+
+import { logReadFailure } from '@/lib/data/read-request-cache';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { LIST_ROW_CAP, readCompleteRows } from '@/lib/supabase/query-batches';
+import { authenticateAndAuthorize } from '@/lib/jobs/auth';
+import { getCachedOrganizationCalendar } from '@/lib/data/cached';
+import { getBusinessTodayIso } from '@/lib/date-time/berlin';
+import { toEmploymentCondition } from '@/lib/personnel/types';
+import { getBusinessWeekDates, toWorkSchedule } from '@/lib/personnel/schedule';
+import { resolveDailyTargets, type ApprovedAbsenceSpan, type DailyTarget } from '@/lib/personnel/targets';
+import { loadApprovedVacationSpansByRecord } from '@/lib/vacation/server';
+import { loadActiveSicknessSpansByRecord } from '@/lib/sickness/server';
+import { loadSchoolDaySpansByRecord } from '@/lib/personnel/school-day-server';
+import { logError } from '@/lib/logging';
+import { z } from '@/lib/zod';
+import { uuidSchema } from '@/lib/validation/uuid';
+import type { ActionFailure } from '@/lib/action-result';
+
+const weeklyTargetsInputSchema = z.object({ userId: uuidSchema });
+
+/**
+ * Every effective absence of a window, per record: approved vacation, active
+ * sickness and Berufsschule days, vacation first (the resolver also prefers
+ * its attribution). Null when a span read failed: a missing span map is not
+ * "no absence", and each reader logs its own failure.
+ */
+async function loadAbsencesByRecord(
+  orgId: string,
+  window: { start: string; end: string },
+  employeeRecordId?: string,
+): Promise<((recordId: string) => ApprovedAbsenceSpan[]) | null> {
+  const [vacationSpans, sicknessSpans, schoolSpans] = await Promise.all([
+    loadApprovedVacationSpansByRecord(orgId, window.start, window.end),
+    loadActiveSicknessSpansByRecord(orgId, window.start, window.end, employeeRecordId),
+    loadSchoolDaySpansByRecord(orgId, window.start, window.end, employeeRecordId),
+  ]);
+  if (!vacationSpans || !sicknessSpans || !schoolSpans) return null;
+  return (recordId) => [
+    ...(vacationSpans.get(recordId) ?? []),
+    ...(sicknessSpans.get(recordId) ?? []),
+    ...(schoolSpans.get(recordId) ?? []),
+  ];
+}
+
+// Server-side assembly of the P1-04 target contract. Targets are computed,
+// never stored; employees may only request their own targets, managers any
+// member of the active organization (mirrors the time-entry read rules).
+
+export type WeeklyTargetsResult = { success: true; targets: DailyTarget[] } | ActionFailure;
+
+/**
+ * The current Berlin business week's daily targets (Montag–Sonntag) for one
+ * user of the active organization.
+ */
+export async function getWeeklyTargets(rawInput: { userId: string }): Promise<WeeklyTargetsResult> {
+  const parsedInput = weeklyTargetsInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) return { success: false, error: 'invalid_input' };
+  const input = parsedInput.data;
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId, userId, isManagerOrAbove } = auth.context;
+
+    if (input.userId !== userId && !isManagerOrAbove) {
+      return { success: false, error: 'not_authorized' };
+    }
+
+    const admin = createSupabaseAdminClient();
+    const calendarPromise = getCachedOrganizationCalendar(orgId);
+    // The record lookup below can return early; without a handler an infra
+    // rejection of the calendar fetch would surface as an unhandled rejection.
+    // The real await further down still propagates it into this try block.
+    // eslint-disable-next-line no-restricted-syntax -- only prevents the unhandled rejection described above; the await below still propagates it
+    calendarPromise.catch(() => {});
+
+    const { data: record, error: recordError } = await admin
+      .from('employee_records')
+      .select('id, entry_date, exit_date')
+      .eq('organization_id', orgId)
+      .eq('user_id', input.userId)
+      .maybeSingle();
+
+    if (recordError) {
+      logError('Failed to load employee record for targets:', recordError);
+      return { success: false, error: 'load_failed' };
+    }
+
+    const weekDates = getBusinessWeekDates();
+    const [weekStart] = weekDates;
+    const weekEnd = weekDates.at(-1);
+    if (!weekStart || !weekEnd) return { success: false, error: 'load_failed' };
+
+    if (!record) {
+      // No personnel record (should not happen for members): resolve with the
+      // labeled default cascade so the surface still shows an honest state.
+      const calendar = await calendarPromise;
+      return {
+        success: true,
+        targets: resolveDailyTargets(weekDates, {
+          schedules: [],
+          conditions: [],
+          calendar,
+          employment: { entryDate: null, exitDate: null },
+        }),
+      };
+    }
+
+    const [schedulesResult, conditionsResult, calendar, absencesOf] = await Promise.all([
+      admin
+        .from('work_schedules')
+        .select('*')
+        .eq('organization_id', orgId)
+        .eq('employee_record_id', record.id),
+      admin
+        .from('employment_conditions')
+        .select('*')
+        .eq('organization_id', orgId)
+        .eq('employee_record_id', record.id),
+      calendarPromise,
+      loadAbsencesByRecord(orgId, { start: weekStart, end: weekEnd }, record.id),
+    ]);
+
+    if (schedulesResult.error || conditionsResult.error) {
+      logError(
+        'Failed to load schedule context for targets:',
+        schedulesResult.error ?? conditionsResult.error,
+      );
+      return { success: false, error: 'load_failed' };
+    }
+    if (!absencesOf) return { success: false, error: 'load_failed' };
+
+    return {
+      success: true,
+      targets: resolveDailyTargets(weekDates, {
+        schedules: (schedulesResult.data ?? []).map(toWorkSchedule),
+        conditions: (conditionsResult.data ?? []).map(toEmploymentCondition),
+        calendar,
+        employment: { entryDate: record.entry_date, exitDate: record.exit_date },
+        absences: absencesOf(record.id),
+      }),
+    };
+  } catch (error) {
+    logError('Unexpected error in getWeeklyTargets:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
+
+export type MemberTodayTargetsResult =
+  | { success: true; targetsByUserId: Record<string, DailyTarget> }
+  | ActionFailure;
+
+/**
+ * Today's target for every member with a login in the active organization
+ * (manager surfaces: member list progress and detail Tagesfortschritt).
+ */
+export async function getTodayTargetsForMembers(): Promise<MemberTodayTargetsResult> {
+  try {
+    const auth = await authenticateAndAuthorize();
+    if (!auth.success) return auth;
+    const { orgId, isManagerOrAbove } = auth.context;
+
+    if (!isManagerOrAbove) {
+      return { success: false, error: 'not_authorized' };
+    }
+
+    const admin = createSupabaseAdminClient();
+
+    const todayIso = getBusinessTodayIso();
+    const [recordsResult, schedulesResult, conditionsResult, calendar, absencesOf] = await Promise.all([
+      readCompleteRows(
+        (from, to) =>
+          admin
+            .from('employee_records')
+            .select('id, user_id, entry_date, exit_date')
+            .eq('organization_id', orgId)
+            .not('user_id', 'is', null)
+            .order('id')
+            .range(from, to),
+        LIST_ROW_CAP,
+      ),
+      readCompleteRows(
+        (from, to) =>
+          admin.from('work_schedules').select('*').eq('organization_id', orgId).order('id').range(from, to),
+        LIST_ROW_CAP,
+      ),
+      readCompleteRows(
+        (from, to) =>
+          admin
+            .from('employment_conditions')
+            .select('*')
+            .eq('organization_id', orgId)
+            .order('id')
+            .range(from, to),
+        LIST_ROW_CAP,
+      ),
+      getCachedOrganizationCalendar(orgId),
+      loadAbsencesByRecord(orgId, { start: todayIso, end: todayIso }),
+    ]);
+
+    if (recordsResult.error || schedulesResult.error || conditionsResult.error) {
+      logReadFailure(
+        'Failed to load member target context:',
+        recordsResult.error ?? schedulesResult.error ?? conditionsResult.error,
+      );
+      return { success: false, error: 'load_failed' };
+    }
+    if (!absencesOf) return { success: false, error: 'load_failed' };
+
+    const schedulesByRecord = Map.groupBy(
+      schedulesResult.data.map(toWorkSchedule),
+      (schedule) => schedule.employeeRecordId,
+    );
+    const conditionsByRecord = Map.groupBy(
+      conditionsResult.data.map(toEmploymentCondition),
+      (condition) => condition.employeeRecordId,
+    );
+
+    const targetsByUserId: Record<string, DailyTarget> = {};
+    for (const record of recordsResult.data) {
+      if (!record.user_id) continue;
+      const [target] = resolveDailyTargets([todayIso], {
+        schedules: schedulesByRecord.get(record.id) ?? [],
+        conditions: conditionsByRecord.get(record.id) ?? [],
+        calendar,
+        employment: { entryDate: record.entry_date, exitDate: record.exit_date },
+        absences: absencesOf(record.id),
+      });
+      if (!target) continue;
+      targetsByUserId[record.user_id] = target;
+    }
+
+    return { success: true, targetsByUserId };
+  } catch (error) {
+    logError('Unexpected error in getTodayTargetsForMembers:', error);
+    return { success: false, error: 'unexpected_error' };
+  }
+}
