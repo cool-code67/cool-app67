@@ -1,0 +1,284 @@
+'use client';
+
+import type { ActionFailure } from '@/lib/action-result';
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useRouter } from 'next/navigation';
+
+import { useJobEntityOptions, type JobEntityOptionsState } from '@/hooks/use-job-entity-options';
+import { useServerAction } from '@/hooks/use-server-action';
+import {
+  createInstalledEquipment,
+  replaceInstalledEquipment,
+  updateInstalledEquipment,
+} from '@/lib/installed-equipment/actions';
+import type {
+  EquipmentCarryOverInput,
+  EquipmentDetail,
+  EquipmentFormInput,
+  EquipmentListItem,
+} from '@/lib/installed-equipment/types';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+import {
+  EQUIPMENT_REQUIRED_FIELD_IDS,
+  GENERIC_EQUIPMENT_FORM_ERROR,
+  equipmentErrorMessage,
+  initialEquipmentForm,
+  missingEquipmentFields,
+  toEquipmentFormPayload,
+  equipmentParentOptions,
+  equipmentSiteOptions,
+  type EquipmentFormMode,
+  type EquipmentFormState,
+  type EquipmentParentOption,
+  type EquipmentRequiredField,
+  type EquipmentSiteOption,
+} from './equipment-form-state';
+import type { EquipmentCarryOverController } from './equipment-carry-over';
+import { useClientOption } from './use-client-option';
+
+/** The values a list can show for a record before the server confirms it. */
+export type EquipmentPendingDraft = Pick<
+  EquipmentListItem,
+  'id' | 'name' | 'category' | 'state' | 'clientName' | 'siteName' | 'manufacturer' | 'model'
+>;
+
+export type EquipmentCreateSubmission = {
+  draft: EquipmentPendingDraft;
+  /** Never rejects; a failure carries the German message for the caller's banner. */
+  result: Promise<{ success: true } | (ActionFailure & { message: string })>;
+};
+
+type UseEquipmentFormOptions = {
+  onOpenChange: (open: boolean) => void;
+  mode: EquipmentFormMode;
+  initial: EquipmentDetail | null | undefined;
+  onSubmitted: ((submission: EquipmentCreateSubmission) => void) | undefined;
+  onSaved: (() => void) | undefined;
+  /** A replacement's choice per running plan and component; without it a replacement carries none. */
+  carryOver: EquipmentCarryOverController | undefined;
+};
+
+export type EquipmentFormController = {
+  form: EquipmentFormState;
+  setForm: Dispatch<SetStateAction<EquipmentFormState>>;
+  updateField: <Key extends keyof EquipmentFormState>(key: Key, value: EquipmentFormState[Key]) => void;
+  error: string | null;
+  fieldErrors: Partial<Record<EquipmentRequiredField, string>>;
+  /** A submit was tried, so missing input shows its message. */
+  attempted: boolean;
+  isPending: boolean;
+  clientSearch: JobEntityOptionsState;
+  clientOption: ReturnType<typeof useClientOption>;
+  siteOptions: EquipmentSiteOption[];
+  parentOptions: EquipmentParentOption[];
+  handleSubmit: () => Promise<void>;
+};
+
+type EquipmentActionRunners = {
+  runCreate: typeof createInstalledEquipment;
+  runUpdate: typeof updateInstalledEquipment;
+  runReplace: typeof replaceInstalledEquipment;
+};
+
+/** The list row a created record shows until the server confirms it. */
+function pendingEquipmentDraft(
+  equipmentId: string,
+  form: EquipmentFormState,
+  clientOptions: JobEntityOptionsState['options'],
+  siteOptions: EquipmentSiteOption[],
+): EquipmentPendingDraft {
+  return {
+    id: equipmentId,
+    name: form.name.trim(),
+    category: form.category,
+    state: form.state,
+    clientName: clientOptions.find((client) => client.value === form.clientId)?.label ?? '',
+    siteName: siteOptions.find((site) => site.value === form.siteId)?.label ?? '',
+    manufacturer: form.manufacturer || null,
+    model: form.model || null,
+  };
+}
+
+/** The create's outcome for the caller's banner; it never rejects. */
+function equipmentSubmissionResult(
+  created: ReturnType<typeof createInstalledEquipment>,
+): EquipmentCreateSubmission['result'] {
+  return created.then(
+    (outcome) =>
+      outcome.success
+        ? { success: true as const }
+        : {
+            success: false as const,
+            error: outcome.error,
+            message: equipmentErrorMessage(outcome.error),
+          },
+    () => ({
+      success: false as const,
+      error: 'unexpected_error',
+      message: GENERIC_EQUIPMENT_FORM_ERROR,
+    }),
+  );
+}
+
+/** The awaited create, edit or replace of the dialog's mode. */
+async function saveEquipment({
+  mode,
+  initial,
+  form,
+  payload,
+  idempotencyKey,
+  effectiveAt,
+  carryOver,
+  runners: { runCreate, runUpdate, runReplace },
+}: {
+  mode: EquipmentFormMode;
+  initial: EquipmentDetail | null | undefined;
+  form: EquipmentFormState;
+  payload: EquipmentFormInput;
+  idempotencyKey: string;
+  effectiveAt: string;
+  carryOver: EquipmentCarryOverInput;
+  runners: EquipmentActionRunners;
+}) {
+  if (mode === 'create') {
+    return runCreate({
+      ...payload,
+      equipmentId: crypto.randomUUID(),
+      idempotencyKey,
+      effectiveAt,
+    });
+  }
+  if (mode === 'edit' && initial) {
+    return runUpdate({
+      ...payload,
+      equipmentId: initial.id,
+      expectedVersion: initial.version,
+      reason: form.reason ?? '',
+      idempotencyKey,
+    });
+  }
+  if (initial) {
+    return runReplace({
+      ...payload,
+      predecessorId: initial.id,
+      successorId: crypto.randomUUID(),
+      expectedVersion: initial.version,
+      effectiveAt,
+      reason: form.reason ?? '',
+      idempotencyKey,
+      carryOver,
+    });
+  }
+  return {
+    success: false as const,
+    error: 'installed_equipment_action_failed',
+  };
+}
+
+/**
+ * The customer is searched on the server; its sites and equipment load
+ * when it is chosen. A record under edit keeps its own labels meanwhile.
+ */
+function useEquipmentFormOptions(
+  form: EquipmentFormState,
+  initial: EquipmentDetail | null | undefined,
+): Pick<EquipmentFormController, 'clientSearch' | 'clientOption' | 'siteOptions' | 'parentOptions'> {
+  const clientSearch = useJobEntityOptions(
+    { kind: 'clients', purpose: 'customer-work' },
+    form.clientId ? [form.clientId] : [],
+    initial ? [{ value: initial.clientId, label: initial.clientName }] : [],
+  );
+  const clientOption = useClientOption(form.clientId);
+  const sites = clientOption.client?.sites ?? [];
+  const siteOptions = equipmentSiteOptions(sites, form, initial);
+  const parentOptions = equipmentParentOptions(sites, form, initial);
+  return { clientSearch, clientOption, siteOptions, parentOptions };
+}
+
+/** Form state, dependent option lists and the create/edit/replace submit of the equipment dialog. */
+export function useEquipmentForm({
+  onOpenChange,
+  mode,
+  initial,
+  onSubmitted,
+  onSaved,
+  carryOver,
+}: UseEquipmentFormOptions): EquipmentFormController {
+  const router = useRouter();
+  const { run: runCreate, isPending: isCreating } = useServerAction(createInstalledEquipment);
+  const { run: runUpdate, isPending: isUpdating } = useServerAction(updateInstalledEquipment);
+  const { run: runReplace, isPending: isReplacing } = useServerAction(replaceInstalledEquipment);
+  const [form, setForm] = useState<EquipmentFormState>(() => initialEquipmentForm(mode, initial));
+  const [error, setError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+
+  const { clientSearch, clientOption, siteOptions, parentOptions } = useEquipmentFormOptions(form, initial);
+  const isPending = isCreating || isUpdating || isReplacing;
+  const missingFields = missingEquipmentFields(form, mode);
+  const fieldErrors = attempted ? missingFields : {};
+
+  const payload = useMemo<EquipmentFormInput>(() => toEquipmentFormPayload(form), [form]);
+
+  function updateField<Key extends keyof EquipmentFormState>(key: Key, value: EquipmentFormState[Key]): void {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handleSubmit(): Promise<void> {
+    setError(null);
+    setAttempted(true);
+    const errorsById = {
+      ...Object.fromEntries(EQUIPMENT_REQUIRED_FIELD_IDS.map(([key, id]) => [id, missingFields[key]])),
+      ...(mode === 'replace' ? carryOver?.errors : {}),
+    };
+    if (focusFirstInvalidField(errorsById)) return;
+    const idempotencyKey = crypto.randomUUID();
+    const effectiveAt = new Date().toISOString();
+    if (mode === 'create' && onSubmitted) {
+      const equipmentId = crypto.randomUUID();
+      onSubmitted({
+        draft: pendingEquipmentDraft(equipmentId, form, clientSearch.options, siteOptions),
+        result: equipmentSubmissionResult(
+          runCreate({ ...payload, equipmentId, idempotencyKey, effectiveAt }),
+        ),
+      });
+      onOpenChange(false);
+      return;
+    }
+    const result = await saveEquipment({
+      mode,
+      initial,
+      form,
+      payload,
+      idempotencyKey,
+      effectiveAt,
+      carryOver: carryOver?.input ?? { plans: [], components: [] },
+      runners: { runCreate, runUpdate, runReplace },
+    });
+    if (!result.success) {
+      setError(carryOver?.errorMessage(result.error) ?? equipmentErrorMessage(result.error));
+      return;
+    }
+    onOpenChange(false);
+    if (mode === 'edit' && onSaved) {
+      onSaved();
+      return;
+    }
+    // The action revalidates, so its response already carries fresh route data.
+    router.push(`/service/anlagen/${encodeURIComponent(result.equipment.equipment_number)}`);
+  }
+
+  return {
+    form,
+    setForm,
+    updateField,
+    error,
+    fieldErrors,
+    attempted,
+    isPending,
+    clientSearch,
+    clientOption,
+    siteOptions,
+    parentOptions,
+    handleSubmit,
+  };
+}

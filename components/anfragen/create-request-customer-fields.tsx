@@ -1,0 +1,131 @@
+'use client';
+
+import { ClientSelectWithCreate } from '@/components/auftraege/shared/client-select-with-create';
+import { SiteContactFields } from '@/components/auftraege/shared/site-contact-fields';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { RequestEquipmentField } from './request-equipment-field';
+import type { CreateRequestForm } from './use-create-request-form';
+
+interface CreateRequestCustomerFieldsProps {
+  form: CreateRequestForm;
+}
+
+/** The caller's data while the request has no customer yet. */
+function CreateRequestCallerFields({ form }: CreateRequestCustomerFieldsProps) {
+  const {
+    callerName,
+    setCallerName,
+    callerPhone,
+    setCallerPhone,
+    callerEmail,
+    setCallerEmail,
+    callerAddress,
+    setCallerAddress,
+    isLoading,
+  } = form;
+
+  return (
+    <div className="grid gap-3 rounded-md border bg-muted/20 p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Anrufer/in (noch kein Kunde)
+      </p>
+      <Field label="Name" htmlFor="request-caller-name">
+        <Input
+          placeholder="Name der Anruferin / des Anrufers"
+          value={callerName}
+          onChange={(e) => setCallerName(e.target.value)}
+          disabled={isLoading}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Telefon" htmlFor="request-caller-phone">
+          <Input
+            type="tel"
+            placeholder="+49 123 456789"
+            value={callerPhone}
+            onChange={(e) => setCallerPhone(e.target.value)}
+            disabled={isLoading}
+          />
+        </Field>
+        <Field label="E-Mail" htmlFor="request-caller-email">
+          <Input
+            type="text"
+            inputMode="email"
+            placeholder="name@beispiel.de"
+            value={callerEmail}
+            onChange={(e) => setCallerEmail(e.target.value)}
+            disabled={isLoading}
+          />
+        </Field>
+      </div>
+      <Field label="Adresse" htmlFor="request-caller-address">
+        <Input
+          placeholder="Straße, PLZ Ort"
+          value={callerAddress}
+          onChange={(e) => setCallerAddress(e.target.value)}
+          disabled={isLoading}
+        />
+      </Field>
+    </div>
+  );
+}
+
+/** The customer with site and contact, or the caller data while no customer is chosen. */
+export function CreateRequestCustomerFields({ form }: CreateRequestCustomerFieldsProps) {
+  const {
+    clientId,
+    handleClientChange,
+    siteId,
+    handleSiteChange,
+    equipmentId,
+    setEquipmentId,
+    contactId,
+    setContactId,
+    isLoading,
+  } = form;
+
+  return (
+    <>
+      <Separator />
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Kunde</p>
+
+      <Field
+        label="Kunde"
+        htmlFor="request-client"
+        description={
+          !clientId
+            ? 'Unbekannte Anrufer kannst du unten festhalten und später einem Kunden zuordnen.'
+            : undefined
+        }
+      >
+        <ClientSelectWithCreate value={clientId} onValueChange={handleClientChange} disabled={isLoading} />
+      </Field>
+
+      {clientId ? (
+        <>
+          <SiteContactFields
+            clientId={clientId}
+            siteId={siteId}
+            contactId={contactId}
+            onSiteChange={(nextSiteId) => handleSiteChange(nextSiteId)}
+            onContactChange={setContactId}
+            disabled={isLoading}
+            idPrefix="request"
+          />
+          <RequestEquipmentField
+            idPrefix="request"
+            clientId={clientId}
+            siteId={siteId}
+            value={equipmentId}
+            onChange={setEquipmentId}
+            disabled={isLoading}
+          />
+        </>
+      ) : (
+        <CreateRequestCallerFields form={form} />
+      )}
+    </>
+  );
+}

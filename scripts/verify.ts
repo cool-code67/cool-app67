@@ -1,0 +1,953 @@
+import { withVerificationReport } from '../lib/testing/runner/verification-lifecycle';
+import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { z } from 'zod';
+import { readBuildReceipt } from '../lib/testing/evidence/build-identity';
+import { readReportHistory } from '../lib/testing/evidence/report-history';
+import {
+  captureInputSnapshot,
+  changedInputs,
+  groupAttemptKey,
+  groupAttemptProblem,
+  groupResultSchema,
+  INPUT_DRIFT_REASON,
+  inputSnapshotSchema,
+  isDocumentationInput,
+  reusableGroupResult,
+  type GroupResult,
+} from '../lib/testing/evidence/group-evidence';
+import { ADVISORY_GROUP_ID, freshAdvisoryPass } from '../lib/testing/evidence/advisory-freshness';
+import { expandGroupAliases } from '../lib/testing/selection/component-areas';
+import {
+  getGroupTimingRequirements,
+  getTestGroups,
+  isPerformanceSpec,
+  type TestGroup,
+} from '../lib/testing/selection/test-groups';
+import {
+  createGroupQualification,
+  directGroupRetryProblem,
+} from '../lib/testing/evidence/group-qualification';
+import { writeJsonAtomically } from '../lib/testing/runner/file-lock';
+import { withWorkspaceTestLock } from '../lib/testing/runner/workspace-test-lock';
+import { runSessionCommand } from '../lib/testing/local-stack/test-session';
+import { withStackLock } from '../lib/testing/runner/stack-lock';
+import { workspaceAppOrigin } from '../lib/testing/runner/app-port';
+import { runWithLogCleanup } from '../lib/testing/runner/command-log';
+import { loadEnvLocal } from '../tests/golden/support/env';
+import {
+  changedTestsFirstBlock,
+  holdOutsideMidnightWindow,
+  overlapsNeighbours,
+  runGroupSchedule,
+} from '../lib/testing/runner/group-schedule';
+import {
+  createRunKey,
+  listRunManifests,
+  manifestPath,
+  readRunManifest,
+  runDirectory,
+  type RunManifest,
+} from '../tests/golden/support/run-state';
+import { checkLatencyEvidence, latencyEvidenceSchema } from '../lib/testing/latency-evidence';
+import { checkLabEvidence, labEvidenceSchema, type LabEvidenceCheck } from '../lib/testing/lab-evidence';
+import { recoveredEnvironmentRuns } from '../lib/testing/runner/group-recovery';
+import {
+  DIAGNOSED_ATTEMPT_KINDS,
+  readGroupDiagnoses,
+  recoveredGroupAttempts,
+  undiagnosedAttemptProblem,
+} from '../lib/testing/evidence/group-diagnosis';
+import {
+  changedTestTier,
+  groupSelections,
+  measuredGroupsForChange,
+  passedSinceSelection,
+  selectionBaseline,
+} from '../lib/testing/selection/group-selection';
+import { renderedSurfaceFiles, surfaceRoots } from '../lib/testing/selection/surface-closure';
+import { calculateCandidateFingerprint } from '../lib/testing/evidence/candidate-identity';
+import {
+  browserGroupReuseProblem,
+  unclassifiedFailureProblem,
+  unresolvedBrowserGroupIds,
+} from '../lib/testing/evidence/browser-group-evidence';
+import { RELEASE_DIAGNOSIS_FILE, releaseAttemptProblem } from '../lib/testing/publication/release-breaker';
+import { browserStorageProblem, pruneRunArchive } from '../lib/testing/runs/run-retention';
+import {
+  discoverPlaywrightSelection,
+  exactFileFilter,
+  selectedDiscoveryArguments,
+  type DiscoveredPlaywrightTest,
+} from '../lib/testing/runner/playwright-discovery';
+import { PREPARED_PLAN_ENV, writePreparedPlan, type PreparedPlan } from '../lib/testing/runner/prepared-plan';
+import { PLAYWRIGHT_SUITES } from '../lib/testing/runner/run-policy';
+import { ensureRealtimeHealthy } from '../lib/testing/local-stack/realtime-health';
+import { formatCampaignSummary, summarizeCampaign } from '../lib/testing/evidence/campaign-summary';
+import { runPlaywrightPreflight } from './playwright-preflight';
+import { lastCommitTime, readCampaignReports } from './campaign-summary';
+import { probeRealtimeReadiness, restartLocalRealtimeContainer } from './realtime-probe';
+import { requireEnv } from '../tests/golden/support/env';
+import { getR2Endpoint } from '../lib/storage/r2';
+import {
+  backendDownBeforeGroupReason,
+  backendHealthAfterFailureNote,
+  backendHealthBeforeGroup,
+  backendHealthProbes,
+  checkBackendHealth,
+  type BackendHealth,
+} from '../lib/testing/runner/backend-health';
+import { acquireHeavySlot } from '../lib/testing/runner/heavy-slot';
+import { unavailableNotice } from '../lib/testing/boat/boat-unavailable';
+import { heldBackHere, verifyOnBoat } from '../lib/testing/boat/verify-on-boat';
+import { localDriftNotice } from '../lib/testing/local-stack/migration-drift';
+
+// A run goes to a Boat machine when this workstation has a Boat key (lib/testing/boat/verify-on-boat.ts).
+// When Boat is unavailable, only the cheap groups run here and the heavy ones are recorded blocked.
+// A local run holds one of the machine's heavy slots until it exits
+// (lib/testing/runner/heavy-slot.ts); a plan takes neither.
+let boatUnavailable: string | undefined;
+if (process.argv[2] === 'run') {
+  const boat = await verifyOnBoat(process.argv.slice(3), resolve(import.meta.dir, '..'));
+  if (typeof boat === 'number') process.exit(boat);
+  boatUnavailable = boat?.unavailable;
+  await acquireHeavySlot('test:verify');
+}
+
+const repository = resolve(import.meta.dir, '..');
+const archive = resolve(repository, '.agent-logs/verification');
+/** What the plan reads of the archive, cached beside it (lib/testing/evidence/report-history.ts). */
+const historyCache = resolve(repository, '.agent-logs/verification-history.json');
+const BROWSER_KINDS: ReadonlySet<TestGroup['kind']> = new Set(['golden', 'audit', 'canary']);
+/** Browser workers share one application server and one local stack; beyond eight the server, not the groups, is the bottleneck. */
+const MAX_JOBS = 8;
+/** A warm local Realtime tenant confirms a database subscription well under this; a slower answer gets one restart. */
+const REALTIME_HEALTHY_MS = 5_000;
+const reportSchema = z.object({
+  version: z.literal(1),
+  id: z.string(),
+  startedAt: z.string(),
+  completedAt: z.string().nullable(),
+  mode: z.enum(['change', 'release']),
+  target: z.enum(['local', 'cloud']),
+  status: z.enum(['running', 'passed', 'failed']),
+  snapshot: inputSnapshotSchema,
+  scope: z.enum(['selected-groups', 'all-required-groups']),
+  jobs: z.number().int().min(1).max(MAX_JOBS),
+  selected: z.array(z.string()),
+  results: z.array(groupResultSchema),
+  /** Why each group was selected and which changed files selected it. */
+  selection: z
+    .record(z.string(), z.object({ reason: z.string(), changedFiles: z.array(z.string()) }))
+    .default({}),
+  measurements: z.record(z.string(), latencyEvidenceSchema).default({}),
+  /** The lab tables of the lab groups (docs/technical/performance.md), as the author and the reviewer read them. */
+  labCounts: z.record(z.string(), labEvidenceSchema).default({}),
+});
+
+function uncommittedInputChanges(snapshot: z.infer<typeof inputSnapshotSchema>): string[] {
+  const options = { cwd: repository, encoding: 'utf8' as const, maxBuffer: 16 * 1024 * 1024 };
+  const changed = execFileSync(
+    'git',
+    ['-c', 'core.safecrlf=false', 'diff', '--name-only', '-z', 'HEAD', '--'],
+    options,
+  );
+  const added = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], options);
+  return [...new Set([...changed.split('\0'), ...added.split('\0')])].filter(
+    (file) =>
+      file &&
+      !isDocumentationInput(file) &&
+      (file in snapshot.files || !existsSync(resolve(repository, file))),
+  );
+}
+
+function parseArguments(): {
+  execute: boolean;
+  mode: 'change' | 'release';
+  target: 'local' | 'cloud';
+  jobs: number;
+  fresh: boolean;
+  untimed: boolean;
+  groupIds?: string[];
+} {
+  const args = process.argv.slice(2);
+  const execute = args[0] === 'run';
+  if (!['run', 'plan'].includes(args.shift() ?? ''))
+    throw new Error('Use bun run test:plan or bun run test:verify.');
+  const values: Record<string, string> = {};
+  let fresh = false;
+  let untimed = false;
+  for (let name = args.shift(); name !== undefined; name = args.shift()) {
+    // `--fresh` runs the selected groups even when a proof exists: harness measurement and calibration need real executions.
+    if (name === '--fresh') {
+      fresh = true;
+      continue;
+    }
+    // `--untimed` runs a wall-clock group's steps on any machine: CI's full runs (lib/testing/selection/ci-plan.ts).
+    if (name === '--untimed') {
+      untimed = true;
+      continue;
+    }
+    if (!['--mode', '--target', '--group', '--jobs'].includes(name) || values[name])
+      throw new Error(`Unknown or repeated argument: ${name}`);
+    const value = args.shift();
+    if (!value || value.startsWith('--')) throw new Error(`${name} requires a value.`);
+    values[name] = value;
+  }
+  if (fresh && !values['--group']) throw new Error('--fresh applies to an explicit --group selection only.');
+  if (untimed && values['--mode'] === 'release')
+    throw new Error('Release verification judges every deadline; --untimed applies to change mode only.');
+  return {
+    execute,
+    fresh,
+    untimed,
+    jobs: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_JOBS)
+      .parse(values['--jobs'] ?? process.env.WERKFLOW_VERIFY_JOBS ?? '1'),
+    mode: z.enum(['change', 'release']).parse(values['--mode'] ?? 'change'),
+    target: z.enum(['local', 'cloud']).parse(values['--target'] ?? 'local'),
+    ...(values['--group'] ? { groupIds: values['--group'].split(',') } : {}),
+  };
+}
+
+function commandForGroup(group: TestGroup, target: 'local' | 'cloud'): string[] {
+  switch (group.kind) {
+    case 'golden':
+    case 'audit':
+    case 'canary':
+      return [
+        process.execPath,
+        'scripts/run-playwright.ts',
+        'group',
+        group.kind,
+        '--group',
+        group.id,
+        '--target',
+        target,
+      ];
+    case 'unit':
+      return [process.execPath, 'run', 'test:unit'];
+    case 'ui':
+      // One exact filter per spec, so an area runs its own specs and every one of them.
+      return [process.execPath, 'run', 'test:ui', ...group.files.map(exactFileFilter)];
+    case 'sql':
+      return [process.execPath, 'scripts/run-sql-assertions.ts', ...group.files];
+    case 'static': {
+      if (!group.script)
+        throw new Error(
+          `Static group ${group.id} declares no package script in lib/testing/selection/test-groups.ts.`,
+        );
+      return [process.execPath, 'run', group.script];
+    }
+  }
+}
+
+/** The manifest of a run the parent named itself; a missing file means Playwright never started. */
+/**
+ * The lab evidence of a lab group's run; undefined for any other group. Its
+ * ceilings, budgets and floors apply in every plan, so a change plan that
+ * selects the group by scope blocks a count or payload regression and an
+ * unratcheted fall alike.
+ */
+function labEvidenceOf(
+  timing: { requiredLabSteps?: readonly string[] | undefined },
+  runKey: string,
+): LabEvidenceCheck | undefined {
+  const requiredSteps = timing.requiredLabSteps ?? [];
+  if (!requiredSteps.length) return undefined;
+  return checkLabEvidence({
+    directory: runDirectory(runKey),
+    runKey,
+    requiredSteps,
+    enforceCeilings: true,
+  });
+}
+
+function readRunManifestIfPresent(runKey: string): RunManifest | undefined {
+  return existsSync(manifestPath(runKey)) ? readRunManifest(runKey) : undefined;
+}
+
+/** One bounded probe of the application-to-backend path a browser group writes through. */
+function probeBrowserBackend(): Promise<BackendHealth> {
+  return checkBackendHealth(
+    backendHealthProbes({
+      appOrigin: workspaceAppOrigin(repository),
+      supabaseUrl: requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
+      publishableKey: requireEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
+      storageEndpoint: getR2Endpoint(),
+    }),
+  );
+}
+
+async function main(): Promise<void> {
+  const options = parseArguments();
+  loadEnvLocal();
+  const planningStarted = performance.now();
+  const planningTime = new Date();
+  console.log('[verify] Reading current inputs and prior evidence...');
+  const groups = getTestGroups(repository);
+  const snapshot = captureInputSnapshot(repository);
+  const history = readReportHistory(archive, historyCache).filter(
+    (report) => report.target === options.target,
+  );
+  const priorResults = history.flatMap((report) =>
+    report.results.map((result) => ({ ...result, snapshot: report.snapshot })),
+  );
+  const browserHistory = listRunManifests();
+  const baseline = selectionBaseline(history);
+  const changed = baseline ? changedInputs(baseline.snapshot, snapshot) : uncommittedInputChanges(snapshot);
+  console.log(
+    `[verify] Inputs and history read in ${((performance.now() - planningStarted) / 1000).toFixed(1)}s; qualifying groups...`,
+  );
+  const qualification = createGroupQualification(repository, groups, snapshot);
+  const candidates = groups.filter((group) =>
+    options.target === 'cloud' ? group.kind === 'canary' : group.kind !== 'canary',
+  );
+  // Against every group, so an alias of an incompatible kind still fails below instead of selecting nothing.
+  const groupIds = options.groupIds && expandGroupAliases(options.groupIds, groups);
+  if (groupIds?.some((id) => !candidates.some((group) => group.id === id)))
+    throw new Error(
+      'Requested group is unknown or incompatible with the target/mode. Use test:plan to list available groups.',
+    );
+  if (options.mode === 'release' && groupIds)
+    throw new Error('Release verification cannot omit groups. Use change mode for focused work.');
+  const selected = groupIds ? candidates.filter((group) => groupIds.includes(group.id)) : candidates;
+  const qualified = selected
+    .map((group) => ({
+      group,
+      ...qualification.qualify(group),
+      timing: getGroupTimingRequirements(group, repository),
+      // Deadlines fail a group in release mode and for a performance group; elsewhere, and with
+      // `--untimed`, they are recorded. Missing, malformed or unconfirmed evidence fails either way.
+      enforceDeadlines:
+        !options.untimed && (options.mode === 'release' || group.files.some(isPerformanceSpec)),
+    }))
+    .map((entry) => ({
+      ...entry,
+      // Changed-spec-first: in a change plan, browser groups whose own test code changed run first.
+      tier:
+        options.mode === 'change' && BROWSER_KINDS.has(entry.group.kind)
+          ? changedTestTier(entry.executionInputs, changed)
+          : -1,
+    }))
+    .sort((left, right) => {
+      const order = { static: 0, unit: 1, sql: 2, ui: 3, golden: 4, audit: 4, canary: 4 };
+      return order[left.group.kind] - order[right.group.kind] || left.tier - right.tier;
+    });
+  const latestResults = new Map(
+    [...priorResults]
+      .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
+      .map((result) => [result.groupId, result]),
+  );
+  const unresolved = [...latestResults.values()]
+    .filter((result) => result.status !== 'passed')
+    .map((result) => result.groupId);
+  unresolved.push(...unresolvedBrowserGroupIds(browserHistory, options.target));
+  const rendered = renderedSurfaceFiles(qualification.graph, surfaceRoots(repository));
+  const selections = groupSelections({
+    mode: options.mode,
+    groups: qualified.map((entry) => ({
+      id: entry.group.id,
+      kind: entry.group.kind,
+      scopes: entry.group.scopes,
+      executionInputs: entry.executionInputs,
+      trigger: entry.group.changeTrigger,
+      renderedFiles: rendered.get(entry.group.id),
+    })),
+    changedFiles: changed,
+    unresolvedGroupIds: unresolved,
+  });
+  const automatic = !options.groupIds && options.target !== 'cloud';
+  const planning = (automatic ? qualified.filter((entry) => selections.has(entry.group.id)) : qualified).map(
+    (entry) => {
+      const priorResult = (): GroupResult | undefined =>
+        reusableGroupResult({
+          groupId: entry.group.id,
+          fingerprint: entry.fingerprint,
+          inputs: entry.inputs,
+          snapshot,
+          results: priorResults,
+        });
+      // Cheap current-policy checks always execute, including documentation and catalog validation;
+      // an automatic change plan copies an advisory pass while it is under 24 hours old.
+      let reusable =
+        entry.group.kind === 'canary' || options.fresh
+          ? undefined
+          : entry.group.id === ADVISORY_GROUP_ID
+            ? automatic && options.mode === 'change'
+              ? freshAdvisoryPass(priorResult(), planningTime)
+              : undefined
+            : entry.group.kind === 'static'
+              ? undefined
+              : priorResult();
+      // A browser proof fingerprints test code only, so its pass must also have run on the current content of the files that selected it.
+      if (
+        reusable &&
+        ['golden', 'audit'].includes(entry.group.kind) &&
+        (!reusable.snapshot ||
+          !reusable.runKey ||
+          !passedSinceSelection({
+            then: reusable.snapshot.files,
+            now: snapshot.files,
+            selection: automatic ? selections.get(entry.group.id) : undefined,
+          }) ||
+          browserGroupReuseProblem({ result: reusable, target: options.target, runs: browserHistory }) ||
+          checkLatencyEvidence({
+            directory: runDirectory(reusable.runKey),
+            ...entry.timing,
+            enforceDeadlines: entry.enforceDeadlines,
+          }).problems.length ||
+          labEvidenceOf(entry.timing, reusable.runKey)?.problems.length)
+      )
+        reusable = undefined;
+      return { ...entry, reusable };
+    },
+  );
+  // Without Boat the heavy groups never run here by default; they are recorded blocked.
+  const heldBack = new Set(
+    boatUnavailable === undefined
+      ? []
+      : planning
+          .filter((entry) => !entry.reusable && heldBackHere(entry.group.id, options.untimed))
+          .map((entry) => entry.group.id),
+  );
+  const heldBackReason = `Boat was unavailable (${boatUnavailable ?? ''}), and a heavy group never runs on this workstation by default. Run it on Boat, or here with WERKFLOW_VERIFY_LOCAL=1.`;
+  const freshBrowserEntries = planning.filter(
+    (entry) => !entry.reusable && BROWSER_KINDS.has(entry.group.kind) && !heldBack.has(entry.group.id),
+  );
+  const repairing =
+    automatic &&
+    options.mode === 'change' &&
+    planning.some((entry) => selections.get(entry.group.id)?.reason.startsWith('Repair'));
+  console.log(`[verify] Plan prepared in ${((performance.now() - planningStarted) / 1000).toFixed(1)}s.`);
+  console.log(
+    `Verification ${options.mode}/${options.target}: ${changed.length} changed inputs since ${baseline ? `report ${baseline.id}` : 'HEAD'}; ${planning.length} required groups; ${freshBrowserEntries.length} browser groups to run on up to ${options.jobs} workers. Performance, freshness, SQL and setup gates run alone.`,
+  );
+  if (options.untimed)
+    console.log(
+      '[verify] Untimed: every group runs its steps and records its timings; no deadline, budget or reference comparison fails it.',
+    );
+  if (repairing)
+    console.log(
+      '[verify] Repair mode: the browser groups whose latest result failed or was blocked, and those whose own test code changed, are selected. Their pass verifies the repair.',
+    );
+  if (changed.length > 0 && changed.length <= 12) console.log(`[verify] changed: ${changed.join(', ')}`);
+  for (const entry of planning) {
+    const browser = ['golden', 'audit'].includes(entry.group.kind);
+    const proof = entry.reusable
+      ? `passed ${browser ? 'since selection, ' : ''}${entry.reusable.completedAt}`
+      : browser
+        ? 'no pass since selection'
+        : 'missing or changed proof';
+    console.log(
+      `${entry.reusable ? 'REUSE' : 'RUN  '} ${entry.group.id} | ${automatic ? (selections.get(entry.group.id)?.reason ?? 'Explicit selection') : 'Explicit selection'} | ${entry.inputs.length} proof inputs | ${proof}`,
+    );
+  }
+  // Every worktree shares one local stack; a local plan that reads it names any migration drift first.
+  const fresh = planning
+    .filter((entry) => !entry.reusable && !heldBack.has(entry.group.id))
+    .map((entry) => entry.group.id);
+  const drift = options.target === 'local' ? localDriftNotice(repository, fresh) : undefined;
+  if (drift) console.log(`[verify] ${drift}`);
+  if (automatic) {
+    // One line per reason, so a large selection names the change that caused it.
+    const causes = new Map<string, { groups: number; file: string | undefined }>();
+    for (const entry of planning) {
+      const selection = selections.get(entry.group.id);
+      if (!selection || !BROWSER_KINDS.has(entry.group.kind)) continue;
+      const cause = causes.get(selection.reason) ?? { groups: 0, file: selection.changedFiles[0] };
+      causes.set(selection.reason, { ...cause, groups: cause.groups + 1 });
+    }
+    for (const [reason, cause] of causes)
+      console.log(
+        `[verify] ${reason}: ${cause.groups} browser groups${cause.file ? `; first selecting file ${cause.file}` : ''}`,
+      );
+  }
+  const firstTier = planning.filter((entry) => entry.tier === 0 && !entry.reusable);
+  if (firstTier.length)
+    console.log(
+      `[verify] Changed-spec tier runs first (${firstTier.length}): ${firstTier.map((entry) => entry.group.id).join(', ')}. When one fails, the later browser groups wait for the repair.`,
+    );
+  if (automatic && options.mode === 'change')
+    for (const measured of measuredGroupsForChange(
+      qualified.map((entry) => entry.group),
+      changed,
+    ))
+      console.log(
+        `[verify] Wall-clock group for this change, not selected: ${measured.id} (first file ${measured.changedFiles[0]}). CI's full runs run only its steps, untimed (docs/technical/performance.md); before a release, on a quiet machine run: bun run test:verify --group ${measured.id}`,
+      );
+  if (boatUnavailable !== undefined)
+    for (const line of unavailableNotice(boatUnavailable, [...heldBack], process.argv.slice(3)))
+      console.log(`[verify] ${line}`);
+  // The breaker and the archive guard refuse in run mode and only warn in plan mode, so the plan still lists what a focused run must prove.
+  const refusals = [
+    options.mode === 'release'
+      ? releaseAttemptProblem({
+          history,
+          current: new Map(
+            qualified.map((entry) => [
+              entry.group.id,
+              { fingerprint: entry.fingerprint, inputs: entry.inputs },
+            ]),
+          ),
+          snapshot,
+          hasDiagnosis: (reportId) => existsSync(resolve(archive, reportId, RELEASE_DIAGNOSIS_FILE)),
+        })
+      : undefined,
+    unclassifiedFailureProblem({
+      groupIds: freshBrowserEntries.map((entry) => entry.group.id),
+      target: options.target,
+      runs: browserHistory,
+    }),
+    undiagnosedAttemptProblem({
+      groupIds: planning
+        .filter(
+          (entry) =>
+            !entry.reusable && DIAGNOSED_ATTEMPT_KINDS.has(entry.group.kind) && !heldBack.has(entry.group.id),
+        )
+        .map((entry) => entry.group.id),
+      results: priorResults,
+      diagnoses: readGroupDiagnoses(archive),
+    }),
+  ].filter((refusal): refusal is string => Boolean(refusal));
+  for (const refusal of refusals) console.log(`[verify] refused: ${refusal}`);
+  // Free disk space is this machine's own, and a Boat machine has its own disk: only the refusals
+  // above, which the evidence history decides, stop a run before Boat starts a machine for it.
+  const storage = freshBrowserEntries.length ? browserStorageProblem(repository) : undefined;
+  if (storage) console.log(`[verify] refused on this machine: ${storage}`);
+  if (!options.execute) return;
+  if (refusals.length || storage) throw new Error([...refusals, storage].filter(Boolean).join('\n'));
+  await withWorkspaceTestLock({ operation: 'independent verification groups' }, async () => {
+    if (changedInputs(snapshot, captureInputSnapshot(repository)).length)
+      throw new Error('Inputs changed after planning. Re-plan before executing or reusing results.');
+    // One archive scan for the whole run: the retry rules and the reuse checks read this list, not the disk.
+    const lockedRuns = listRunManifests();
+    const recoveredRunKeys = recoveredEnvironmentRuns(lockedRuns);
+    // A group without a browser run records its diagnosis beside the report: bun run test:runs classify <group-id> ...
+    const recoveredAttemptKeys = recoveredGroupAttempts(readGroupDiagnoses(archive));
+    const candidateFingerprint = freshBrowserEntries.length ? calculateCandidateFingerprint(repository) : '';
+    for (const entry of planning) {
+      if (!entry.reusable || !['golden', 'audit'].includes(entry.group.kind)) continue;
+      const invalid = browserGroupReuseProblem({
+        result: entry.reusable,
+        target: options.target,
+        runs: lockedRuns,
+      });
+      const latencyProblems = entry.reusable.runKey
+        ? [
+            ...checkLatencyEvidence({
+              directory: runDirectory(entry.reusable.runKey),
+              ...entry.timing,
+              enforceDeadlines: entry.enforceDeadlines,
+            }).problems,
+            ...(labEvidenceOf(entry.timing, entry.reusable.runKey)?.problems ?? []),
+          ]
+        : ['Missing browser run identity'];
+      if (invalid || latencyProblems.length)
+        throw new Error(
+          `Cannot reuse ${entry.group.id}: ${invalid ?? latencyProblems.join('; ')}. Re-plan or diagnose the archived evidence.`,
+        );
+    }
+    const id = `${new Date().toISOString().replaceAll(':', '').replaceAll('.', '')}-${randomUUID().slice(0, 8)}`;
+    const directory = resolve(archive, id);
+    mkdirSync(directory, { recursive: true });
+    const report: z.infer<typeof reportSchema> = {
+      version: 1,
+      id,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      mode: options.mode,
+      target: options.target,
+      scope: options.groupIds ? 'selected-groups' : 'all-required-groups',
+      jobs: options.jobs,
+      status: 'running',
+      snapshot,
+      selected: planning.map((entry) => entry.group.id),
+      results: [],
+      measurements: {},
+      labCounts: {},
+      selection: Object.fromEntries(
+        planning.flatMap((entry) => {
+          const selection = automatic ? selections.get(entry.group.id) : undefined;
+          return selection
+            ? [[entry.group.id, { reason: selection.reason, changedFiles: [...selection.changedFiles] }]]
+            : [];
+        }),
+      ),
+    };
+    const planIndex = new Map(planning.map((entry, index) => [entry.group.id, index]));
+    // Workers finish in any order; the report lists results in plan order.
+    const publish = (): void => {
+      report.results.sort(
+        (left, right) => (planIndex.get(left.groupId) ?? 0) - (planIndex.get(right.groupId) ?? 0),
+      );
+      // Parsing drops the snapshot that reading the history attaches to a reused result: until
+      // 2026-10-23 every copy carried its report's whole snapshot, and one plan's report grew to 39 MB.
+      writeJsonAtomically(resolve(directory, 'report.json'), reportSchema.parse(report));
+    };
+    await withVerificationReport({
+      report,
+      groups: planning.map((entry) => ({
+        groupId: entry.group.id,
+        fingerprint: entry.fingerprint,
+        logPath: resolve(directory, `${entry.group.id.replaceAll(':', '-')}.log`),
+      })),
+      publish,
+      run: async (signal) => {
+        // The shared work of a browser run happens once here: the server and backend preflight, one
+        // discovery per suite, the run identity per group. Each group runner reads the prepared plan.
+        const runKeys = new Map<string, string>();
+        let preparation: Promise<void> | undefined;
+        const prepareBrowsers = async (): Promise<void> => {
+          signal.throwIfAborted();
+          await runPlaywrightPreflight({ lane: 'group', target: options.target, repositoryRoot: repository });
+          signal.throwIfAborted();
+          const discoveries: PreparedPlan['discoveries'] = {};
+          for (const suite of new Set(
+            freshBrowserEntries.flatMap((entry) =>
+              PLAYWRIGHT_SUITES.filter((candidate) => candidate === entry.group.kind),
+            ),
+          )) {
+            const playwrightArgs = selectedDiscoveryArguments(
+              freshBrowserEntries.map((entry) => entry.group),
+              suite,
+            );
+            const tests: DiscoveredPlaywrightTest[] = (
+              await discoverPlaywrightSelection({ suite, playwrightArgs, repositoryRoot: repository, signal })
+            ).tests;
+            discoveries[suite] = tests;
+            console.log(`[verify] discovered ${tests.length} ${suite} tests`);
+          }
+          const buildId = readBuildReceipt(repository).buildId;
+          const preparedPath = resolve(directory, 'prepared-plan.json');
+          writePreparedPlan(preparedPath, {
+            version: 1,
+            target: options.target,
+            preparedAt: new Date().toISOString(),
+            buildId,
+            discoveries,
+            groups: Object.fromEntries(
+              freshBrowserEntries.map((entry) => {
+                const runKey = createRunKey();
+                runKeys.set(entry.group.id, runKey);
+                return [
+                  entry.group.id,
+                  { fingerprint: entry.fingerprint, runKey, enforceDeadlines: entry.enforceDeadlines },
+                ];
+              }),
+            ),
+          });
+          process.env[PREPARED_PLAN_ENV] = preparedPath;
+        };
+        // Only a failed shared prerequisite blocks the groups after it: a static gate, a drift of the
+        // inputs, or an interruption. A browser group's own failure never blocks its neighbours.
+        let globalBlock: string | undefined;
+        const failedFirstTier: string[] = [];
+        await runGroupSchedule({
+          entries: planning,
+          jobs: options.jobs,
+          tier: (entry) => entry.tier,
+          canOverlap: (entry) => overlapsNeighbours(entry.group.kind, Boolean(entry.timing.exclusive)),
+          run: async (entry) => {
+            if (entry.reusable) {
+              if (entry.reusable.runKey) {
+                report.measurements[entry.group.id] = checkLatencyEvidence({
+                  directory: runDirectory(entry.reusable.runKey),
+                  ...entry.timing,
+                  enforceDeadlines: entry.enforceDeadlines,
+                });
+                const reusedLab = labEvidenceOf(entry.timing, entry.reusable.runKey);
+                if (reusedLab) report.labCounts[entry.group.id] = reusedLab;
+              }
+              report.results.push(entry.reusable);
+              publish();
+              return;
+            }
+            const logPath = resolve(directory, `${entry.group.id.replaceAll(':', '-')}.log`);
+            const browser = BROWSER_KINDS.has(entry.group.kind);
+            // A browser group may run again once anything in the tree changed since its failure; the cheap groups compare their own inputs.
+            const blocked =
+              (heldBack.has(entry.group.id) ? heldBackReason : undefined) ??
+              globalBlock ??
+              (entry.tier > 0 ? changedTestsFirstBlock(failedFirstTier) : undefined) ??
+              (entry.group.kind === 'static'
+                ? undefined
+                : browser
+                  ? directGroupRetryProblem({
+                      groupId: entry.group.id,
+                      target: options.target,
+                      candidateFingerprint,
+                      runs: lockedRuns,
+                      recoveredRunKeys,
+                    })
+                  : groupAttemptProblem({
+                      groupId: entry.group.id,
+                      fingerprint: entry.fingerprint,
+                      inputs: entry.inputs,
+                      snapshot,
+                      results: priorResults,
+                      recoveredRunKeys,
+                      recoveredAttemptKeys,
+                    }));
+            const recordBlocked = (reason: string, backendHealth?: BackendHealth): void => {
+              console.log(`[verify] ${entry.group.id}: blocked; ${reason}`);
+              const blockedAt = new Date().toISOString();
+              report.results.push({
+                groupId: entry.group.id,
+                fingerprint: entry.fingerprint,
+                status: 'blocked',
+                startedAt: blockedAt,
+                completedAt: blockedAt,
+                durationMs: 0,
+                runKey: null,
+                buildId: null,
+                logPath,
+                reason,
+                ...(backendHealth ? { backendHealth } : {}),
+              });
+              publish();
+            };
+            if (blocked) {
+              recordBlocked(blocked);
+              return;
+            }
+            // Preparation and the probe reach the shared gateway, so they wait for another worktree's measuring group.
+            const sharedHold = <T>(operation: string, work: () => Promise<T>): Promise<T> =>
+              options.target === 'local'
+                ? withStackLock({ mode: 'shared', operation, repositoryRoot: repository, signal }, work)
+                : work();
+            if (browser) {
+              preparation ??= sharedHold('browser preparation', prepareBrowsers);
+              await preparation;
+              const midnightBlock = await holdOutsideMidnightWindow({
+                groupId: entry.group.id,
+                ci: process.env.CI === 'true',
+                signal,
+                log: (line) => console.log(`[verify] ${line}`),
+              });
+              if (midnightBlock) {
+                recordBlocked(midnightBlock);
+                return;
+              }
+              // The preflight proved the backend once per run; one that died since blocks the group instead of failing it.
+              const before = await sharedHold(`${entry.group.id} backend probe`, () =>
+                backendHealthBeforeGroup({
+                  check: probeBrowserBackend,
+                  wait: (milliseconds) => new Promise((done) => setTimeout(done, milliseconds)),
+                }),
+              );
+              if (!before.healthy) {
+                recordBlocked(backendDownBeforeGroupReason(before), before);
+                return;
+              }
+            }
+            const startedAt = new Date().toISOString();
+            const runKey = runKeys.get(entry.group.id);
+            console.log(
+              `[verify] starting ${entry.group.id}${runKey ? ` as run ${runKey}` : ''}; log ${logPath}`,
+            );
+            const log = createWriteStream(logPath);
+            log.on('error', () => undefined);
+            let errorMessage: string | undefined;
+            let exitCode = 1;
+            const execute = async (holdEnvironment: Readonly<Record<string, string>>): Promise<void> => {
+              // A timing-sensitive group measures against the local Realtime service; a lagging tenant is
+              // restarted before the group, never blamed on the group afterwards.
+              if (browser && entry.timing.exclusive && options.target === 'local') {
+                await ensureRealtimeHealthy({
+                  probe: () =>
+                    probeRealtimeReadiness({
+                      url: requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
+                      publishableKey: requireEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
+                      secretKey: requireEnv('SUPABASE_SECRET_KEY'),
+                    }),
+                  restart: restartLocalRealtimeContainer,
+                  maxElapsedMs: REALTIME_HEALTHY_MS,
+                  log: (line) => console.log(`[verify] ${entry.group.id}: ${line}`),
+                });
+              }
+              try {
+                exitCode = await runWithLogCleanup({
+                  command: () =>
+                    runSessionCommand(commandForGroup(entry.group, options.target), {
+                      cwd: repository,
+                      env: { ...process.env, ...holdEnvironment },
+                      signal: signal,
+                      onStdout: (chunk) => log.write(chunk),
+                      onStderr: (chunk) => log.write(chunk),
+                    }),
+                  closeLog: () =>
+                    new Promise<void>((done, reject) =>
+                      log.end((error?: Error | null) => (error ? reject(error) : done())),
+                    ),
+                  reportSecondaryFailure: (error) =>
+                    console.error(`Log finalization failed: ${String(error)}`),
+                });
+              } catch (error) {
+                errorMessage = error instanceof Error ? error.message : String(error);
+              }
+            };
+            // Other worktrees share the local stack; a measuring group holds it alone (stack-lock.ts).
+            if (browser && options.target === 'local')
+              await withStackLock(
+                {
+                  mode: entry.timing.exclusive ? 'exclusive' : 'shared',
+                  operation: entry.group.id,
+                  repositoryRoot: repository,
+                  signal,
+                },
+                execute,
+              );
+            else await execute({});
+            const run = runKey ? readRunManifestIfPresent(runKey) : undefined;
+            const current = captureInputSnapshot(repository);
+            const drift = changedInputs(snapshot, current);
+            const latencyEvidence = run
+              ? checkLatencyEvidence({
+                  directory: runDirectory(run.runKey),
+                  ...entry.timing,
+                  enforceDeadlines: entry.enforceDeadlines,
+                })
+              : undefined;
+            if (latencyEvidence) {
+              report.measurements[entry.group.id] = latencyEvidence;
+              for (const measured of latencyEvidence.comparisons)
+                console.log(
+                  `[verify] ${entry.group.id}/${measured.scenarioId} ${measured.basis === 'median' ? `median of ${measured.samples.length} samples` : `sample ${measured.sample}`}: correctness=${measured.correctness}; responsiveness=${measured.responsiveness}; baseline=${measured.comparison.status}`,
+                );
+              for (const note of latencyEvidence.overTarget)
+                console.log(`[verify] ${entry.group.id}: ${note}`);
+            }
+            const labEvidence = run ? labEvidenceOf(entry.timing, run.runKey) : undefined;
+            if (labEvidence) {
+              report.labCounts[entry.group.id] = labEvidence;
+              for (const line of labEvidence.table) console.log(`[verify] ${entry.group.id} ${line}`);
+              for (const note of labEvidence.overTarget) console.log(`[verify] ${entry.group.id}: ${note}`);
+            }
+            const latencyProblems = [...(latencyEvidence?.problems ?? []), ...(labEvidence?.problems ?? [])];
+            const browserQualified =
+              !browser ||
+              (run?.status === 'passed' &&
+                Boolean(run.cleanedAt) &&
+                run.target === options.target &&
+                run.lane === 'group' &&
+                run.groupFingerprint === entry.fingerprint &&
+                run.buildId === readBuildReceipt(repository).buildId &&
+                run.total === run.passed &&
+                run.failed === 0 &&
+                run.skipped === 0);
+            const passed =
+              exitCode === 0 &&
+              !drift.length &&
+              !latencyProblems.length &&
+              browserQualified &&
+              !signal.aborted;
+            const failureDetails = [
+              errorMessage,
+              drift.length ? `${INPUT_DRIFT_REASON}: ${drift.join(', ')}` : undefined,
+              run?.failures[0]?.message,
+              ...latencyProblems,
+            ].filter((detail): detail is string => Boolean(detail));
+            // The probe after a failure only suggests environment; the trace and the classification decide (P1-08).
+            const backendHealth =
+              browser && !passed && !signal.aborted ? await probeBrowserBackend() : undefined;
+            const reason = passed
+              ? null
+              : [
+                  failureDetails.join('; ') || `Command exited ${exitCode}; inspect ${logPath}`,
+                  backendHealth && backendHealthAfterFailureNote(backendHealth),
+                ]
+                  .filter((detail): detail is string => Boolean(detail))
+                  .join('; ');
+            report.results.push({
+              groupId: entry.group.id,
+              fingerprint: entry.fingerprint,
+              status: passed ? 'passed' : browser && !run ? 'blocked' : 'failed',
+              startedAt,
+              completedAt: new Date().toISOString(),
+              durationMs: Date.now() - Date.parse(startedAt),
+              runKey: run?.runKey ?? null,
+              buildId: run?.buildId ?? null,
+              logPath,
+              reason,
+              ...(backendHealth ? { backendHealth } : {}),
+            });
+            publish();
+            console.log(
+              `[verify] ${entry.group.id}: ${passed ? 'passed' : 'failed'}${reason ? `; ${reason}` : ''}`,
+            );
+            if (!passed && browser && entry.tier === 0) failedFirstTier.push(entry.group.id);
+            if (!passed && (entry.group.kind === 'static' || drift.length || signal.aborted)) {
+              globalBlock = `Required setup or source validity failed in ${entry.group.id}. ${reason}`;
+            }
+          },
+        });
+        report.status =
+          !signal.aborted &&
+          report.results.length === planning.length &&
+          report.results.every((result) => result.status === 'passed')
+            ? 'passed'
+            : 'failed';
+        if (changedInputs(snapshot, captureInputSnapshot(repository)).length) {
+          report.status = 'failed';
+          console.error('Inputs changed during verification; this report cannot qualify acceptance.');
+        }
+        if (
+          options.mode === 'release' &&
+          listRunManifests().some((run) => run.retainedAt && !run.cleanedAt)
+        ) {
+          report.status = 'failed';
+          console.error('Release verification requires cleanup of every retained test world.');
+        }
+      },
+      summarize: () => {
+        const wallClockMinutes = (
+          (Date.parse(report.completedAt ?? report.startedAt) - Date.parse(report.startedAt)) /
+          60_000
+        ).toFixed(1);
+        console.log(
+          `[verify] ${report.status} in ${wallClockMinutes} min (${report.results.filter((result) => result.status === 'passed').length} passed, ${report.results.filter((result) => result.status === 'failed').length} failed, ${report.results.filter((result) => result.status === 'blocked').length} blocked): ${resolve(directory, 'report.json')}`,
+        );
+        // The campaign since the last commit, so the cost of a slice's verification is visible on every run.
+        console.log(
+          `[verify] ${formatCampaignSummary(
+            summarizeCampaign({
+              reports: readCampaignReports(),
+              runs: [
+                ...listRunManifests().map((run) => ({
+                  runKey: run.runKey,
+                  classification: run.classification,
+                })),
+                ...readGroupDiagnoses(archive).map((diagnosis) => ({
+                  runKey: groupAttemptKey(diagnosis),
+                  classification: diagnosis.classification,
+                })),
+              ],
+              since: lastCommitTime(),
+            }),
+          )}`,
+        );
+        process.exitCode = report.status === 'passed' ? 0 : 1;
+      },
+      // Inside the workspace lock, so no run writes the archive while it shrinks.
+      prune: () => pruneRunArchive('prune'),
+    });
+  });
+  // The run's last line, after the summary and the archive pruning.
+  if (heldBack.size)
+    console.log(
+      `[verify] NOT A PASS: ${heldBack.size} heavy groups did not run because Boat was unavailable (${boatUnavailable ?? ''}). See the block after the plan.`,
+    );
+}
+
+try {
+  await main();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}

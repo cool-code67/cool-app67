@@ -1,0 +1,283 @@
+'use client';
+
+import { describeFailure } from '@/lib/action-messages';
+import { useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+
+import { useBanner } from '@/components/ui/banner';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { InlinePending } from '@/components/ui/inline-pending';
+import { DatePicker } from '@/components/ui/date-picker';
+import { useBusyIds } from '@/hooks/use-busy-id';
+import { useServerAction } from '@/hooks/use-server-action';
+import { addClosureDay, removeClosureDay } from '@/lib/org/calendar-actions';
+import type { ClosureDay } from '@/lib/personnel/targets';
+import { formatBerlin, toLocalDateString } from '@/lib/utils';
+import { getBusinessTodayIso } from '@/lib/date-time/berlin';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+
+const CLOSURE_ERROR_MESSAGES = {
+  not_authorized: 'Du bist nicht berechtigt, Betriebsruhe-Tage zu ändern.',
+  invalid_date: 'Bitte gib ein gültiges Datum an.',
+  date_in_past:
+    'Vergangene Tage können nicht geändert werden – frühere Zeiträume behalten ihre damalige Bedeutung.',
+  duplicate_date: 'Für dieses Datum ist bereits Betriebsruhe eingetragen.',
+  closure_day_not_found: 'Der Betriebsruhe-Tag wurde nicht gefunden.',
+  create_failed: 'Der Betriebsruhe-Tag konnte nicht gespeichert werden.',
+  delete_failed: 'Der Betriebsruhe-Tag konnte nicht entfernt werden.',
+} satisfies Record<string, string>;
+
+function formatClosureDay(value: string): string {
+  return formatBerlin(value, 'weekdayDate');
+}
+
+function ClosureDayList({
+  closureDays,
+  canEditClosureDays,
+  todayIso,
+  isRemoving,
+  onRemove,
+}: {
+  closureDays: ClosureDay[];
+  canEditClosureDays: boolean;
+  todayIso: string;
+  isRemoving: (closureDayId: string) => boolean;
+  onRemove: (closureDayId: string) => Promise<void>;
+}) {
+  return (
+    <ul className="grid gap-2">
+      {closureDays.map((day) => {
+        const isPast = day.closureDate < todayIso;
+        const dayId = day.id;
+        return (
+          <li
+            key={day.id ?? day.closureDate}
+            className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{formatClosureDay(day.closureDate)}</p>
+              <p className="text-xs text-muted-foreground">
+                {day.label ?? 'Betriebsruhe'}
+                {isPast ? ' · vergangen' : ''}
+              </p>
+            </div>
+            {canEditClosureDays && !isPast && dayId && (
+              <div className="flex items-center gap-2">
+                <InlinePending active={isRemoving(dayId)} label="Betriebsruhe-Tag wird entfernt" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0 text-destructive hover:text-destructive"
+                  aria-label={`Betriebsruhe am ${formatClosureDay(day.closureDate)} entfernen`}
+                  pending={isRemoving(dayId)}
+                  onClick={() => onRemove(dayId)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+async function submitClosureDay({
+  runAddClosure,
+  closureDate,
+  closureLabel,
+  showBanner,
+  onAdded,
+}: {
+  runAddClosure: typeof addClosureDay;
+  closureDate: string;
+  closureLabel: string;
+  showBanner: ReturnType<typeof useBanner>['showBanner'];
+  onAdded: () => void;
+}): Promise<void> {
+  try {
+    const result = await runAddClosure({
+      closureDate,
+      label: closureLabel,
+    });
+    if (!result.success) {
+      showBanner({
+        message: describeFailure(result.error, CLOSURE_ERROR_MESSAGES, CLOSURE_ERROR_MESSAGES.create_failed),
+        variant: 'error',
+      });
+      return;
+    }
+    onAdded();
+    // The action's response renders the route with the new day.
+    showBanner({
+      message: 'Der Betriebsruhe-Tag wurde eingetragen.',
+      variant: 'success',
+    });
+  } catch {
+    showBanner({ message: CLOSURE_ERROR_MESSAGES.create_failed, variant: 'error' });
+  }
+}
+
+async function removeClosureDayWithFeedback(
+  closureDayId: string,
+  showBanner: ReturnType<typeof useBanner>['showBanner'],
+): Promise<void> {
+  const result = await removeClosureDay(closureDayId);
+  if (!result.success) {
+    showBanner({
+      message: describeFailure(result.error, CLOSURE_ERROR_MESSAGES, CLOSURE_ERROR_MESSAGES.delete_failed),
+      variant: 'error',
+    });
+    return;
+  }
+  showBanner({
+    message: 'Der Betriebsruhe-Tag wurde entfernt.',
+    variant: 'success',
+  });
+}
+
+function ClosureDaysHeader() {
+  return (
+    <CardHeader>
+      <CardTitle>Betriebsruhe</CardTitle>
+      <CardDescription>
+        Trage betriebsfreie Tage ein (z. B. Betriebsferien oder Brückentage). An diesen Tagen ist die
+        Sollarbeitszeit 0. Vergangene Tage können nicht geändert werden.
+      </CardDescription>
+    </CardHeader>
+  );
+}
+
+function ClosureDayForm({
+  closureDate,
+  closureLabel,
+  closureDateError,
+  isAddingClosure,
+  onSubmit,
+  onDateChange,
+  onLabelChange,
+}: {
+  closureDate: string;
+  closureLabel: string;
+  closureDateError: string | null;
+  isAddingClosure: boolean;
+  onSubmit: (event: React.FormEvent) => Promise<void>;
+  onDateChange: (date: Date | undefined) => void;
+  onLabelChange: (label: string) => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <Field label="Datum" htmlFor="closure-date" required error={closureDateError}>
+        <DatePicker
+          ariaLabel="Datum der Betriebsruhe"
+          value={closureDate ? new Date(`${closureDate}T00:00:00`) : undefined}
+          onChange={onDateChange}
+          disabled={isAddingClosure}
+        />
+      </Field>
+      <Field label="Bezeichnung (optional)" htmlFor="closure-label" className="flex-1">
+        <Input
+          placeholder="z. B. Betriebsferien"
+          value={closureLabel}
+          onChange={(e) => onLabelChange(e.target.value)}
+          disabled={isAddingClosure}
+        />
+      </Field>
+      <Button
+        pending={isAddingClosure}
+        type="submit"
+        variant="outline"
+        className="gap-1.5"
+        disabled={isAddingClosure}
+      >
+        <Plus className="size-4" />
+        Eintragen
+      </Button>
+    </form>
+  );
+}
+
+export function ClosureDaysCard({
+  closureDays,
+  canEditClosureDays,
+}: {
+  closureDays: ClosureDay[];
+  canEditClosureDays: boolean;
+}) {
+  const { showBanner } = useBanner();
+
+  const [closureDate, setClosureDate] = useState<string>('');
+  const [closureLabel, setClosureLabel] = useState<string>('');
+  const { run: runAddClosure, isPending: isAddingClosure } = useServerAction(addClosureDay);
+  const [closureDateError, setClosureDateError] = useState<string | null>(null);
+  const removingClosure = useBusyIds();
+
+  const todayIso = getBusinessTodayIso();
+
+  const handleAddClosureDay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEditClosureDays || isAddingClosure) return;
+    const nextClosureDateError = closureDate ? undefined : CLOSURE_ERROR_MESSAGES.invalid_date;
+    setClosureDateError(nextClosureDateError ?? null);
+    if (focusFirstInvalidField({ 'closure-date': nextClosureDateError })) return;
+    await submitClosureDay({
+      runAddClosure,
+      closureDate,
+      closureLabel,
+      showBanner,
+      onAdded: () => {
+        setClosureDate('');
+        setClosureLabel('');
+      },
+    });
+  };
+
+  const handleRemoveClosureDay = async (closureDayId: string) => {
+    if (!canEditClosureDays || removingClosure.isBusy(closureDayId)) return;
+    await removingClosure
+      .run(closureDayId, () => removeClosureDayWithFeedback(closureDayId, showBanner))
+      .catch(() => {
+        showBanner({ message: CLOSURE_ERROR_MESSAGES.delete_failed, variant: 'error' });
+      });
+  };
+
+  return (
+    <Card>
+      <ClosureDaysHeader />
+      <CardContent className="space-y-4 pb-6">
+        {closureDays.length === 0 ? (
+          <EmptyState size="compact" title="Keine Betriebsruhe-Tage eingetragen." />
+        ) : (
+          <ClosureDayList
+            closureDays={closureDays}
+            canEditClosureDays={canEditClosureDays}
+            todayIso={todayIso}
+            isRemoving={removingClosure.isBusy}
+            onRemove={handleRemoveClosureDay}
+          />
+        )}
+
+        {canEditClosureDays && (
+          <ClosureDayForm
+            closureDate={closureDate}
+            closureLabel={closureLabel}
+            closureDateError={closureDateError}
+            isAddingClosure={isAddingClosure}
+            onSubmit={handleAddClosureDay}
+            onDateChange={(date) => {
+              setClosureDateError(null);
+              setClosureDate(date ? toLocalDateString(date) : '');
+            }}
+            onLabelChange={setClosureLabel}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}

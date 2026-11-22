@@ -1,0 +1,3191 @@
+{
+  "version": 2,
+  "catalogHashes": {
+    "BASE-CUSTOMER-F01": "0b5a464efc390966d2ac8a808195e8125486fc59bb5e87e44d748e9068c73da6",
+    "BASE-WORK-F01": "75575baaa0c259b9d7be9ce6f2553008c45fffc60556f91056545489fda5c753",
+    "BASE-WORK-F02": "cc58ded0b7a07135826f340e0e055dc70dd705139659a7455a099c9dfeb81ae3",
+    "BASE-WORK-F03": "0771054c651a7a5b0d1ce821ac576d84c3658aadb757cc0d4cb5e25714ebc2b6",
+    "BASE-WORK-F05": "16ce4a794d215ff1a346188f0373841b5d3614b35fa0f2d6080ce3192a42a676",
+    "BASE-WORK-F06": "0401631522a6a0abced6c11857b408ab5b8ecc4f050013a67574b29cdfc8d8da",
+    "BASE-WORK-F07": "84a515124407944f09f7815c9c474d3fe2bb34103b335c482076c5ff83cab5e4",
+    "BASE-WORK-F08": "23eb8c099da936e2822ce56e003bfa96de8bff384181aa7d604c82e437f50ad0",
+    "BASE-CALENDAR-F02": "f10f5523f84207cff889ffd1ac03b3381aae77277a9aafeea4b1519f250a67e3",
+    "BASE-CALENDAR-F03": "2acdac6a982968c837255251ef573f2ed3f6804dd7905c582cb97c3216550f5a",
+    "BASE-CALENDAR-F04": "288e679d16cb1da3b0fb9dcbcca52125daf74b43a3fc4215fd5cf6777c65ec19",
+    "BASE-TIME-F01": "81808aaf749ac323f8b6bf382aa28b83e2db949f5138db7d5a774114d5ea414e",
+    "BASE-TIME-F06": "76e08bdcfe50d10fb7090bea12c4fdd73e148988388d2cddcd2da07462fd4ef0",
+    "BASE-DOCUMENT-F02": "48396af0873afed4e165fb1d8a479dd94a257834b368f2bf05f7be3be13d956f",
+    "BASE-DOCUMENT-F04": "86bcd43282ee0e33ab4ac67037df754ec9e903bd6000bfdb30c75cd07b7637a7",
+    "P1-00-F01": "fc627fa40330619fd6f9e00d1d71e6d2889281cbe69f48c735f1893be15c4698",
+    "P1-00a-F01": "bd6392dbd04e7e878ee30168b065df82ceb78c92da0efe97871e709ca3efb0f3",
+    "P1-00a-F02": "ba67cf55e1a96f245eb34a75c6ac18c06ddb8d6fb0434b42fd647d0545d0daab",
+    "P1-01-F07": "16718044d891f9a02d696b7d626d6bf9ad54392cdadd4f8f017c17d87afee15e",
+    "P1-02-F05": "5bb04a3f00471c8e710fc8a4ec5a31a5e0ecc027cb44c25eb53420dc6e1404d4",
+    "P1-03-F01": "b688c257be3081cda146864d25fd17c860408ec14d82aabe73f4a7c896715a5e",
+    "P1-03-F05": "b191ccb58db0ac82e66b2c8f49711b9350292ee1614313a0b39add8eabe20f81",
+    "P1-05-F01": "a66136b39406514ff575305cc9f7bd9e3e9862a77c88b868376aca03249706d8",
+    "P1-06-F01": "c2a6468390ac1c8dd0a1a124307b15f2cd9b82d0c26be0921db1776d65b41e7b",
+    "P1-06-F03": "5abd9a8b5f82b9c06e1ecdf90821f3e1166dd1b1c55262088f72e82ccd48e0eb",
+    "P1-06-F05": "4e77c56c3db9e5181f1b1dbedc860aab9a489e3dc9d6dd65087fc994f6d41067",
+    "P1-07-F01": "686a6305dac4f2a9f6bbddfb27adcffadcd2bec62b36f2c544bc4385865290ae",
+    "P1-07-F02": "e515a660c03b3c63ec0f799ef1487eabbaa83377ec3be7cf78997a376bfe4525",
+    "P1-07-F03": "27da9d0961231749253dd1ad4b5397d2ccaa4efbc9fc6ade82f6a178e72dc2f2",
+    "P1-08-F02": "9b667ebba2258cdb3e899a296a73e8c247c608af40b9573e9682e1954110afb1",
+    "P1-08-F05": "7009d065945e7defb2ac9cf81f217d4e1c0aa7bee37ff6e2ed91e0f39dff0765",
+    "P1-09-F01": "c3ab4745a9cdcbb17149fd2907ab2d5504b31e957603e446a88886be56bffbac",
+    "P1-09-F02": "744182e0ee7d9a515603d40508b7ed2e098b8bf1fa59a13e7d7dabf204ec11f3",
+    "P1-09-F03": "f9344eef76c578a88bee19597a7fd9cf995ec42bd07aef302b999c901190c7c1",
+    "P1-09-F04": "03a5c80cd628c5b96cb8dc1b8203c803363424c6234b40986315825fd11ef3fd",
+    "P1-09-F05": "8739dbaefcb799de6632fd01c00a5737155636fc6ec6417070041a2c547a620e",
+    "P1-09-F06": "68cb5de7ec78bf387639b2914c0ae315eaa51914bbe0a605e1f840d1fb5303a8",
+    "P1-11-F01": "af39aa09898281ed54f395e1d2fb0d1a5906d2894d17e151c2510712325d28b6",
+    "P1-11-F02": "b679f590245a46002118b9e65693220f1db8489ee5695e08e9a472fda6b0762f",
+    "P1-11-F03": "3db8ba8b6ce87dc800d8e8a6bbac4b592a01c7a35035f4513f9e45aad08b5d12",
+    "P1-11-F04": "f79cc1e6451afbdee74267fd169c6ccd2b580cb39c866d2390267546b1ebc99f",
+    "P1-11-F05": "9104eb2c766a80bfed6c757c6f78fa4993eb3c9250896829ca8663574c686ceb",
+    "P1-12-F01": "c10fe9824419410a6fd95371ce8e9f45e0239c4400b7d99b262808f2edca6a24",
+    "P1-12-F02": "7d1cc7256ddd513586e8fe633b76e8ae108bcdc9862c40d299c0890c3e92f3e8",
+    "P1-12-F03": "6391230a65b0c4a06c4c7d62c67460a9c744a020e069d5cb6a3f02675a100409",
+    "P1-12-F04": "96e0b6264906901193da94f7ac7c809610b284f4a56a7c85e06fe1699550f77f",
+    "P1-12-F05": "c69f9bc4eb0a3bb12935b6fce0deb1e996a86f60cf228fa86972e6502c82a2db",
+    "P1-12-F06": "4b9ff96c78b2651c377c09f761a29c51d95537dad0100fac6fc81de5d5d83b22",
+    "P1-12-F07": "a39a13852f22fbbdb3db18618f44cf403df2ef956815e4766b40667d199e623b",
+    "P1-12-F08": "0c023ff2a88088b6108af68539fca2b90305b06414599233b474d6f7dfa63a97",
+    "P1-12-F10": "68194d417f28a3daeecd388315fd4bfd72288dab7d80d707a5a7aca99c480c32",
+    "P1-12-F12": "24ab1ae2d909deecaeba86f41094910b093199de0a31a5c44a29a73c2787aa5b",
+    "P1-12-F13": "556f41d3647b44100287efddd88bfe46ba326553481502fd1c35289b0457b5b1",
+    "P1-12-F14": "4f9ac7fe79aef2f55820fa9bdad9ea66b9fe054d482ca0594350ab4b9b0adc37",
+    "P1-12-F15": "6284c2b5dbbd9822c6e95b6e7b1032074cf9ff9017a95269081dfb429b7dbd30",
+    "P1-12-F16": "79690a9c6eece5b2e16bf4d59558bcbfc94e0060356e959b245b43b631ebbf38",
+    "P1-12-F17": "bb8f582f147847a9029dbfe2f77abc4d615d1d901ffe80cea3c96d3cf901f343",
+    "P1-13-F01": "82e71e8c7f182e58e61862bf2f1138cbdc7e254d5720451fda70a72a761e8f4a",
+    "P1-13-F02": "ca3c8e0f19e7a86def84c96aad2f673ea8bae28d04e20a23bcde0395bb790769",
+    "P1-13-F03": "93d1343eb48d9629a33c9a75c91451570179c22ff0fc9d4633557c8c1c9406b5",
+    "P1-13-F04": "1cecc925dcc2bcb1d224f34794646c59838a3417c7b233da5210fae8126faaa8",
+    "P1-13-F05": "d7c5785deecbe0f49cb1cfaa2b6c4ed800456de61fcb04d3efcdec9a6f7b1fa3",
+    "P1-13-F06": "04dcf4566189583eaf0a2640b8e483db4a1512beef2dc4beda79804852420d5d",
+    "P1-13-F07": "67a0fcbc792c11954f2d90799f41ff7a41cf526807e3f1f20d61ffbe344921cb",
+    "P1-13-F08": "210dd5c072dfb82d26145fd3c593253aafa77ef831a1ce4706bb2868c61a4fe8",
+    "P1-13-F09": "4240c4f4f0db6123f8964003bea962cd35b0dc8563b6b74a0de2e65939bfcaaf",
+    "P1-13-F10": "bd397665d038cfa2b62002565363c6c4670477cde144048a34d520771f0d84c2",
+    "P1-13-F11": "fbc19ba0192b891c97ea0e64ea3bd74bfd48b6b7de6959c72a68de612a851d7e",
+    "P1-13-F12": "7aaa80c840e24ed712ccb57b0b479d40ce8e97308d1cf90da9ff5a57b1916cc5",
+    "P1-13-F13": "5c61a1676dcc74ec8587568a043add01297e54c921838e8ffff5bae50e9628f3",
+    "P1-13-F14": "0f1c8c60262efad8ab9b8297b73863cdc9f9d8bb76047014752f810fa3061e3b",
+    "P1-13-F15": "e4ba20ca1952a3c7f36a953253290b010f4c9a60ad3a9bb0e72b749417f8fc91",
+    "P1-13-F16": "1af826cc96c956b8c5715a207f167790582d8290436a4ca701c338a11d371c6a",
+    "P1-13-F17": "3299b7972dad21dae9f8d28f67f5e2c5ff1bb6200d1636206b5969f6dac5dc31",
+    "P1-13-F18": "2aa71e8c5aefe8c24b87b3f6e3708d203105381fa88911b20509203230bcab8b",
+    "P1-13-F19": "60ed465e83c451b28622840ebaebe8b86e40c8d79a8ee9e3a6de2ed7ab418f09",
+    "P1-13-F20": "2754f45725769d6e7c1141088eeab4ecf29ea3374115e571de36049ab0f67242",
+    "P1-13-F21": "c86d0483ce2fd2063d3f86226abb128da47b77ecee6701a700b987eafb6ce3c2",
+    "P1-13-F22": "92b1688f5ab6582677cce907758866ad38299d2aa6678e66edff7c056091f00d",
+    "P1-13-F23": "a862ca71190e00e0d1be12942749fb104e2736f05c2cd94c365e522dbb1ea416",
+    "P1-13-F24": "d863d91917cf6095166b627bff9d8c979bd15303fa932fe51d8dafd69b5b2cb9",
+    "P1-13-F25": "063283577b721caee5a8b2cee040390ab03ab3263bef0d87f379c42fb6192099",
+    "P1-13-F26": "d7537d62405d4ed7b1689f07ff8cbc1205ed217b5b3caeba089815796805f74f",
+    "P1-13-F27": "c4ad5ab70dfd1c01064f2712a4e313c043f12ee188a64421eacac563f8731cf6",
+    "P1-14-F19": "554839f4babb3c30ba67728f976654bc05ac3e7413a77eb1f623a601b2190565",
+    "P1-14-F21": "2d9152d90ae50f19ba352293e6ad7af62ed6566955ede9517f55d131a1fed778",
+    "P1-15-F29": "606a5b2955e0ee918e12893b0f58770850b564d2354388df5aad72d9eab86310",
+    "P1-16-F01": "6b3666d20f48bf25b32b8bb20e0722b72bfc7da048fa301e72a538cd77d25e9f",
+    "P1-16-F45": "f019487b8615fdd0d27b9ba90ceb732d5de1ea568ce700c51455526c43d8e27a",
+    "P1-16-F49": "f205c9ca9f88aabf4fcefe6b08c2bb006c93e821323f26390dd6a836dc7491bd",
+    "P1-21-F01": "992163954881e00528179f06c09fa8c0396be686bfe9595751b1e9322577bf38",
+    "P1-21-F04": "dc04fac403ff2710aa302f29dd50181217efafeafd2d9328c17bf713e19cb0c6",
+    "P1-21-F48": "3497009acfd5f5183d70d87680354cdd60ea02c06afc2982b1dbf1ba42e76c2b",
+    "P1-21-F50": "2974946fe4628ac80ffbc7a1f34a0f7d3144ed1f2e174e638491f58e4f35567f",
+    "P1-21-F57": "8a68f28252bbdf490bde98f7587c338afa5b0308c6f57a776612cb2883ca7888",
+    "P1-22-F44": "6d4bec3a718e65f25d6cb8cc7ec45faa613364938989592a0253b60d96cce11f",
+    "P1-22-F45": "af09274d06f3e91712bf95f7d1d934b7a0b18634c9a8dee4ff1be717017f6d7e",
+    "P1-24a-F10": "3446449d9d7a889ae8b493907e797813b840d29f28aa11ab817dcbc52b7add8e",
+    "P1-24a-F15": "77849abb2099354224ca79119aa00ead278009541528b7c6e8cb977d0b7e4986",
+    "E6-F01": "dc0d5eea51203011b5c2d5fb0ab420f8baabd9985ffbaaa8e6eabcdea22a82cf",
+    "E6-F02": "84c21f927725510fb45656a55d661dc3bcadb25b23cd84352bf803798ad20a83",
+    "E6-F03": "ca263f300e3d784036d0a370059c42eafbc617070b7ff335fff479a7d7e317eb",
+    "E6-F04": "11ba516d8c698e304120fa18358b305b915f3582ce71f5f4d873ce865a72d114",
+    "E7-F01": "dbc4d50a046b26791412f5a5cd4df0e7ee2b539c1a0df4155879e05e3b5b2c45"
+  },
+  "mappings": [
+    {
+      "id": "legacy-a1-08",
+      "flowIds": [
+        "BASE-CUSTOMER-F01",
+        "P1-00-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kunden.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 (anlegen + Realtime); A1-09 creates a customer through the dialog and sees the list count change",
+          "titles": [
+            "A1-09"
+          ]
+        },
+        {
+          "file": "tests/golden/gg-00.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 (anlegen + Realtime)",
+          "titles": [
+            "Admin legt einen Kunden an",
+            "Realtime: Büro sieht neue Kunden ohne Neuladen @FRESHNESS"
+          ]
+        }
+      ],
+      "clauses": "Kunde anlegen; Liste live\n`@GG-00`-Body re-verifiziert; finale Golden-Suite.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-08 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-09",
+      "flowIds": [
+        "BASE-CUSTOMER-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kunden.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-09",
+          "titles": [
+            "A1-09"
+          ]
+        }
+      ],
+      "clauses": "Kunde inline auf Detailseite bearbeiten\n`A1-09/A1-11`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-09 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-10",
+      "flowIds": [
+        "BASE-CUSTOMER-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kunden.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-10",
+          "titles": [
+            "A1-10"
+          ]
+        }
+      ],
+      "clauses": "Kunde mit Aufträgen/Projekten löschen — abgelehnt, der Dialog bietet Archivieren an; archiviert verlässt er die Kundenliste, bleibt unter „Archivierte“ und seine Arbeit bleibt (`A1-10/A1-14`).",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-10 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-12",
+      "flowIds": [
+        "BASE-WORK-F01",
+        "BASE-WORK-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-auftraege.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 + new:A1-12 (role visibility)",
+          "titles": [
+            "A1-12"
+          ]
+        },
+        {
+          "file": "tests/golden/gg-00.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 + new:A1-12 (role visibility)",
+          "titles": [
+            "Kunde und Aufträge: Mitarbeiter sieht nur Zugewiesenes, fremde Organisation nichts"
+          ]
+        },
+        {
+          "file": "supabase/tests/operational_list_pages.sql",
+          "kind": "sql",
+          "description": "the job list of a field worker counts and lists only assigned jobs, so a removed assignment hides the job",
+          "titles": [
+            "employee scope leaked hidden jobs"
+          ]
+        }
+      ],
+      "clauses": "Auftrag anlegen/zuweisen; Handwerker sieht nur Zugewiesenes\nBearbeitungsdialog gegen Realtime-Resets stabilisiert; Zuweisungsgrenze in `A1-12/A1-13`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-12 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-13",
+      "flowIds": [
+        "BASE-WORK-F01",
+        "BASE-WORK-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-auftraege.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-13",
+          "titles": [
+            "A1-13"
+          ]
+        }
+      ],
+      "clauses": "Auftrag bearbeiten; Zuweisung entfernen; Auftrag löschen\nEdit/Delete-Selbst-Rennen behoben; `A1-12/A1-13`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-13 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-14",
+      "flowIds": [
+        "BASE-WORK-F01",
+        "BASE-WORK-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kunden.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-14",
+          "titles": [
+            "A1-14"
+          ]
+        }
+      ],
+      "clauses": "Projekt anlegen; Auftrag im Projekt erbt Kunden; Projekt ohne Aufträge; Projekt löschen löst nur die Zuordnung\nAsynchroner Nummernvorschlag überschreibt keine Eingabe mehr; Projektlöschung in `A1-10/A1-14`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-14 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-15",
+      "flowIds": [
+        "BASE-WORK-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-auftraege.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-15",
+          "titles": [
+            "A1-15"
+          ]
+        }
+      ],
+      "clauses": "Datum entziehen lässt den Auftrag ungeplant offen; Parken und erneute Einplanung bleiben bewusste eigene Schritte\nP1-14 trennt Planung und Parkplatz. `A1-15/A1-16` belegen den ungeplanten Zustand ohne Parken sowie das atomare Parken mit Kontext.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-15 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-17",
+      "flowIds": [
+        "BASE-WORK-F06"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-auftraege.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-17",
+          "titles": [
+            "A1-17"
+          ]
+        }
+      ],
+      "clauses": "Checkliste: Manager pflegt/sortiert Punkte; Handwerker hakt ab / öffnet wieder; Attribution sichtbar\nFehlende UI-Sortierung ergänzt; `A1-17/A1-18` beweist persistente Reihenfolge, Toggle/Reopen und Attribution. CodeRabbit-Fix: synchroner Mutations-Mutex, `finally` und Server-Re-Sync.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-17 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-18",
+      "flowIds": [
+        "BASE-WORK-F07"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-auftraege.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-18",
+          "titles": [
+            "A1-18"
+          ]
+        }
+      ],
+      "clauses": "Fertigstellen setzt Abschlussdatum; Projektstatus/-fortschritt abgeleitet; manueller Override\nAbschlussdatum wird als Geschäftstag Europe/Berlin bestimmt; `A1-17/A1-18`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-18 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-19",
+      "flowIds": [
+        "BASE-WORK-F08"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-auftraege.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-19",
+          "titles": [
+            "A1-19"
+          ]
+        }
+      ],
+      "clauses": "`/auftraege`: Suche, Status-/Typ-Filter, Parkplatz-/Archiv-Trennung\n`A1-19`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-19 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-20",
+      "flowIds": [
+        "BASE-WORK-F08"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-auftraege.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-20",
+          "titles": [
+            "A1-20"
+          ]
+        }
+      ],
+      "clauses": "`/auftraege`: nutzerspezifische Spaltenauswahl, Sortierung, Live-Update und Bereichstrennung\nSpaltenpräferenz ist zwischen Benutzern getrennt; Sortierung, Projektausklappen, Realtime sowie Aktiv/Parkplatz/Archiv vollständig automatisiert.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-20 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-21",
+      "flowIds": [
+        "BASE-CALENDAR-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kalender.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-21 + covered:@GG-00/@P1-11",
+          "titles": [
+            "A1-21"
+          ]
+        },
+        {
+          "file": "tests/golden/gg-00.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-21 + covered:@GG-00/@P1-11",
+          "unmatched": "No GG-00 test opens the calendar; the calendar views and recorded-time blocks are proved by A1-21 in tests/audit/wave-1/a1-kalender.spec.ts and the planning tests of tests/golden/p1-11.spec.ts."
+        },
+        {
+          "file": "tests/golden/p1-11.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-21 + covered:@GG-00/@P1-11",
+          "titles": [
+            "manager plans a series and a second visit, then edits one, this and future, and the whole series",
+            "team visits expand per occurrence, overlap needs a reason, and office and field worker see them @FRESHNESS"
+          ]
+        }
+      ],
+      "clauses": "Tages-/Wochen-/Monatsansicht; geplante Arbeit vs. Zeitblöcke getrennt\nAlle drei Ansichten und Blocktrennung in `A1-21/A1-24`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-21 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-22",
+      "flowIds": [
+        "BASE-CALENDAR-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kalender.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-22 + covered:@P1-09",
+          "titles": [
+            "A1-22"
+          ]
+        },
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "covered:A5-07 — a calendar drag re-checks qualifications and a cancelled warning restores the calendar",
+          "titles": [
+            "A5-07"
+          ]
+        }
+      ],
+      "clauses": "Verschieben per Drag & Drop (inkl. Warnpfad)\nDrag und bestätigter Warnpfad in `A1-22`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-22 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-23",
+      "flowIds": [
+        "BASE-CALENDAR-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kalender.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-23",
+          "titles": [
+            "A1-23"
+          ]
+        }
+      ],
+      "clauses": "Größe ziehen (Resize), neu zuweisen und Drag in den/aus dem Parkplatz\nEchte Playwright-Mausgesten beweisen Resize, Verschieben, Neuzuweisung und Parken/Entparken mit persistenter UI.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-23 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-24",
+      "flowIds": [
+        "BASE-CALENDAR-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kalender.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-24",
+          "titles": [
+            "A1-21/A1-24: Kalenderansichten und getrennte Plan-/Arbeitszeitfilter",
+            "A1-24/A1-25: Kalender-Zeiteintrag, Blocktrennung, Pending-Dialog, Filter und Realtime [BASE-CALENDAR-F03/F04]"
+          ]
+        }
+      ],
+      "clauses": "Kalender-Filter (Mitarbeiter/Arbeitszeiten/Aufträge)\n`A1-21/A1-24`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-24 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-25",
+      "flowIds": [
+        "BASE-CALENDAR-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-kalender.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-25",
+          "titles": [
+            "A1-25"
+          ]
+        }
+      ],
+      "clauses": "Manueller Zeiteintrag aus dem Kalender heraus\nKalenderdialog legt den run-scoped Eintrag per UI an; Kalenderdarstellung, Verlauf und read-only Persistenz beweisen ihn.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-25 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-26",
+      "flowIds": [
+        "BASE-TIME-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-organisation.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 + new:A1-26",
+          "titles": [
+            "A1-26"
+          ]
+        },
+        {
+          "file": "tests/golden/gg-00.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 + new:A1-26",
+          "titles": [
+            "Mitarbeiter erfasst auftragsbezogene Arbeitszeit"
+          ]
+        }
+      ],
+      "clauses": "Ein-/Ausstempeln, Pausen, Tagessummen; auftragsbezogene Zeit\nPause, Auftragbezug, Zustände und Summen in `A1-05/A1-26/A1-27/A1-28`; Wochenbalken zeigen jeden Tag mit Anwesenheit, Arbeitszeit, Pause und Überstunden zugänglich an.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-26 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-30",
+      "flowIds": [
+        "BASE-TIME-F06"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-zeiten.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-30 (correct, delete and reassign in the calendar; the reassignment is checked as one revision with one application)",
+          "titles": [
+            "A1-30"
+          ]
+        },
+        {
+          "file": "supabase/tests/a1_time_history.sql",
+          "kind": "sql",
+          "description": "An applied manager correction leaves the raw time entry unchanged",
+          "titles": [
+            "manager correction was not applied",
+            "applied correction rewrote the raw time entry"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/entry-details.spec.ts",
+          "kind": "browser",
+          "description": "Component contract: the office deletes an employee's entry from the entry details dialog; while the write is held the dialog stays open with its buttons locked and no banner, and the change-request answer closes it with the request banner and one calendar re-read",
+          "titles": [
+            "a deletion answered with a change request closes the dialog with the request banner"
+          ]
+        }
+      ],
+      "clauses": "Bestehende Einträge korrigieren / löschen / umhängen (Manager)\nKorrigieren, Auftrag umhängen und löschen in `A1-30`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-30 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-31",
+      "flowIds": [
+        "BASE-TIME-F06"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-zeiten.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-31",
+          "titles": [
+            "A1-31"
+          ]
+        }
+      ],
+      "clauses": "Verlauf-Filter (Zeitraum/Mitarbeiter/Status) mit Sitzungspaar und Auftrag\nRun-scoped genehmigte und ausstehende Fakten beweisen Zeitraum-, Mitarbeiter- und Statusfilter einschließlich Leerergebnis, Sitzungspaar und Auftrag.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-31 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-33",
+      "flowIds": [
+        "BASE-DOCUMENT-F02",
+        "BASE-DOCUMENT-F04",
+        "P1-00-F01",
+        "P1-00a-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-dokumente.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 + new:A1-33",
+          "titles": [
+            "A1-33"
+          ]
+        },
+        {
+          "file": "tests/golden/gg-00.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-00 + new:A1-33",
+          "titles": [
+            "Mitarbeiter lädt ein Dokument über 4,5 MB auf den Auftrag hoch, Büro sieht es in der Bibliothek"
+          ]
+        }
+      ],
+      "clauses": "Einzel-, Mehrfach-, Ordner- und Drag-and-drop-Upload; echter Fortschritt; Handwerkergrenzen\nBatch-, `webkitdirectory`- und Drop-Upload persistieren; ein real gedrosselter 6-MiB-Direktupload zeigt Fortschritt und vollständige XHR-Bytes.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-33 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-34",
+      "flowIds": [
+        "BASE-DOCUMENT-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-dokumente.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-34",
+          "titles": [
+            "A1-34"
+          ]
+        }
+      ],
+      "clauses": "Ordner anlegen, Datei verschieben/kopieren über den Ziel-Dialog\n`A1-34/A1-35`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-34 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-35",
+      "flowIds": [
+        "BASE-DOCUMENT-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-dokumente.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-35",
+          "titles": [
+            "A1-35"
+          ]
+        }
+      ],
+      "clauses": "Bestehendes Bibliotheksdokument mit Ziel (Auftrag/Kunde) verknüpfen; Verknüpfungsfilter\n`A1-34/A1-35`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-35 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-38",
+      "flowIds": [
+        "BASE-DOCUMENT-F04",
+        "P1-00-F01",
+        "P1-00a-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-dokumente.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-38",
+          "titles": [
+            "A1-38"
+          ]
+        },
+        {
+          "file": "lib/org/office-page-access.test.ts",
+          "kind": "unit",
+          "description": "moved from A1-38: a field worker reaches neither the library nor an unassigned job",
+          "titles": [
+            "office pages refuse a field worker and never show another organization’s request or customer"
+          ]
+        }
+      ],
+      "clauses": "PDF-/Bildviewer; signierter Download; zugewiesener/unzugewiesener Handwerker; Realtime\nViewer rendern, echte signierte Fenster-/Download-URLs werden erfasst, Rollengrenzen gelten und ein zweiter Kontext erhält den Upload ohne Reload.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-38 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a1-44",
+      "flowIds": [
+        "P1-00-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a1-inventar.spec.ts",
+          "kind": "browser",
+          "description": "new:A1-44 (folded into A1-40/41 assertions)",
+          "titles": [
+            "A1-44",
+            "A1-41"
+          ]
+        }
+      ],
+      "clauses": "`/inventar`-Ansichten (Alle Artikel / Lager / Geplant / Bewegungen) mit Suche/Filtern\nVier Ansichten, Suche und Filter in `A1-40/A1-44` und `A1-41`.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A1-44 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a2-08",
+      "flowIds": [
+        "P1-01-F07"
+      ],
+      "evidence": [
+        {
+          "file": "tests/golden/p1-01.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-01 — seeded customer is found by contact name and by site street; an unknown term shows 0 Kunden",
+          "titles": [
+            "Suche findet Kunden über Ansprechpartner und Einsatzort"
+          ]
+        }
+      ],
+      "clauses": "Suche über Kontakte/Einsatzorte\n`@P1-01`-Body re-verifiziert; finale Golden-Suite 93/93.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A2-08 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a2-12",
+      "flowIds": [
+        "P1-02-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/golden/gg-01.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-01 — once-only job conversion with carried context, close with reason, direct job without a request",
+          "titles": [
+            "Büro wandelt die Anfrage genau einmal in einen Auftrag um",
+            "Direkter Folgeauftrag funktioniert ohne künstliche Anfrage",
+            "Eine Anfrage kann ohne Auftrag mit Grund geschlossen werden"
+          ]
+        },
+        {
+          "file": "supabase/tests/work_creation_writes.sql",
+          "kind": "sql",
+          "description": "sql:work-creation-writes — a job converted without a date stays open, unparked work listed with the current jobs for managers",
+          "titles": [
+            "an undated converted job is not open, unparked work among the current jobs"
+          ]
+        }
+      ],
+      "clauses": "Umwandlung genau einmal in **Auftrag**; Schließen mit Grund; Direktauftrag ohne Anfrage\nVollständige `@GG-01`-Bodies re-verifiziert; finale Golden-Suite 93/93.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A2-12 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a2-13",
+      "flowIds": [
+        "P1-02-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a2-anfragen.spec.ts",
+          "kind": "browser",
+          "description": "new:A2-13 — seeded request converted once into a project; both directions link; the database holds only the project target",
+          "titles": [
+            "A2-13"
+          ]
+        }
+      ],
+      "clauses": "Umwandlung in **Projekt** (inkl. Rückverlinkung)\nEinmalige UI-Umwandlung, Anfrage→Projekt und Projekt→Quellanfrage sichtbar und per DB-Leseassertion belegt; zweite Umwandlung nicht angeboten.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A2-13 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a2-r04",
+      "flowIds": [
+        "P1-02-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a2-anfragen.spec.ts",
+          "kind": "browser",
+          "description": "new:A2-R04 — seeded request: dialog prefilled with title, description, customer, site, contact and priority; edits persist; the job stays unplanned without planning or dispatch",
+          "titles": [
+            "A2-R04"
+          ]
+        }
+      ],
+      "clauses": "Vollständige, editierbare Auftragsumwandlung ohne Versand/Planung/Dispatch\nKunde, Ort, Kontakt, Beschreibung und Dringlichkeitspriorität sind vorbefüllt und editierbar; der Auftrag bleibt ungeplant offen, ohne Planungs-/Dispatch-Datensatz und ohne Versand, mit beidseitigem Quelllink.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A2-R04 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a3-01",
+      "flowIds": [
+        "P1-03-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a3-personal.spec.ts",
+          "kind": "browser",
+          "description": "new:A3-01/A3-03 — every Personalien field, all five employment types, a planned and a deleted condition, attributed history with before/after values",
+          "titles": [
+            "A3-01"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-03.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-03 — current and historical condition versions stay distinguishable and a correction is recorded",
+          "titles": [
+            "Konditionen: aktuelle und frühere Version bleiben unterscheidbar"
+          ]
+        }
+      ],
+      "clauses": "Personalien pflegen; Konditionen-Versionen (Aktuell/Früher/Geplant); Verlauf\n`A3-01/A3-03` pflegt alle Personalien und wählt sämtliche fünf Beschäftigungsarten; aktuelle/geplante Versionen, Notizen und Werte persistieren. Anlage, Stammdatenänderung und Kondition anlegen/ändern/löschen zeigen Zeitpunkt, Actor und Vorher/Nachher-Werte; read-only Event-Payloads stimmen mit dem sichtbaren Verlauf überein.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A3-01 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a3-02",
+      "flowIds": [
+        "P1-03-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a3-personal.spec.ts",
+          "kind": "browser",
+          "description": "new:A3-R01 — planned, invited, active and exited rows carry their status badges",
+          "titles": [
+            "A3-R01"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-03.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-03 — a record without login stays separate and out of pickers, its invitation links it, and a removed member stays as Ausgeschieden",
+          "titles": [
+            "Personalakte ohne Zugang bleibt getrennt, steht in keiner Auswahl und wird per Einladung verknüpft",
+            "Entfernen heute: Personalakte bleibt als Ausgeschieden erhalten"
+          ]
+        },
+        {
+          "file": "supabase/tests/people_boundaries.sql",
+          "kind": "sql",
+          "description": "sql:people — every member has exactly one personnel record with the Berlin join date and no invented number or exit date",
+          "titles": [
+            "member % has % personnel records instead of exactly one",
+            "member % entry date is not the Berlin join date",
+            "member % personnel record invented an exit date or employee number"
+          ]
+        },
+        {
+          "file": "lib/org/personnel-page-access.test.ts",
+          "kind": "unit",
+          "description": "the real Mitarbeiter pages send a field worker to the dashboard in every organization where they are one, send another organization’s admin back from a person or a record without login, and list only the active organization’s people; Büro opens the same ids",
+          "titles": [
+            "Mitarbeiter pages refuse a field worker in every organization and never show another organization’s people"
+          ]
+        },
+        {
+          "file": "supabase/tests/organization_member_reads.sql",
+          "kind": "sql",
+          "description": "the member list read answers a member with the own organization's members only and refuses a caller who is not a member of the organization it names; no client role executes it",
+          "titles": [
+            "% read the member list",
+            "a client role executes get_org_members_for_user",
+            "the owner of A lists %, not the members of A",
+            "the field worker of A lists %, not the members of A",
+            "the owner of B lists %, not the members of B"
+          ]
+        },
+        {
+          "file": "lib/personnel/lifecycle-actions.test.ts",
+          "kind": "unit",
+          "description": "Büro lists a person’s standard personnel document but no Admin-only one, the admin lists both",
+          "titles": [
+            "personnel lifecycle actions refuse lower roles and other organizations, and self-service reads only the own record"
+          ]
+        }
+      ],
+      "clauses": "Personalakte ohne Zugang; „Zugang einladen\" verknüpft; Entfernen ⇒ „Ausgeschieden\"; Status-Badges\nGolden beweist Einladung ohne Duplikat und den Erhalt der ausgeschiedenen Akte. `A3-R01` ergänzt die sechs Kombinationen aus Geplant/Aktiv/Ausgeschieden und Mit Zugang/Eingeladen/Ohne Zugang; bestehende Mitgliederzeilen erhielten die fehlenden sichtbaren Badges.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A3-02 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a3-03",
+      "flowIds": [
+        "P1-03-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a3-personal.spec.ts",
+          "kind": "browser",
+          "description": "new:A3-03",
+          "titles": [
+            "A3-03"
+          ]
+        }
+      ],
+      "clauses": "Personalnummer: `MA-NNN`-Vorschlag überschreiben; Eindeutigkeit abgelehnt\nDie Nummernvorschlags-Server-Action wird gehalten; der manuelle run-scoped Wert überlebt nachweislich die späte Antwort. Ein zweiter UI-Anlageversuch mit derselben Nummer wird abgelehnt.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A3-03 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a3-09",
+      "flowIds": [
+        "P1-05-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a3-personal.spec.ts",
+          "kind": "browser",
+          "description": "new:A3-11 — affected people and Büro see the configuration without controls",
+          "titles": [
+            "A3-11"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-05.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-05 — preview before saving, a selected holder approves, the own entry of a holder waits for the second holder, a substitution set and ended in the settings",
+          "titles": [
+            "Die Vorschau zeigt die Wirkung, bevor die Verantwortung gespeichert wird",
+            "Eine gezielt verantwortliche Person kann freigeben",
+            "Der eigene Eintrag eines Verantwortlichen wartet auf die zweite verantwortliche Person",
+            "Eine Vertretung aus den Einstellungen gibt im Fenster die Freigabe und lässt sich beenden"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-02 — attention follows the selected holders and the substitution",
+          "titles": [
+            "Zeitfreigabe erreicht genau die verantwortliche Person und wird über den Deep-Link entschieden",
+            "Vertretung: die Aufmerksamkeit folgt der Delegation ohne Duplikate und endet mit ihr"
+          ]
+        },
+        {
+          "file": "supabase/tests/people_boundaries.sql",
+          "kind": "sql",
+          "description": "sql:people — the owner cannot be demoted; assignment rows are visible to managers and the affected person only",
+          "titles": [
+            "owner role mutation was accepted",
+            "owner membership changed despite the owner protection",
+            "employee sees foreign or missing % rows",
+            "colleague can read the employee's % rows",
+            "admin cannot read the organization's % rows"
+          ]
+        },
+        {
+          "file": "lib/responsibilities/approval-page-access.test.ts",
+          "kind": "unit",
+          "titles": [
+            "the approval surfaces open for holders only, keep four eyes and resolve the holder at action time"
+          ],
+          "description": "the real Zeiterfassung page opens the pending entries and the correction review for time-approval holders only; the real queue and review: a holder never sees or approves an own entry, Büro without the responsibility sees no queue and is refused, the field worker under the role default holds none, a substitute approves inside the window and is refused once it ended; each refusal against a holder who reaches the review function"
+        },
+        {
+          "file": "lib/responsibilities/action-boundaries.test.ts",
+          "kind": "unit",
+          "description": "only the owner configures responsibilities and delegations; Admin, Büro and field worker are refused before any write, so Büro reads only",
+          "titles": [
+            "responsibility actions refuse everyone but the owner and a foreign organization’s ids"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/time-approvals.spec.ts",
+          "kind": "browser",
+          "description": "Component contract: a review refused because the responsibility ended tells the approver so and never confirms",
+          "titles": [
+            "a review refused because the responsibility ended says so and never confirms"
+          ]
+        }
+      ],
+      "clauses": "Verantwortlichkeiten: Vorschau, beide Modi/Arten, Büro-Grenze, Vertretung und Vier-Augen\nGolden beweist Vorschau, benannte Holder, Schutz und Fensterende; `A3-11` ergänzt beide Arten/Modi, Büros read-only Grenze, exakte Vertretungsreichweite, Büro-Selbstfreigabeverbot und Admin-Wiederherstellung.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A3-09 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a4-01",
+      "flowIds": [
+        "P1-06-F01",
+        "P1-06-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a4-abwesenheit.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06 + new:A4-R01/A4-R02",
+          "titles": [
+            "A4-R01",
+            "A4-R02"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-06.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06 + new:A4-R01/A4-R02",
+          "titles": [
+            "Urlaubssaldo vom fehlenden Anspruch bis zur Stornierung: Antrag, Zurückziehen, Genehmigung, Sollzeit, Einstempeln und halber Tag"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06 + new:A4-R01/A4-R02",
+          "titles": [
+            "Vertretung: die Aufmerksamkeit folgt der Delegation ohne Duplikate und endet mit ihr"
+          ]
+        },
+        {
+          "file": "lib/responsibilities/approval-page-access.test.ts",
+          "kind": "unit",
+          "titles": [
+            "the approval surfaces open for holders only, keep four eyes and resolve the holder at action time"
+          ],
+          "description": "the approver queue marks the overlapping sickness as an absence overlap and carries no absence kind"
+        }
+      ],
+      "clauses": "Urlaub beantragen/zurückziehen; Wochenende zählt nicht; Überschneidung blockiert\nGolden belegt Antrag/Rücknahme/Überschneidung; `A4-R01` ergänzt die authoritative Vorschau-Matrix, `A4-R02` den neutralen Überschneidungshinweis und den angefragten Auftragszeitraum.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A4-01 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a4-02",
+      "flowIds": [
+        "P1-06-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a4-abwesenheit.spec.ts",
+          "kind": "browser",
+          "description": "new:A4-04/A4-R03 — the newest condition sets the balance; a half vacation day halves the target",
+          "titles": [
+            "A4-04",
+            "A4-R03"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-06.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06 — real balance arithmetic, approval lowers it, target zero, clock-in blocked, cancellation restores it",
+          "titles": [
+            "Urlaubssaldo vom fehlenden Anspruch bis zur Stornierung: Antrag, Zurückziehen, Genehmigung, Sollzeit, Einstempeln und halber Tag"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-02 — a cancelled approval re-surfaces the same notification",
+          "titles": [
+            "Eine Benachrichtigung pro Antrag: erneute Entscheidung macht sie wieder ungelesen statt sie zu duplizieren; das Muster-Audit ist lückenlos"
+          ]
+        },
+        {
+          "file": "supabase/tests/people_boundaries.sql",
+          "kind": "sql",
+          "description": "sql:people — a person reads only the own vacation requests, managers the organization, outsiders none",
+          "titles": [
+            "employee sees foreign or missing % rows",
+            "admin cannot read the organization's % rows",
+            "outsider can read % rows of a foreign organization"
+          ]
+        }
+      ],
+      "clauses": "Genehmigung: Saldo, Soll 0, Einstempel-Sperre; Stornierung stellt wieder her\nGolden belegt Genehmigung, Saldo/Soll, Sperre und begründete Wiederherstellung; `A4-R03` ergänzt das halbe Tagesziel und die vollständige Kalender-Sichtmatrix.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A4-02 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a4-03",
+      "flowIds": [
+        "P1-06-F01",
+        "P1-06-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a4-abwesenheit.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06 + new:A4-R01/A4-R02",
+          "titles": [
+            "A4-R01",
+            "A4-R02"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-06.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06 + new:A4-R01/A4-R02",
+          "titles": [
+            "Urlaubssaldo vom fehlenden Anspruch bis zur Stornierung: Antrag, Zurückziehen, Genehmigung, Sollzeit, Einstempeln und halber Tag"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06 + new:A4-R01/A4-R02",
+          "titles": [
+            "Vertretung: die Aufmerksamkeit folgt der Delegation ohne Duplikate und endet mit ihr"
+          ]
+        },
+        {
+          "file": "lib/responsibilities/approval-page-access.test.ts",
+          "kind": "unit",
+          "titles": [
+            "the approval surfaces open for holders only, keep four eyes and resolve the holder at action time"
+          ],
+          "description": "leave approval by role default: Büro never sees or decides an own request and the admin decides it; a holder who loses leave approval is refused at action time although the card still shows the request"
+        }
+      ],
+      "clauses": "Halber Tag = 0,5; ohne Anspruch sichtbare Ausnahme; Vier-Augen\nGolden belegt 0,5 Tage, fehlenden Anspruch und Vier-Augen; `A4-R01` belegt die halbtägige Vorschau, `A4-R02` die range-begrenzten Auftragsfakten.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A4-03 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a4-05",
+      "flowIds": [
+        "P1-06-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a4-abwesenheit.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06/@GG-02 + new:A4-R03",
+          "titles": [
+            "A4-R03"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-06.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06/@GG-02 + new:A4-R03",
+          "titles": [
+            "Urlaubssaldo vom fehlenden Anspruch bis zur Stornierung: Antrag, Zurückziehen, Genehmigung, Sollzeit, Einstempeln und halber Tag"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-06/@GG-02 + new:A4-R03",
+          "titles": [
+            "Vertretung: die Aufmerksamkeit folgt der Delegation ohne Duplikate und endet mit ihr"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/calendar-board.spec.ts",
+          "kind": "browser",
+          "description": "the Plantafel's absence bars paint above the day cells, and the phone list shows each absence under every day it covers",
+          "titles": [
+            "an absence bar paints above the day cells: its label is the hit-test target at its center",
+            "the phone list shows each absence under every day it covers"
+          ]
+        },
+        {
+          "file": "lib/vacation/action-boundaries.test.ts",
+          "kind": "unit",
+          "description": "the vacation calendar gives a field worker only the own requests and a manager every request of the organization, never another organization’s",
+          "titles": [
+            "vacation actions refuse a lower role and a foreign organization's ids"
+          ]
+        }
+      ],
+      "clauses": "Kalender: „Urlaub – Name\", „(angefragt)\" gestrichelt\n`A4-R03` belegt pending gestrichelt, approved sichtbar sowie Manager-alle/Beschäftigte-nur-eigene; Golden hält den neutralen Titel fest; die Komponentenverträge belegen, dass die Plantafel-Balken über den Tageszellen liegen und die Telefonliste jede Abwesenheit an jedem ihrer Tage zeigt.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A4-05 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a4-06",
+      "flowIds": [
+        "P1-08-F02",
+        "P1-08-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a4-abwesenheit.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-08 + new:A4-06/A4-R04",
+          "titles": [
+            "A4-06",
+            "A4-R04"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-08.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-08 + new:A4-06/A4-R04",
+          "titles": [
+            "Eine Krankmeldung als Faktenkette: Selbstmeldung, Büro-Erfassung, Korrektur, Einstempeln, Privacy-Matrix und Stornierung"
+          ]
+        },
+        {
+          "file": "lib/sickness/action-boundaries.test.ts",
+          "kind": "unit",
+          "description": "the shared sickness calendar gives a field worker only the own absence and a manager every absence of the organization, and carries no absence kind",
+          "titles": [
+            "sickness actions refuse a lower role and a foreign organization’s ids"
+          ]
+        }
+      ],
+      "clauses": "Krankmeldung: Selbstmeldung (rückwirkend/offen), Büro-Erfassung, Korrekturen, Nachweisführung, Stornierung\nGolden deckt Selbst-/Büro-Erfassung, Korrektur und Nachweis; A4 belegt verpflichtenden Manager-Korrekturgrund, Eigenstornierung und halbtägige Sollwirkung bis zur Wiederherstellung.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A4-06 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a4-09",
+      "flowIds": [
+        "P1-06-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a4-abwesenheit.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-08 + new:A4-09 supplement",
+          "titles": [
+            "A4-09"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-08.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-08 + new:A4-09 supplement",
+          "titles": [
+            "Eine Krankmeldung als Faktenkette: Selbstmeldung, Büro-Erfassung, Korrektur, Einstempeln, Privacy-Matrix und Stornierung"
+          ]
+        }
+      ],
+      "clauses": "Krankheit während genehmigten Urlaubs: neutraler Überschneidungs-Hinweis, kein automatischer Saldo-Effekt\nA4 wählt deterministisch einen urlaubsverbrauchenden Termin, belegt den neutralen Hinweis und hält genehmigten Snapshot sowie sichtbaren 1/31-Saldo vor und nach Meldung/Korrektur unverändert.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A4-09 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-01",
+      "flowIds": [
+        "P1-07-F01",
+        "P1-07-F02",
+        "P1-07-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T1 — request age, no decision controls on /aufgaben, Meine Anträge with reasons, bulk read, honest badges",
+          "titles": [
+            "A5-01/A5-02/A5-03/A5-04: Aufgabenseite zeigt Alter und Zuständigkeit, Meine Anträge tragen Status und Gründe, Sammel-Lesen ist deterministisch und beide Badges zählen ehrlich [P1-07-F01/P1-07-F02/P1-07-F03]"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-02 — tasks reach exactly the holders, deep links decide, notifications re-surface instead of duplicating",
+          "titles": [
+            "Aufgaben erreichen genau die Zuständigen, folgen der Vertretung, verlinken in die Entscheidung und Benachrichtigungen werden wieder ungelesen statt doppelt"
+          ]
+        },
+        {
+          "file": "supabase/tests/people_boundaries.sql",
+          "kind": "sql",
+          "description": "sql:people — read markers are strictly personal, pattern events self-or-manager, outsiders see none",
+          "titles": [
+            "employee sees foreign or missing % rows",
+            "admin can read another person's attention read markers",
+            "admin cannot read the employee's attention pattern events",
+            "outsider can read % rows of a foreign organization"
+          ]
+        }
+      ],
+      "clauses": "`/aufgaben`: Aufgaben genau für Handlungsfähige, Deep-Links, Deduplizierung, Vertretung folgt Delegation\n`@GG-02`-Bodies belegen Zuständigkeitsanzeige, Deep-Links, Auflösung, Deduplizierung, Delegationsfenster und Storno-Wiedervorlage; `A5-T1` ergänzt das sichtbare Anfragealter („offen seit 1 Tag\" aus rückdatierter Eingangszeit) und beweist, dass `/aufgaben` keinerlei Entscheidungs-Steuerelemente anbietet.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-01 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-02",
+      "flowIds": [
+        "P1-07-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T1",
+          "titles": [
+            "A5-01/A5-02/A5-03/A5-04: Aufgabenseite zeigt Alter und Zuständigkeit, Meine Anträge tragen Status und Gründe, Sammel-Lesen ist deterministisch und beide Badges zählen ehrlich [P1-07-F01/P1-07-F02/P1-07-F03]"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T1",
+          "titles": [
+            "Zeitfreigabe erreicht genau die verantwortliche Person und wird über den Deep-Link entschieden",
+            "Eine Benachrichtigung pro Antrag: erneute Entscheidung macht sie wieder ungelesen statt sie zu duplizieren; das Muster-Audit ist lückenlos"
+          ]
+        }
+      ],
+      "clauses": "„Alle als gelesen markieren\" (Bulk)\nZwei entschiedene A5-Anträge erzeugen deterministisch ≥2 ungelesene Zeilen; der Bulk-Button erscheint, leert seitenweit alle `data-unread`-Zeilen, und Lesemarken/`marked_read`-Events beider Quellen sind read-only belegt. Der frühere `@GG-02`-Pfad war nur im vererbten Volllauf konditional erreichbar.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-02 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-03",
+      "flowIds": [
+        "P1-07-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T1",
+          "titles": [
+            "A5-01/A5-02/A5-03/A5-04: Aufgabenseite zeigt Alter und Zuständigkeit, Meine Anträge tragen Status und Gründe, Sammel-Lesen ist deterministisch und beide Badges zählen ehrlich [P1-07-F01/P1-07-F02/P1-07-F03]"
+          ]
+        }
+      ],
+      "clauses": "Meine Anträge: eigene Anträge mit Status/Gründen\nDas Produkt zeigte in „Meine Anträge\" nur den Status; die katalogpflichtigen Gründe fehlten. Kleinster Fix: `OwnAttentionRequest.decisionReason` aus den autoritativen Feldern `decision_comment`/`cancellation_reason` (geteilter `resolveDecisionReason`-Helper) und „Grund: …\"-Zeile in der Kartenzeile. `A5-T1` belegt Offen/Genehmigt/Abgelehnt/Storniert einschließlich Ablehnungs- und Stornogrund.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-03 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-04",
+      "flowIds": [
+        "P1-07-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-02 + new:A5-T1",
+          "titles": [
+            "A5-04"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-07.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-02 + new:A5-T1",
+          "titles": [
+            "Aufgaben erreichen genau die Zuständigen, folgen der Vertretung, verlinken in die Entscheidung und Benachrichtigungen werden wieder ungelesen statt doppelt"
+          ]
+        }
+      ],
+      "clauses": "Badges zählen Zeit+Urlaub und nie Nicht-Handlungsfähiges\n`A5-T1` beweist das Zeiterfassungs-Badge erstmals direkt: Baseline+1 nach ausstehender Zeitfreigabe, +2 nach Urlaubsantrag, zurück auf Baseline nach beiden Entscheidungen und Freigabe; die nicht entscheidungsbefugte Person zeigt kein Badge. Das Aufgaben-Badge ist als Seitengleichung `Aufgaben + Ungelesen` in zwei Zustandsmischungen belegt; `@GG-02` hält die Einzelklassen.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-04 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-05",
+      "flowIds": [
+        "P1-09-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-09/@P1-11 + new:A5-T2",
+          "titles": [
+            "A5-05"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-09.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-09/@P1-11 + new:A5-T2",
+          "titles": [
+            "Teams gruppieren Personen wirksamkeitsbezogen, ohne Berechtigungen zu vergeben"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-11.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-09/@P1-11 + new:A5-T2",
+          "titles": [
+            "team visits expand per occurrence, overlap needs a reason, and office and field worker see them @FRESHNESS"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/team-qualifications.spec.ts",
+          "kind": "browser",
+          "description": "Component contract: a new team shows as saving in the first frame while the write is held; a refusal removes it and shows the reason at the form with the entered name kept",
+          "titles": [
+            "a refused team leaves the list and shows the reason at the form"
+          ]
+        }
+      ],
+      "clauses": "Teams anlegen, datumswirksame Mitglieder, Picker-Expansion ohne Rechte\n`A5-T2`: Büro legt Team und Katalogeintrag an; Mitgliedschaften aktiv/ohne Login/zukünftig (+44) sind datumswirksam (Zukunft ohne aktuelle Mitgliedszeile, per DB-Fenster belegt). Auftragsdialog-Expansion wählt genau das aktive Mitglied, weist die Person ohne Zugang sichtbar als übersprungen aus und schließt das Zukunftsmitglied aus; die Kalenderplanung expandiert beide aktiven Mitglieder inklusive Personal ohne Login (2 Zuweisungen). Katalog präzisiert: das Kalender-Überspringen ist seit `P1-11` durch planbares Personal ohne Login abgelöst. `@P1-09` hält Rechte-Freiheit, `@P1-11` die Datums-Expansion je Termin.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-05 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-06",
+      "flowIds": [
+        "P1-09-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T2",
+          "titles": [
+            "A5-06"
+          ]
+        }
+      ],
+      "clauses": "Team auflösen: Historie bleibt\nUI-Auflösung mit Bestätigungsdialog; Team erscheint unter „Aufgelöste Teams\", `dissolved_at` gesetzt, alle drei Mitgliedschaftszeilen und das `dissolved`-Event bleiben bestehen, bestehende Auftrags- und Planungszuweisungen bleiben unverändert, und weder Auftrags- noch Kalender-Picker bieten das Team weiter an.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-06 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-07",
+      "flowIds": [
+        "P1-09-F02",
+        "P1-09-F03",
+        "P1-09-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T3/A5-T4 — five coverage states, multi-gap warning with required reason, edit dialog and calendar drag re-check",
+          "titles": [
+            "A5-07"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-09.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-09 — a requirement explains the strongest coverage and a team assignment needs a reason",
+          "titles": [
+            "Auftragsanforderung erklärt die stärkste Abdeckung; Teamübernahme bleibt mit Begründung möglich und wird attribuiert"
+          ]
+        }
+      ],
+      "clauses": "Katalog Fähigkeiten/Zertifikate; Zuordnung mit Gültigkeit/Nachweis; Anforderungen am Auftrag; Override mit Grund\nGolden hält Katalogpflege, Gültigkeit/Nachweis, Erstellungsdialog-Prüfung zum Plandatum und Detail-Override mit Attribution. `A5-T3` ergänzt alle fünf Abdeckungszustände als Detailzeilen samt „Abgedeckt durch …\"/„Keine passende Person zugewiesen\", den Mehrfach-Lücken-Dialog mit Status und „stärkster Eintrag\" je Anforderung sowie die Ablehnung leerer Begründungen. `A5-T4` beweist den Bearbeitungsdialog als prüfende Zuweisungsfläche, den Kalender-Drag mit Warnung, „Änderung zurücknehmen\" mit stiller Wiederherstellung ohne jede Mutation (Datum/Events/Override-Zahl identisch) und die begründete Drag-Bestätigung mit persistiertem Datum.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-07 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-08",
+      "flowIds": [
+        "P1-09-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T3/A5-T4 — the apprentice notice is off by default, only the admin turns it on, accompanied apprentices stay unmarked",
+          "titles": [
+            "A5-08"
+          ]
+        },
+        {
+          "file": "lib/qualifications/action-boundaries.test.ts",
+          "kind": "unit",
+          "description": "only an admin switches the apprentice warning; Büro is refused",
+          "titles": [
+            "qualification actions refuse a lower role and a foreign organization’s ids"
+          ]
+        }
+      ],
+      "clauses": "Azubi-Warnung admin-gesteuert, standardmäßig aus\n`A5-T3` beweist erstmals den unangehakten Standard („aus\") vor dem Einschalten und den Azubi-allein-Hinweis im Warnungsdialog; `A5-T4` beweist die Begleit-Negativprobe (Azubi + Person mit wirksamer Nicht-Azubi-Kondition ⇒ kein Dialog) und schaltet die Warnung per UI wieder aus. `@P1-09` hält die Büro-Sperre des Schalters.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-08 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-09",
+      "flowIds": [
+        "P1-09-F06"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-09 + new:A5-T3",
+          "titles": [
+            "A5-09"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-09.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-09 + new:A5-T3",
+          "titles": [
+            "Ablaufhinweis wird ruhig dedupliziert; Erneuerung erhält die Historie und entfernt den alten Hinweis"
+          ]
+        }
+      ],
+      "clauses": "Ablaufhinweis als Aufgabe; Erneuerung entfernt ihn\n`@P1-09` hält Ablauf-Deduplizierung, Erneuerungshistorie und Entfernen des alten Hinweises. `A5-T3` ergänzt die Rechtzeitigkeit: ein noch gültiges Zertifikat innerhalb des Warnfensters erscheint als „läuft bald ab\" für Admin UND Büro auf `/aufgaben`, mit „Qualifikation ansehen\"-Deep-Link auf die Personalakte und Lesemarkierung.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-09 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a5-10",
+      "flowIds": [
+        "P1-09-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a5-aufgaben-qualifikationen.spec.ts",
+          "kind": "browser",
+          "description": "new:A5-T4 — the own qualification view stays read-only",
+          "titles": [
+            "A5-10"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-09.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-09 — the employee sees the own entries, never a colleague’s",
+          "titles": [
+            "Kuratierte Fähigkeiten und Zertifizierungen tragen Gültigkeit, interne Bestätigung und Nachweisstatus"
+          ]
+        },
+        {
+          "file": "supabase/tests/people_boundaries.sql",
+          "kind": "sql",
+          "description": "sql:people — team and qualification rows are visible to managers and the person only",
+          "titles": [
+            "employee can read % although only managers may",
+            "employee sees foreign or missing % rows",
+            "colleague can read the employee's % rows",
+            "admin cannot read the organization's % rows"
+          ]
+        },
+        {
+          "file": "lib/qualifications/action-boundaries.test.ts",
+          "kind": "unit",
+          "description": "the own overview lists only the field worker’s own team and qualification; every management action refuses the field worker before the database",
+          "titles": [
+            "qualification actions refuse a lower role and a foreign organization’s ids"
+          ]
+        }
+      ],
+      "clauses": "Mitarbeiter sieht eigene Qualifikationen nur lesend\nRLS-Selbstsicht bleibt Golden-belegt. `A5-T4` beweist die sichtbare Oberfläche: `/qualifikationen` zeigt eigene Einträge mit Gültigkeitszuständen (Gültig/Abgelaufen/Noch nicht gültig) über stabile Kartenmarker, fremde Einträge fehlen, und der gesamte Inhaltsbereich enthält keinerlei Verwaltungs-Steuerelement.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A5-10 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-01",
+      "flowIds": [
+        "P1-11-F01",
+        "P1-11-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T4: offers the three edit scopes, protects the past visit, keeps cancelled and skipped visits visible",
+          "titles": [
+            "A6-T4"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-11.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-11 journey test: series plus second visit for one job, then one, this-and-future and whole-series edits with their confirmations",
+          "titles": [
+            "manager plans a series and a second visit, then edits one, this and future, and the whole series"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_occurrences.sql",
+          "kind": "sql",
+          "description": "new:A6-01 identity rules: single edits become exceptions, a split keeps every identity, a whole-series edit leaves the exception, skipping needs a reason",
+          "titles": [
+            "a single-visit edit did not become a traceable exception",
+            "a this-and-future edit lost an identity or did not split the series",
+            "a whole-series edit rewrote the exception or lost an identity",
+            "a skip without a sufficient reason was accepted"
+          ]
+        }
+      ],
+      "clauses": "Serie + zweiter Besuch desselben Auftrags; one/this-and-future/series/skip-Edits\n`@P1-11`-Bodies 1–2 halten Tagesserie, zweiten Besuch ohne Duplikat, alle drei Umfänge, Ausnahme-Identität und Auslassen mit Grund. `A6-T4` ergänzt die F03-Restklauseln: sichtbares Drei-Optionen-Angebot, Absagen mit Grund, Schutz von Vergangenem/Begonnenem und die sichtbare Nachvollziehbarkeit (D3).",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-01 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-02",
+      "flowIds": [
+        "P1-11-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T1: internal work 22:00 + 4 h across midnight without a job; two-day all-day job visit",
+          "titles": [
+            "A6-T1"
+          ]
+        },
+        {
+          "file": "lib/planning/recurrence.test.ts",
+          "kind": "unit",
+          "description": "covered: materializes an all-day multi-day occurrence with an exclusive end",
+          "titles": [
+            "materializes an all-day multi-day occurrence with an exclusive end"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_occurrences.sql",
+          "kind": "sql",
+          "description": "covered: planned visits create no time entries",
+          "titles": [
+            "planned visits created actual time entries"
+          ]
+        }
+      ],
+      "clauses": "Über Mitternacht / mehrtägig / interne Einträge ohne Fake-Auftrag\n`@P1-11`-Body 3 re-verifiziert: 22:00+4h über Mitternacht, dreitägiger Ganztages-Eintrag, `jobId` null, unveränderte Ist-Zeit; die UI-Labels „Interne Arbeit\"/„Schulung\" werden dort real ausgewählt.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-02 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-03",
+      "flowIds": [
+        "P1-11-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T1",
+          "titles": [
+            "A6-T1"
+          ]
+        }
+      ],
+      "clauses": "Ganztägige und mehrtägige Besuche; Büro als Planer\n`A6-T1`: ganztägiger zweitägiger Auftragsbesuch (`start_date`/`end_date_exclusive`, kein `start_at`) sichtbar im Kalender; Büro plant eine Besprechung durch die echte UI.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-03 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-04",
+      "flowIds": [
+        "P1-11-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T2: a weekly series with an added weekday is planned on exactly those days",
+          "titles": [
+            "A6-T2"
+          ]
+        },
+        {
+          "file": "lib/planning/recurrence.test.ts",
+          "kind": "unit",
+          "description": "new:A6-T2 moved: selected weekdays in the start week; invalid monthly dates (31st) drop out instead of drifting",
+          "titles": [
+            "uses the selected weekdays in the start week and respects count",
+            "skips invalid monthly dates instead of drifting into another month"
+          ]
+        }
+      ],
+      "clauses": "Wochen-/Monatsserie: ungültige Termine (31.) fallen aus statt zu verrutschen\n`A6-T2`: Wochenserie über zwei explizit gewählte Wochentage entspricht exakt der Produkt-Materialisierung; Monatsserie am 31. erzeugt ausschließlich echte 31.-Termine — kurze Monate fallen aus, nichts verrutscht.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-04 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-05",
+      "flowIds": [
+        "P1-11-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T3: 730 weekly visits clamp at 18 months; each click adds exactly six months",
+          "titles": [
+            "A6-T3"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_occurrences.sql",
+          "kind": "sql",
+          "description": "new:A6-T3 moved: the unique series identity per lineage rejects a duplicate visit",
+          "titles": [
+            "a duplicate series identity was accepted"
+          ]
+        }
+      ],
+      "clauses": "18-Monats-Horizont; Serienhorizont um je 6 Monate verlängern (ohne Duplikate)\nProduktdefekt D2: `extendPlanningSeriesHorizon` hatte keinen UI-Aufrufer — der Katalog-Klick existierte nicht. Fix: „Serie um sechs Monate verlängern\" im Serienbereich des Bearbeitungsdialogs inkl. Warn-/Begründungspfad. `A6-T3`: 730 gewünschte Termine klemmen bei 18 Monaten (Soll-Menge aus dem Produkt-Materialisierer), zwei Klicks ergänzen exakt je sechs Monate, alle Identitäten bleiben einmalig.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-05 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-06",
+      "flowIds": [
+        "P1-11-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T5",
+          "titles": [
+            "A6-T5"
+          ]
+        }
+      ],
+      "clauses": "Kapazitätswarnung aus schwebendem (pending) Urlaubsantrag\n`A6-T5`: offener Antrag erzeugt die Warnzeile mit Person UND Datum; Speichern ist ohne Grund nachweislich gesperrt; die begründete Ausnahme persistiert `pending_absence` und den Grund read-only.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-06 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-07",
+      "flowIds": [
+        "P1-11-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T5/A6-T6: warning lines name person and date; changed facts force a new decision",
+          "titles": [
+            "A6-T5",
+            "A6-T6"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-11.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-11 team test: the overlapping visit saves only with its reason",
+          "titles": [
+            "team visits expand per occurrence, overlap needs a reason, and office and field worker see them @FRESHNESS"
+          ]
+        }
+      ],
+      "clauses": "Warnungen erklären jede Person und jedes Datum; Grund-Override; geänderte Fakten erzwingen neue Entscheidung\nProduktdefekt D1: keine Warnfläche nannte die betroffene Person, der Bearbeitungsdialog nicht einmal das Datum. Fix: serverseitig aufgelöster `employeeName` (Profil-Präzedenz) nach dem Fingerprint, gerendert in Erstell-, Bearbeitungs- und Drag-Dialog. `A6-T5` beweist Personen-/Datumszeilen über zwei Serientermine und den vollständigen Stale-Pfad (Faktenänderung → „Die Planungslage hat sich geändert\" → aktualisierte Hinweise → zweite bewusste Entscheidung speichert). `@P1-11`-Body 4 hält Overlap-Kinds und Override db-seitig, A5-T4 den Drag-Pfad.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-07 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-08",
+      "flowIds": [
+        "P1-11-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T7: a no-login record is planned and visible to managers with \"Ohne App-Zugang\" (A5-T2 holds the database level)",
+          "titles": [
+            "A6-T7"
+          ]
+        }
+      ],
+      "clauses": "Personal ohne Login verplanbar (Manager-sichtbar)\nMapping-Korrektur: `@P1-11` plant kein Personal ohne Login; die db-Ebene stammt aus A5-T2. `A6-T7` legt eine eigene Akte ohne Login an, plant NUR sie, und beweist Manager-Sichtbarkeit: Kalender-Rendering plus Bearbeitungsdialog mit „1 Mitarbeiter\" und sichtbarem „Ohne App-Zugang\"; die Zuweisungsidentität ist read-only belegt.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-08 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-09",
+      "flowIds": [
+        "P1-11-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/golden/p1-11.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-11 legacy bridge test: a single-date job renders and moves through its bridged occurrence",
+          "titles": [
+            "legacy single-date jobs still render and edit through the occurrence bridge"
+          ]
+        }
+      ],
+      "clauses": "Legacy-Einzeldatum-Aufträge über die Brücke\n`@P1-11`-Body 5 re-verifiziert: Brücke rendert und editiert mit stabiler `legacy_source_job_id`-Identität ohne Ist-Zeit.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-09 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-10",
+      "flowIds": [
+        "P1-11-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T1: four internal type labels; Büro saves a Besprechung, Admin plans Interne Arbeit",
+          "titles": [
+            "A6-T1"
+          ]
+        }
+      ],
+      "clauses": "Vier interne Eintragstypen wählbar mit korrekten Labels\nAutomatisiert statt manueller Ausnahme: `A6-T1` prüft das Vier-Optionen-Angebot mit exakten Labels, das Büro speichert die Standardart „Besprechung\" (`meeting`), Admin wählt „Sonstiges\" (`other`); `@P1-11`-Body 3 wählt „Interne Arbeit\" und „Schulung\".",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-10 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-11",
+      "flowIds": [
+        "P1-11-F03"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T4: locked past card without edit; whole-series edit moves only future visits; cancel and skip stay visible",
+          "titles": [
+            "A6-T4"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_occurrences.sql",
+          "kind": "sql",
+          "description": "new:A6-T4 moved: past visits refuse a single edit, a status change and a whole-series rewrite",
+          "titles": [
+            "a past visit accepted a single edit",
+            "a past visit accepted a status change",
+            "a whole-series edit rewrote a past visit or skipped a future one"
+          ]
+        }
+      ],
+      "clauses": "Vergangenes/Begonnenes nie umgeschrieben; Absagen/Auslassen bleiben nachvollziehbar sichtbar\nProduktdefekt D3: Kalender und Dispatch-Panel filterten `status='scheduled'` — ausgelassene/abgesagte Termine verschwanden entgegen Katalog und Dialogtext. Fix: Kalender lädt und rendert sie gedämpft mit Status-Badge, nicht ziehbar, Popover ohne Bearbeiten. `A6-T4`: Serie ab gestern; Einzel-Edit des vergangenen Termins wird verständlich verweigert; Serien-Edit verschiebt nur Zukünftiges (Vergangenes byte-identisch); Absage und Auslassung bleiben mit Badge sichtbar und read-only persistiert.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-11 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-12",
+      "flowIds": [
+        "P1-11-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T5/A6-T6: schedule fallback, closure day, holiday, approved vacation and sickness warnings with person and date",
+          "titles": [
+            "A6-T5",
+            "A6-T6"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-11.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-11 team test: overlap warning",
+          "titles": [
+            "team visits expand per occurrence, overlap needs a reason, and office and field worker see them @FRESHNESS"
+          ]
+        }
+      ],
+      "clauses": "Kapazitätsquellen Wochenplan-Fallback, Feiertag, Betriebsruhe, genehmigter Urlaub, Krankheit\n`A6-T5` hält den Wochenplan-Fallback (`no_schedule`) als sichtbare Zeile; `A6-T6` provoziert Betriebsruhe-, Feiertags- (temporäre Berlin-Region, danach zurückgesetzt), Urlaubs- und Krankheits-Warnungen jeweils mit Person und Datum — ohne zu speichern — und räumt alle Fixtures per UI wieder ab. Overlap bleibt `@P1-11`-Body 4.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-12 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a6-13",
+      "flowIds": [
+        "P1-11-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a6-planung.spec.ts",
+          "kind": "browser",
+          "description": "new:A6-T7: the field worker sees the own visit, not the no-login-only visit",
+          "titles": [
+            "A6-T7"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-11.spec.ts",
+          "kind": "browser",
+          "description": "covered:@P1-11 team test: the field worker opens the assigned team visit",
+          "titles": [
+            "team visits expand per occurrence, overlap needs a reason, and office and field worker see them @FRESHNESS"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_occurrences.sql",
+          "kind": "sql",
+          "description": "new:A6-T7 moved: a field worker reads exactly the assigned visits and no series, assessments or history; planning creates no time entries",
+          "titles": [
+            "planned visits created actual time entries",
+            "a field worker did not see exactly the assigned visits",
+            "a field worker could read series, assessments or planning history"
+          ]
+        },
+        {
+          "file": "lib/calendar/calendar-page-access.test.ts",
+          "kind": "unit",
+          "description": "the real Kalender page and planning read give a field worker the own visit, never a colleague's or the no-login-only visit, while Büro reads all three",
+          "titles": [
+            "the Kalender shows a field worker only their own row and visits, and another organization nothing"
+          ]
+        }
+      ],
+      "clauses": "Handwerker sehen genau ihre Termine; Planung erzeugt nie Ist-Zeit\n`@P1-11` hält RLS-Matrix und Ist-Zeit-Null; `A6-T7` ergänzt das exakte Positiv/Negativ-Paar in der Handwerker-Kalender-UI (eigener A6-Termin sichtbar, Nur-ohne-Login-Termin abwesend) und den unveränderten organisationsweiten Ist-Zeit-Zähler über alle A6-Planungen.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A6-13 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-01",
+      "flowIds": [
+        "P1-12-F01",
+        "P1-12-F02",
+        "P1-12-F08"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T1/A7-T2/A7-T3/A7-T5/A7-T6: readiness dimensions, provable travel warning, recipient states, deliberate parking context",
+          "titles": [
+            "A7-T1",
+            "A7-T2",
+            "A7-T3",
+            "A7-T5",
+            "A7-T6"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-12.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-03 parked-backlog test and live-dispatch test: dispatch of a visit and of an unscheduled job, panel toggle only for the office",
+          "titles": [
+            "parked backlog work is dispatched unscheduled and scheduling moves the same dispatch onto the visit",
+            "a second office session sees a new dispatch live and field workers never see the panel @FRESHNESS"
+          ]
+        }
+      ],
+      "clauses": "Einsatz senden (geplant + ungeplant); Bereitschaftsbild ehrlich; Parkplatz-Kontext; Legacy-Label\n`@GG-03` hält Panel-Toggle, Empfänger-Marker, Realtime-Frische, fehlenden Mitarbeiter-Toggle und je einen Versand für Besuch und ungeplanten Auftrag. `A7-T1` belegt alle sechs beschrifteten Dimensionen (Kapazität/Qualifikation aus der Planungsprüfung, Einsatzort mit Zugangshinweis, Fahrzeit „nicht bewertet\", Material immer „– nicht reserviert.\", Werkzeuge „nicht bewertet\") plus Unbekannt-nie-grün und den optionalen Hinweistext; `A7-T2` die belegbare Fahrzeit-Warnung in Dialog und Panel; `A7-T3` das sichtbare Zustandsvokabular inkl. „Übernommen\"; `A7-T5/A7-T6` belegen bewusstes Parken mit Kontext. Der Altbestandspfad lässt sich nach P1-14 absichtlich nicht neu über die UI erzeugen; F09 wird durch den unveränderten sichtbaren Fallback und die migrationsseitige Null-Kontext-Erhaltung belegt, nicht fälschlich A7-T5 zugeschrieben.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-01 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-02",
+      "flowIds": [
+        "P1-12-F03",
+        "P1-12-F04",
+        "P1-12-F05"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T2/A7-T4: card and confirmation via /aufgaben; challenge via /aufgaben, resolution by moving the visit, location change invalidates",
+          "titles": [
+            "A7-T2",
+            "A7-T4"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-12.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-03 acknowledgement test: confirm, move invalidates, kept challenge confirmed again",
+          "titles": [
+            "a dispatch is acknowledged, a move invalidates it, and a kept challenge is confirmed again"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_dispatch.sql",
+          "kind": "sql",
+          "description": "covered: a moved visit supersedes the acknowledged revision",
+          "titles": [
+            "a moved visit kept a valid acknowledgement"
+          ]
+        }
+      ],
+      "clauses": "Bestätigen; wesentliche Änderung macht Bestätigung ungültig; Rückfrage → Büro löst → erneut bestätigen\nProduktdefekt D1: kein Trigger auf `jobs` rief die Dispatch-Synchronisation bei Ort-/Einsatzortänderung — Bestätigte behielten eine veraltete Adresse. Fix: additive Migration `sync_dispatch_on_job_location_change` (Fingerprint-idempotent). `@GG-03` hält Verschieben-/Batch-Invalidierung, Panel-Rückfrage und Beibehalten-mit-Begründung samt erneuter Bestätigung. `A7-T2` belegt die „Mein Einsatz\"-Karte (Termin, Ort, Hinweis) und das Bestätigen ÜBER die `/aufgaben`-Aufgabe; `A7-T4` die Rückfrage über `/aufgaben`, die Rückfrage als Manager-Aufgabe MIT Person/Titel/Grund, die Lösung durch Plananpassung (Rückfrage automatisch `superseded`, Karte „ausstehend\" mit neuem Datum) und die Ort-Änderung als `instruction_changed`-Revision mit neu sichtbarem Ort.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-02 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-03",
+      "flowIds": [
+        "P1-12-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T3",
+          "titles": [
+            "A7-T3"
+          ]
+        }
+      ],
+      "clauses": "Nur-Empfänger-Änderung: Bestätigungen Unveränderter leben nachvollziehbar weiter (carry-forward)\nReine Zuweisungsänderung erzeugt Revision `reassigned`; die bestätigte Person trägt auf der neuen Revision `carried_forward` (Panel: „Übernommen\"), neue Empfänger sind „Bestätigung ausstehend\".",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-03 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-04",
+      "flowIds": [
+        "P1-12-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T3",
+          "titles": [
+            "A7-T3"
+          ]
+        }
+      ],
+      "clauses": "Empfänger ohne Login zeigt „nicht möglich\" und wird nie auto-bestätigt\nEigene Akte ohne Login als Empfänger: Panel-Chip „Ohne Zugang – Bestätigung nicht möglich\"; read-only belegt NULL Acknowledgement-Zeilen für diese Akte über alle Revisionen.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-04 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-05",
+      "flowIds": [
+        "P1-12-F06"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T5/A7-T6",
+          "titles": [
+            "A7-T5",
+            "A7-T6"
+          ]
+        }
+      ],
+      "clauses": "Einsatz manuell stornieren; Parken storniert aktive Einsätze sichtbar\n`A7-T5`: „Einsatz zurückziehen …\" mit Grund — Status `cancelled`, Historie bleibt, die Karte der Person verschwindet. `A7-T6`: Parken per Kalender-Drag storniert den bestätigten Einsatz automatisch (Event-Ursache `job_parked`), Karte weg, Panel-Zeile weg.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-05 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-06",
+      "flowIds": [
+        "P1-12-F04",
+        "P1-12-F07"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T5: the note is immutable; withdraw and resend with a new note; A7-T2: no commitment and no time on the confirmed job",
+          "titles": [
+            "A7-T5",
+            "A7-T2"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_dispatch.sql",
+          "kind": "sql",
+          "description": "covered: an acknowledgement creates no time entry and no customer commitment",
+          "titles": [
+            "an acknowledgement created actual time or a customer commitment"
+          ]
+        }
+      ],
+      "clauses": "Hinweistext nach dem Senden; Bestätigung erzeugt keine Ist-Zeit\nKein UI-, Action- oder SQL-Pfad ändert einen versendeten Hinweistext (die Sync-Funktion trägt `dispatch_note` unverändert weiter) — der Katalog wurde korrigiert: der Hinweis ist unveränderlich, eine geänderte Anweisung läuft über Zurückziehen und Neusenden. `A7-T5` belegt genau diesen Pfad (zwei Dispatches, alter Hinweis storniert, neuer Hinweis erneut ausstehend). Ist-Zeit-Null hält `@GG-03` body 6 organisationsweit; `A7-T2`/`A7-T9` halten den unveränderten Zähler zusätzlich über alle A7-Bestätigungen, und `A7-T2` belegt Null Kundenzusagen direkt nach einer Bestätigung.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-06 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-07",
+      "flowIds": [
+        "P1-12-F13",
+        "P1-12-F14"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T7: arrival window, four channels, no-send text, worker card, visible mismatch",
+          "titles": [
+            "A7-T7"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-12.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-03 commitment and batch test: record, mismatch after the move, superseding commitment",
+          "titles": [
+            "a customer commitment stays put while a batch moves visits across jobs at once"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_dispatch.sql",
+          "kind": "sql",
+          "description": "covered: moving the visit leaves the commitment date and status unchanged",
+          "titles": [
+            "moving the visit changed the customer commitment"
+          ]
+        }
+      ],
+      "clauses": "Kundenzusage erfassen; Verschieben ⇒ sichtbare Abweichung; neue Zusage löst ab\n`@GG-03` body 5 hält Erfassung, Mismatch-Lebenszyklus und die ablösende Zusage mit `supersedesId`. `A7-T7` ergänzt das optionale Ankunftsfenster (erfasst, im Panel und auf der Handwerker-Karte gerendert), die exakt vier Kanäle, den gewählten Kanal `vor_ort` read-only und den sichtbaren No-Send-Text „Es wird keine Nachricht versendet.\" plus den sichtbaren Text „weicht vom Plan ab\".",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-07 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-08",
+      "flowIds": [
+        "P1-12-F14"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T7",
+          "titles": [
+            "A7-T7"
+          ]
+        }
+      ],
+      "clauses": "Kundenzusage mit Grund zurückziehen\n„Zusage zurückziehen …\" → Dialog „Kundenzusage zurückziehen\" (inkl. „nicht benachrichtigt\") — Status `withdrawn` mit read-only belegtem Grund; das Panel bietet danach wieder „Zusage erfassen\".",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-08 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-09",
+      "flowIds": [
+        "P1-12-F15",
+        "P1-12-F16",
+        "P1-12-F17"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T9: days and new time, old-to-new preview per visit, conflict reason of at least 8 characters, series visits become exceptions",
+          "titles": [
+            "A7-T9"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-12.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-03 commitment and batch test: cross-job selection, consequence lines, atomic day shift",
+          "titles": [
+            "a customer commitment stays put while a batch moves visits across jobs at once"
+          ]
+        },
+        {
+          "file": "supabase/tests/planning_dispatch.sql",
+          "kind": "sql",
+          "description": "new:A7-T9 moved: a batch with a started visit moves nothing; moved series visits keep their series as exceptions with per-visit history and one batch marker",
+          "titles": [
+            "a batch with a started visit moved part of the selection",
+            "batch-moved series visits are not exceptions of their series",
+            "the batch move lost per-visit history or its atomic marker"
+          ]
+        }
+      ],
+      "clauses": "Batch: Auswahl, Vorschau, alles-oder-nichts, Serien-Ausnahmen\nProduktdefekt D2: die Vorschau zeigte nur Zählwerte, nicht die katalogpflichtigen alten/neuen Zeitpunkte je Termin. Fix: `previewBatchReschedule` liefert `items`, der Dialog rendert je Besuch „alt → neu\" (tastaturzugänglich). `@GG-03` body 5 hält Cross-Job-Auswahl, Zähler, Bestätigungs-/Zusagen-Zeilen und den atomaren Tages-Shift. `A7-T9` belegt Tage UND neue Uhrzeit, die indexgenaue alt→neu-Vorschau, die deterministische Konfliktzeile, die Grund-Pflicht (Button gesperrt unter 8 Zeichen), beide Termine als `is_exception` derselben Serie auf Minutengenauigkeit und die erhaltene Historie (je Termin `edited` mit `batchRequestId` plus ein atomarer `batch_rescheduled`-Marker mit der exakten Id-Menge).",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-09 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-10",
+      "flowIds": [
+        "P1-12-F15",
+        "P1-12-F17"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T8: today is not selectable; zero shift names the missing input; all-day plus time only is refused and nothing moves",
+          "titles": [
+            "A7-T8"
+          ]
+        }
+      ],
+      "clauses": "Batch-Ablehnungsfälle: ganztägig braucht Tages-Verschiebung; Null-Verschiebung abgelehnt\nHeutiger Ganztagsbesuch: Checkbox deaktiviert (nur Zukunft). Null-Verschiebung ohne Uhrzeit: „Auswirkungen prüfen\" bleibt gesperrt. Ganztägig + reine Uhrzeit: exakte deutsche Ablehnung, und read-only ist belegt, dass NICHTS verschoben wurde.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-10 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-11",
+      "flowIds": [
+        "P1-12-F10"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T6 (manual-exception hedge withdrawn)",
+          "titles": [
+            "A7-T6"
+          ]
+        }
+      ],
+      "clauses": "Überfällige Parkplatz-Wiedervorlage als Aufgabe\nWiedervorlage = HEUTE ist bereits überfällig (`next_review_date ≤ businessToday`); die verantwortliche Büro-Person sieht auf `/aufgaben` die Gruppe „Parkplatz-Wiedervorlagen\" mit Auftragstitel, Datum und „Zuständig: …\". Vollständig automatisiert; keine manuelle Ausnahme.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-11 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-a7-12",
+      "flowIds": [
+        "P1-12-F06",
+        "P1-12-F12"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-1/a7-einsaetze.spec.ts",
+          "kind": "browser",
+          "description": "new:A7-T5: the Parkplatz dialog preselects the assigned employee",
+          "titles": [
+            "A7-T5"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-12.spec.ts",
+          "kind": "browser",
+          "description": "covered:@GG-03 parked-backlog test: Parkplatz dispatch, target_scheduled transition, parking context stays",
+          "titles": [
+            "parked backlog work is dispatched unscheduled and scheduling moves the same dispatch onto the visit"
+          ]
+        }
+      ],
+      "clauses": "Geparkten Auftrag vom Parkplatz dispatchen; späteres Einplanen = nachvollziehbarer Übergang\n`@GG-03` bodies 1–2 halten den Parkplatz-Versand mit ehrlichem Bereitschaftsbild und den `target_scheduled`-Übergang desselben Dispatches samt `unparked`-Kontextlöschung. `A7-T5` ergänzt die Katalogklausel „an die zugewiesenen Mitarbeiter\": der Dialog wählt die zugewiesene Person nachweislich vor.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as row A7-12 of the retired Wave 1 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-13-01",
+      "flowIds": [
+        "P1-13-F01",
+        "P1-13-F02",
+        "P1-13-F03",
+        "P1-13-F09",
+        "P1-13-F26",
+        "P1-13-F27"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "`empty state, role denial, validation, creation, filters, and safe realtime catch-up` — empty outsider list, employee redirect, Büro dialog kept open across an Admin creation, validation, filters",
+          "titles": [
+            "empty state, role denial, validation, creation, filters, and safe realtime catch-up"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_13_work_templates.sql",
+          "kind": "sql",
+          "description": "manager-only template RPCs and template reads closed to employees and other organizations",
+          "titles": [
+            "employee created a work template",
+            "an employee can read work templates",
+            "another organization can read work templates or applied items",
+            "the office manager cannot read the organization templates"
+          ]
+        },
+        {
+          "file": "lib/org/work-page-access.test.ts",
+          "kind": "unit",
+          "description": "the real page sends a field worker to the dashboard and lists no template of another organization",
+          "titles": [
+            "work and service pages refuse a field worker and never show another organization’s work, equipment or cases"
+          ]
+        }
+      ],
+      "clauses": "Real Admin/Büro/employee/outsider sessions prove zero seeded templates, manager creation and validation, description/target/status filters, employee redirect and outsider isolation. A Büro dialog stays open across an Admin mutation and receives the queued refresh only after close.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-13-F01`, `F02`, `F03`, `F09`, `F26`, `F27` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-13-02",
+      "flowIds": [
+        "P1-13-F04",
+        "P1-13-F05",
+        "P1-13-F06",
+        "P1-13-F07",
+        "P1-13-F08",
+        "P1-13-F10"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "`draft content covers tasks, evidence, material, qualifications, dependencies, and publish` — UI editing of every content kind, cycle rejection and the persisted version 2 rows",
+          "titles": [
+            "draft content covers tasks, evidence, material, qualifications, dependencies, and publish"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "journey step `Publish a job template…` — publish with optional point and evidence expectation",
+          "titles": [
+            "Publish a job template with an optional checklist point and an evidence expectation"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_13_work_templates.sql",
+          "kind": "sql",
+          "description": "published versions, their children and template history are immutable; a dependency cycle is refused",
+          "titles": [
+            "a dependency cycle was saved",
+            "a published version was renamed",
+            "a published item was changed",
+            "template history was deleted"
+          ]
+        }
+      ],
+      "clauses": "UI-only creation, editing, ordering and deletion cover task/checklist kind, required/optional state, grouping/notes, evidence category, material plus inline item/location creation, organization capability creation, multiple structural prerequisites, cycle rejection and successful immutable publish. Persisted version rows and every child collection are asserted.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-13-F04`, `F05`, `F06`, `F07`, `F08`, `F10` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-13-03",
+      "flowIds": [
+        "P1-13-F11",
+        "P1-13-F12",
+        "P1-13-F13",
+        "P1-13-F14",
+        "P1-13-F19",
+        "P1-13-F20",
+        "P1-13-F21",
+        "P1-13-F22"
+      ],
+      "evidence": [
+        {
+          "file": "tests/golden/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "journey steps `Create an assigned job…` to `Existing work keeps version 1…` — creation application, field completion, version 2 reaches only new work",
+          "titles": [
+            "Create an assigned job from the template",
+            "The field worker sees the snapshot and completes a point",
+            "Publish version 2 with a changed point",
+            "Existing work keeps version 1 and new work receives version 2"
+          ]
+        },
+        {
+          "file": "tests/audit/wave-2/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "`a template-backed job keeps an editable, attributed snapshot` and `archive and reactivation hide a template…` — qualification override, attributed completion, editable snapshot, archive/reactivation and history",
+          "titles": [
+            "a template-backed job keeps an editable, attributed snapshot",
+            "archive and reactivation hide a template from new work while its history keeps the application"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_13_work_templates.sql",
+          "kind": "sql",
+          "description": "application copies items, evidence and dependencies with their origin, writes no stock or schedule fact, and later versions leave version 1 untouched",
+          "titles": [
+            "applying version 1 did not create an application",
+            "the applied job does not carry the version 1 items",
+            "the evidence expectation was not copied with its origin",
+            "the item dependency was not copied",
+            "applying a template moved stock or created a schedule",
+            "version 2 rewrote the version 1 items",
+            "version 2 reached a job created from version 1"
+          ]
+        }
+      ],
+      "clauses": "Direct job creation selects a published version, uses the established qualification override, materializes attributed existing primitives, keeps stock/time/documents untouched, and preserves the pre-existing planning occurrence and assignment. Employee checklist completion is persisted with actor/time. Manager edits checklist metadata/evidence and material through existing sections; provenance survives. V2, archive/reactivation and actor/timestamp/target history never rewrite V1 work.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-13-F11`, `F12`, `F13`, `F14`, `F19`, `F20`, `F21`, `F22` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-13-04",
+      "flowIds": [
+        "P1-13-F17",
+        "P1-13-F18",
+        "P1-13-F23",
+        "P1-13-F24"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "`after-creation preview, duplicate and additional warnings, and project-direct rows` — preview, same-version denial, additive confirmation, project-direct rows, no inherited row on a later child",
+          "titles": [
+            "after-creation preview, duplicate and additional warnings, and project-direct rows"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_13_work_templates.sql",
+          "kind": "sql",
+          "description": "replay, same-version and additional-confirmation rules; project templates write onto the project and create no child job",
+          "titles": [
+            "an idempotent replay created a second application",
+            "the same version was applied twice",
+            "an additional template was applied without confirmation",
+            "a project template was applied to a job",
+            "the project template did not write onto the project",
+            "a project template created a child job"
+          ]
+        }
+      ],
+      "clauses": "The preview shows exact counts; same-version retry is denied; another version requires explicit additive confirmation. A project application creates direct project instruction/material/capability rows, no child job, and no inherited row on a later child. Empty pickers exclude drafts, archives and foreign-organization versions.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-13-F17`, `F18`, `F23`, `F24` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-13-05",
+      "flowIds": [
+        "P1-13-F15",
+        "P1-13-F16"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "`request conversion applies a template and every creation context offers the optional picker` — conversion with a template and the customer, employee, project and calendar pickers",
+          "titles": [
+            "request conversion applies a template and every creation context offers the optional picker"
+          ]
+        }
+      ],
+      "clauses": "Customer, employee, project-child and calendar creation dialogs expose the optional matching picker without changing their existing defaults. Job and project conversion materialize the selected version and persist the once-only request link; target state is read from the database.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-13-F15`, `F16` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-13-06",
+      "flowIds": [
+        "P1-13-F25",
+        "P1-13-F26"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-13.spec.ts",
+          "kind": "browser",
+          "description": "`a retired capability blocks template use with a named correction…` — named correction on conversion and application, request stays open, retry succeeds, outsider sees no template",
+          "titles": [
+            "a retired capability blocks template use with a named correction and other organizations see no template"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_13_work_templates.sql",
+          "kind": "sql",
+          "description": "a retired capability or an archived template fails application without any partial row",
+          "titles": [
+            "a template with a retired capability was applied",
+            "a failed application left partial rows",
+            "an archived template was applied"
+          ]
+        }
+      ],
+      "clauses": "A retired capability makes template-backed creation fail atomically: the request/job count and application count stay unchanged, the named correction appears, and retry remains possible. Direct employee action and cross-organization reads/writes stay denied.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-13-F25`, `F26` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-14-02",
+      "flowIds": [
+        "P1-14-F19",
+        "P1-14-F21"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-14.spec.ts",
+          "kind": "browser",
+          "description": "`blockers, owners, review, attention, resolution, and parking stay one model` — manager attention, manager resolution, reopen and parking",
+          "titles": [
+            "blockers, owners, review, attention, resolution, and parking stay one model"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-14.spec.ts",
+          "kind": "browser",
+          "description": "journey steps for the field worker's own blocker report and resolution",
+          "titles": [
+            "The field worker reports an own blocker without manager controls",
+            "The field worker resolves the blocker with a note"
+          ]
+        },
+        {
+          "file": "supabase/tests/work_execution_boundaries.sql",
+          "kind": "sql",
+          "description": "parking stays a manager control: the assigned employee's park is refused",
+          "titles": [
+            "an employee parked the job"
+          ]
+        }
+      ],
+      "clauses": "An assigned employee creates a self-owned due-today safety blocker through the UI; persisted owner/reason/review/version and manager attention are asserted. Employee resolution, manager reopen, second resolution and event-compatible versions are followed by manager parking with bounded context. Database state proves one blocker model, resolved/open distinction and execution/parking separation.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-14-F13`…`F25` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-15-01",
+      "flowIds": [
+        "P1-15-F29"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-15.spec.ts",
+          "kind": "browser",
+          "description": "`targets, roles, five structured kinds, and validation` — all five forms, draft/void and validation",
+          "titles": [
+            "targets, roles, five structured kinds, and validation"
+          ]
+        },
+        {
+          "file": "supabase/tests/work_execution_boundaries.sql",
+          "kind": "sql",
+          "description": "artifact, revision and action rows are invisible to another organization",
+          "titles": [
+            "another organization reads % rows"
+          ]
+        },
+        {
+          "file": "lib/org/work-page-access.test.ts",
+          "kind": "unit",
+          "description": "another organization's member is sent away from the job page and the artifact reader refuses them",
+          "titles": [
+            "work and service pages refuse a field worker and never show another organization’s work, equipment or cases"
+          ]
+        }
+      ],
+      "clauses": "Real Admin/Büro/employee/outsider sessions prove the section placement, empty/list/detail states, exact job/project target access, all five typed forms, assignment-derived field access, customer visibility controls, complete-versus-draft validation, positive measurement rows, defect/change details and zero cross-organization visibility. Persisted revisions and typed detail rows are asserted without creating parallel jobs, tasks, time or stock facts.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-15-F01`…`F31` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-16-01",
+      "flowIds": [
+        "P1-16-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-16.spec.ts",
+          "kind": "browser",
+          "description": "`role-aware standalone and project-child packs expose only practical field context` — project-child projection, privacy, order, touch targets and office views",
+          "titles": [
+            "role-aware standalone and project-child packs expose only practical field context"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-16.spec.ts",
+          "kind": "browser",
+          "description": "journey step `The pack opens with only the practical field context` — standalone first viewport",
+          "titles": [
+            "The pack opens with only the practical field context"
+          ]
+        },
+        {
+          "file": "lib/org/field-work-pack-access.test.ts",
+          "kind": "unit",
+          "description": "the real job pages give the assigned field worker the pack without internal notes, e-mail addresses, sibling jobs, serial numbers, warranty, prices or the maintenance contract, refuse an unassigned field worker and another organization, and give Büro and Admin the office view",
+          "titles": [
+            "the field work pack reaches only the assigned field worker and carries no office-only value"
+          ]
+        }
+      ],
+      "clauses": "Real Admin/Büro/employee/outsider sessions create standalone and child work, then prove shared assigned access, minimal parent reference, no sibling/project-wide leakage, unchanged office composition, server denial for unassigned/foreign roles, side-effect-free opening, exact mobile order, requested outcome, site/access/contact/call/navigation actions, explicit missing facts, 44px targets and exclusion of internal notes, email, colleague, commercial and governance facts. Read-only before/after database state is equal.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-16-F01`…`F26`, `F83` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-16-03",
+      "flowIds": [
+        "P1-16-F45",
+        "P1-16-F49"
+      ],
+      "evidence": [
+        {
+          "file": "tests/golden/p1-16.spec.ts",
+          "kind": "browser",
+          "description": "journey steps — field actions persisted through their owners and the terminal read-only pack",
+          "titles": [
+            "Field actions persist through their owning domains",
+            "Completion leaves a read-only pack while the office keeps its own view"
+          ]
+        },
+        {
+          "file": "tests/audit/wave-2/p1-16.spec.ts",
+          "kind": "browser",
+          "description": "`ordered instructions, interruption, reopening, and completion feedback remain authoritative` — ordered and dependent instructions and reopening",
+          "titles": [
+            "ordered instructions, interruption, reopening, and completion feedback remain authoritative"
+          ]
+        },
+        {
+          "file": "lib/org/field-work-pack-access.test.ts",
+          "kind": "unit",
+          "description": "a colleague's internal draft reaches neither the pack nor the field worker's artifact read, while Büro reads it",
+          "titles": [
+            "the field work pack reaches only the assigned field worker and carries no office-only value"
+          ]
+        }
+      ],
+      "clauses": "Ordered task metadata, dependency behavior, serialized completion/reopen, evidence requirements and exact fulfilment remain in P1-13/P1-15. UI-only artifact and direct-R2 document actions persist through independent reads; own internal drafts remain visible, coworker drafts/signers stay hidden, stale input survives and no copied task, file, field-artifact format or customer package appears. Upload failure/retention and terminal read-only controls are exercised through the shared components.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-16-F43`…`F61` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-21-01",
+      "flowIds": [
+        "P1-21-F01",
+        "P1-21-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-21.spec.ts",
+          "kind": "browser",
+          "description": "The full activity dialog from a running and a stopped clock: job-linked travel with route „Zuhause → Einsatzort“ and role „Mitgefahren“, standby with context „Extern“; persisted segment qualifiers.",
+          "titles": [
+            "records a job-linked travel route and role, then a standby context from a stopped clock"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-21.spec.ts",
+          "kind": "browser",
+          "description": "Journey: clock in on an assigned job from the sheet, switch through Fahrt, Pause, Bereitschaft, Notdienst and Intern, clock out; one persisted segment or session check per step.",
+          "titles": [
+            "starts on a job, switches every activity in the sheet and clocks out @P1-21-stage-start @P1-21-stage-switch @P1-21-stage-end"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_21_time_segments.sql",
+          "kind": "sql",
+          "description": "Start opens one segment at version 1; each accepted switch adds one operation and one version; six-kind chain with one open segment; replay, idempotency conflict, stale version, automatic break mode and direct writes refused.",
+          "titles": [
+            "start did not open exactly one segment at session version 1",
+            "replay failed",
+            "idempotency conflict was accepted",
+            "stale version was accepted",
+            "five accepted switches did not advance the session to version 6",
+            "each accepted transition did not record exactly one operation",
+            "six-kind chain was not preserved",
+            "open segment uniqueness failed",
+            "manual break was accepted in automatic mode",
+            "direct canonical write was accepted"
+          ]
+        },
+        {
+          "file": "lib/time-tracking/segments.test.ts",
+          "kind": "unit",
+          "description": "`tests/golden/p1-21.spec.ts` and `tests/audit/wave-2/p1-21.spec.ts` — capture, kinds, allocation and atomic switching",
+          "titles": [
+            "validates and maps activity-specific segment facts",
+            "projects work and break switches without closing attendance",
+            "orders adjacent work-segment switches at one timestamp"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/clock-readiness.spec.ts",
+          "kind": "browser",
+          "description": "The clock button opens the next-action sheet, the state-dependent hot keys resume the interrupted job in one tap and wait for readiness, the dock's status line names the running activity and job, the dock publishes its own height for the layout reserve, keeps its button still on a late read and puts both hot keys in one row on a phone, and the styled contract proves 44 px targets and an unclipped selected tile (`P1-21-F01`, `F09`, `F10`); the picker groups today's planned jobs first (`P1-21-F19`, application proof through the repointed `clockInOnJob` helper).",
+          "titles": [
+            "a break resumes its job from the hot key and the sheet, and hot keys wait for readiness",
+            "the clock dock publishes its height for the layout reserve, keeps its button still on a late read, and its hot keys share one row on a phone",
+            "with the app stylesheet at phone width every clock action is a 44 px target and the selected tile is not clipped"
+          ]
+        },
+        {
+          "file": "tests/audit/layout/viewport-details.spec.ts",
+          "kind": "browser",
+          "description": "Every page ends above the dock: walking each named page from top to end, no visible control lies under the dock, for the employee clocked out and clocked in on a job and for the admin on the period's findings, at 375 and 1280 px.",
+          "titles": [
+            "employee at ${…} px, clocked out and clocked in on a job: work pack, time pages and settings stay clear",
+            "admin clocked out at ${…} px: the period's findings stay clear"
+          ]
+        }
+      ],
+      "clauses": "Real employee and manager-created job flows persist one stable attendance session, all six activity kinds, explicit job/unallocated allocation, travel qualifiers, standby context and one open segment at a time. Independent reads prove every switch closes/opens atomically and the field-work control uses the same session.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-21-F01`…`F24` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-21-03",
+      "flowIds": [
+        "P1-21-F48",
+        "P1-21-F50"
+      ],
+      "evidence": [
+        {
+          "file": "tests/golden/p1-21.spec.ts",
+          "kind": "browser",
+          "description": "Clock-out closes the session (persisted `closed`); Büro continues its own legacy clock through the same sheet.",
+          "titles": [
+            "Clock out",
+            "continues an open legacy clock into the canonical model @P1-21-stage-legacy"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_21_time_segments.sql",
+          "kind": "sql",
+          "description": "End closes the session and every segment with one start and one end event per segment and `session_ended` last; member removal refusals and history preservation; organization cascade; the admin reads its organization's sessions, an outsider reads no session, segment, operation or event.",
+          "titles": [
+            "end left the session or one of its segments open",
+            "segment start and end events do not match the segments one to one",
+            "session_ended is not the last event of the closed session",
+            "non-member actor removed a member",
+            "buero actor removed a peer",
+            "unknown target was removed",
+            "buero removal left the history-free employee membership",
+            "buero removed an employee with legacy time",
+            "legacy-history refusal removed the employee membership",
+            "legacy-history refusal changed recorded time",
+            "admin removed a member with a canonical session",
+            "history refusal changed capture scope",
+            "history refusal changed the session, segments, or events",
+            "history refusal recorded a removal operation",
+            "canonical-history refusal removed the membership",
+            "organization cascade left canonical time rows",
+            "organization cascade marker was not cleared",
+            "organization admin cannot read its own time sessions",
+            "outsider read canonical time rows of another organization"
+          ]
+        },
+        {
+          "file": "lib/time-tracking/segments.test.ts",
+          "kind": "unit",
+          "description": "Golden/audit compatibility proofs plus RLS/grant/Realtime checks — lifecycle closure, roles and live isolation",
+          "titles": [
+            "ends a session that closes during a break in valid order"
+          ]
+        }
+      ],
+      "clauses": "Sign-out and member-removal paths close canonical state with attribution; employee, manager and outsider sessions prove self/organization visibility and zero foreign rows. Direct writes remain unavailable, action-time functions reauthorize, and canonical session/segment changes refresh readers without publishing immutable child ledgers or leaking stale organization state.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-21-F45`…`F54` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-21-04",
+      "flowIds": [
+        "P1-21-F57"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-21.spec.ts",
+          "kind": "browser",
+          "description": "Job-linked travel chosen through the job picker of the full activity dialog.",
+          "titles": [
+            "Start job-linked travel with an explicit route and role"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-21.spec.ts",
+          "kind": "browser",
+          "description": "The job picker of the clock sheet starts work on the assigned job through the one global session.",
+          "titles": [
+            "Start job-linked work"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_21_time_segments.sql",
+          "kind": "sql",
+          "description": "Job-linked travel leaves job execution untouched; a job-linked call-out starts it as `automatic_time_start` attributed to the time actor.",
+          "titles": [
+            "job-linked travel lost its route, role or allocation",
+            "job-linked travel started job execution",
+            "job-linked call-out did not start attributed job execution"
+          ]
+        },
+        {
+          "file": "lib/time-tracking/segments.test.ts",
+          "kind": "unit",
+          "description": "same specs plus affected P1-14/P1-16/A1 and full regression — connected readers, accessibility and closed boundaries",
+          "unmatched": "The segment projection tests prove no connected reader, accessibility or closed-boundary clause."
+        }
+      ],
+      "clauses": "Job/project/calendar/field-pack/artifact/handover readers share the compatibility projection. Work/call-out start P1-14 while travel does not. Canonical rows stay read-only in P1-22-owned mutation surfaces. Semantic controls and exact database counts prove no automatic planning, dispatch, maintenance, document, stock, commercial, message, offline or provider effects.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-21-F55`…`F64` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "legacy-p1-22-04",
+      "flowIds": [
+        "P1-22-F44",
+        "P1-22-F45"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-22.spec.ts",
+          "kind": "browser",
+          "description": "Two selected cards approved with „Auswahl freigeben“; banner „2 Anträge wurden gemeinsam bearbeitet.“; both persisted `approved`.",
+          "titles": [
+            "reviews two selected corrections in one batch"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-22.spec.ts",
+          "kind": "browser",
+          "description": "The calendar reader shows the corrected 08:00 bis 09:30 after reload.",
+          "titles": [
+            "calendar resize submits one audited correction and survives reload @P1-22-calendar-correction"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_22_time_corrections.sql",
+          "kind": "sql",
+          "description": "Stale batch refused without partial application, timeline fence, window projection, grants and Realtime publication; the requester reads own corrections, an outsider reads none of the five correction tables; teardown.",
+          "titles": [
+            "stale batch was accepted",
+            "failed batch was partially applied",
+            "authenticated can execute create RPC",
+            "service role cannot execute decision RPC",
+            "immutable revision table was published",
+            "request root was not published",
+            "one validated batch did not apply both requests",
+            "stale timeline revision was accepted",
+            "stale timeline rejection left an application",
+            "window read lost overnight intervals with endpoints outside the window",
+            "scoped projection included another employee",
+            "private timeline context is client-readable",
+            "requester cannot read their own corrections",
+            "outsider read correction rows of another organization",
+            "organization teardown retained correction requests",
+            "organization teardown retained correction applications"
+          ]
+        },
+        {
+          "file": "lib/time-corrections/projection.test.ts",
+          "kind": "unit",
+          "description": "same specs plus affected Wave 1 tags and rollout introspection — atomic batch, privacy, grants, Realtime, connected readers and closed scope",
+          "unmatched": "The projection tests prove no batch, privacy, grant, Realtime or reader clause."
+        }
+      ],
+      "clauses": "Two individually visible requests are selected and approved together; stale SQL input leaves both untouched. Employee and outsider reads prove self visibility and complete tenant isolation. Remote checks prove service-role RPCs, RLS, indexed Realtime root and private immutable children; regression evidence proves no planning or downstream side effect and keeps actual close/account/export with P1-23.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Reviewed as `P1-22-F39`…`F50` of the retired Wave 2 audit ledger; the ledger file is in Git history."
+      }
+    },
+    {
+      "id": "p1-22-batch-review-separated-setup",
+      "flowIds": [
+        "P1-22-F45"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-2/p1-22.spec.ts",
+          "kind": "browser",
+          "description": "reviews two selected corrections in one batch: prepared canonical requests, separate reasons and 07:00/09:30 previews, checkbox selection, one batch click, both persisted approved.",
+          "titles": [
+            "reviews two selected corrections in one batch"
+          ]
+        },
+        {
+          "file": "supabase/tests/p1_22_time_corrections.sql",
+          "kind": "sql",
+          "description": "stale batch was accepted / failed batch was partially applied guards; outsider read correction rows of another organization covers all five tables.",
+          "titles": [
+            "stale batch was accepted",
+            "failed batch was partially applied",
+            "outsider read correction rows of another organization"
+          ]
+        }
+      ],
+      "clauses": "Users select separately visible correction requests with distinct reasons and previews. One valid batch approves both exact requests; a stale batch applies neither. Outsiders see no request, revision, source, event or application.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "Restructured 2026-10-02: the batch case prepares its two requests through the canonical RPC with the authenticated employee actor and keeps the batch UI and the persisted outcome; the outsider read moved to SQL because tenant isolation is a database rule. SQL owns invalid-batch atomicity. Golden P1-22 keeps the real UI submission."
+      }
+    },
+    {
+      "id": "p1-24a-02-drops",
+      "flowIds": [
+        "P1-24a-F10",
+        "P1-24a-F15"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/wave-3/p1-24a.spec.ts",
+          "kind": "browser",
+          "description": "AUDIT-02: refusal at the pointer on an absence day, date move keeping the time, Alt copy, bar edge, park by drag with the context dialog, unpark by drag, no time entry and no dispatch as side effect",
+          "titles": [
+            "AUDIT-02"
+          ]
+        },
+        {
+          "file": "tests/golden/p1-24a.spec.ts",
+          "kind": "browser",
+          "description": "reassign with optimistic placement, confirmed banner, Undo and the persisted assignee; park by drag with cancel and save; unpark through the form",
+          "titles": [
+            "a manager lands on the Plantafel and reassigns a visit by drag, then undoes it",
+            "a park by drag opens the context dialog, cancelling restores the card, saving parks it, and „Einplanen am …“ brings it back"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/calendar-board.spec.ts",
+          "kind": "browser",
+          "description": "optimistic move, refusal restores with the sentence, Undo writes the inverse, transport rejection, zero React commits per pointer move",
+          "titles": [
+            "a reassign drop moves the card optimistically, writes the planning entry, and a refusal restores it with the sentence",
+            "a confirmed drop offers Undo, which writes the inverse and reports its own failure",
+            "a transport rejection restores the card and names the connection",
+            "pointer moves during a drag commit nothing in React and Escape cancels without a write"
+          ]
+        },
+        {
+          "file": "lib/calendar/refusal-checks.test.ts",
+          "kind": "unit",
+          "description": "started and inactive occurrence, parkable, person-day, already assigned and time-block pre-checks",
+          "titles": [
+            "client pre-checks"
+          ]
+        },
+        {
+          "file": "lib/calendar/messages.test.ts",
+          "kind": "unit",
+          "description": "every calendar action result code has a sentence and no component renders a raw code",
+          "titles": [
+            "carries a sentence for every result code the calendar-reachable actions return",
+            "no calendar component renders a result code as text"
+          ]
+        },
+        {
+          "file": "lib/calendar/board-model.test.ts",
+          "kind": "unit",
+          "description": "team grouping, row ownership, search, absence items, actual minutes, reassignment changes",
+          "titles": [
+            "board rows",
+            "board items",
+            "reassignment"
+          ]
+        }
+      ],
+      "clauses": "Every drop kind and its optimism, rollback, Undo and sentence are proven against the real range owner and in the browser; the pre-check rules and the message map exhaustiveness by unit tests; the no-side-effect clause by database counts after the drops.",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "P1-24a closure 2026-09-18: every clause of the bullet read against the assertion bodies of the listed files; the rendered review of both themes at five viewports is recorded in the slice record."
+      }
+    },
+    {
+      "id": "e6-report-a-problem",
+      "flowIds": [
+        "E6-F01",
+        "E6-F02"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/problem-reports/report-a-problem.spec.ts",
+          "kind": "browser",
+          "description": "An employee at 375 px and the office on the desktop open „Problem melden“, draw a redaction box, send, read the receipt's number, find the stored report with its screenshot, and open it from the receipt in „Meine Meldungen“.",
+          "titles": [
+            "E6-F01 E6-F02 a field worker reports from a phone, redacts the screenshot and finds the report",
+            "E6-F01 E6-F02 the office reports from the desktop, redacts the screenshot and finds the report"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/problem-report.spec.ts",
+          "kind": "browser",
+          "description": "An empty description is marked and focused; a text-only report uploads no screenshot; a drawn box is black in the uploaded image; the context keeps only catalog labels and route templates; the send shows its pending state at once. F2 opens the dialog from the keyboard. A failed file keeps the saved report, freezes what left the device and resends only what is missing.",
+          "titles": [
+            "an empty description marks the field, focuses it and sends nothing",
+            "a text-only report sends no screenshot",
+            "a redaction box is burned into the uploaded image",
+            "the context keeps a control label only when the app names it, and routes only as templates",
+            "F2 opens the report dialog from the keyboard, and Escape returns to where the person was",
+            "a failed attachment keeps the saved report and its sent screenshot, and the retry sends only the attachment",
+            "a registration whose answer got lost counts once on the retry, under the same file",
+            "the send shows its pending state in the first frame, and neither cancel, the list link nor the attachments change until the answer",
+            "a save whose outcome is unknown keeps the description frozen through a failed retry, and the report saves once",
+            "a screenshot over its size limit says to send without it, and the report then saves without one",
+            "a screenshot whose first registration commits while its retry uploads anew counts as sent"
+          ]
+        },
+        {
+          "file": "lib/problem-reports/action-boundaries.test.ts",
+          "kind": "unit",
+          "description": "The real actions: a report goes only into the caller's organization; an employee, a Büro member and an admin list only their own reports and get report_not_found for a colleague's report from the file ticket and finalize.",
+          "titles": [
+            "a report goes only into the caller's organization, and only its filer lists it and adds files to it"
+          ]
+        },
+        {
+          "file": "supabase/tests/problem_reports.sql",
+          "kind": "sql",
+          "description": "Each organization numbers its reports from 1 and a number never changes; a file registers only for the report's filer while its originals exist. A report saves once under its device's id.",
+          "titles": [
+            "a new report did not take the next number of its organization",
+            "a report number change was accepted",
+            "another member registered a file",
+            "a file registered under a foreign organization",
+            "a retried report save did not find its own report"
+          ]
+        }
+      ],
+      "clauses": "F01: button on every page at phone and desktop width (journey at 375 px and desktop), F2 shortcut (component), redrawn screenshot shown before sending and redacted with a box (journey, contract pixel check), text-only report (contract), empty description marked and focused (contract), receipt names the number (journey, contract). F02: the reporter's own report with number, date and status in „Meine Meldungen“ (journey), and no colleague lists it (boundary fixture).",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "werk-flow/werkflow-planning#334: every clause of both bullets read against the assertion bodies of the listed files."
+      }
+    },
+    {
+      "id": "e6-support-queue",
+      "flowIds": [
+        "E6-F03",
+        "E6-F04"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/problem-reports/support-queue.spec.ts",
+          "kind": "browser",
+          "description": "The synthetic support user, a member of no organization, opens the queue and a report's page, reads the scrub state of an unscrubbed report and no original, sets status, bucket, assignee and answer, and the reporter's open „Meine Meldungen“ and a second support person's open report page show it without a reload, within the live target. „Original öffnen“ shows the original and adds a history entry. An admin of the reporting organization gets the not-found page for every address of the area. Support files a report with an attachment for a member, who finds it in „Meine Meldungen“.",
+          "titles": [
+            "E6-F03 support triages a report and answers, and the reporter and a colleague see it live",
+            "E6-F04 support files a report for a caller, who finds it in „Meine Meldungen“"
+          ]
+        },
+        {
+          "file": "tests/ui-contracts/support-triage.spec.ts",
+          "kind": "browser",
+          "description": "A triage save shows its pending state in the first frame, sends only the changed field and confirms only after the server accepted it; a refusal and a failed request keep what was typed and say what happened; an unsaved answer survives the refresh that „Original öffnen“ starts; a failed opening shows nothing of the original. A field set back to its loaded value takes a colleague's later change.",
+          "titles": [
+            "a save shows its pending state in the first frame, sends only the changed field and confirms after the answer",
+            "a refused save keeps what was typed and names the reason",
+            "a save whose request fails keeps what was typed and says so",
+            "an unsaved answer survives „Original öffnen“ and the refresh it starts",
+            "an opening whose request fails says so and shows nothing of the original",
+            "a field set back to its loaded value takes a colleague's later change, and a save of another field leaves it"
+          ]
+        },
+        {
+          "file": "lib/problem-reports/support-action-boundaries.test.ts",
+          "kind": "unit",
+          "description": "The real support actions: a signed-out caller, an admin, a Büro member and an employee of a customer organization are refused on every action, and so is everyone while the allowlist is missing, empty or malformed. The queue holds every organization's reports oldest first with the scrubbed copy and never an original. A triage of an unknown report and an assignee outside the allowlist are refused. An original and an attachment leave only after their opening is in the history; a report filed for a person outside the chosen organization is refused. A support person who is also a member reaches a report support filed only through support's actions, so leaving the allowlist ends their uploads.",
+          "titles": [
+            "only an allowlisted support person reaches a support action, and an original leaves only after its opening is in the history"
+          ]
+        },
+        {
+          "file": "supabase/tests/problem_report_support.sql",
+          "kind": "sql",
+          "description": "A triage writes one history entry per changed field and none for an unchanged one, keeps the answer's text out of the history, and signals only the reporter. A report filed for a caller names the member as reporter and support as filer, and is refused for a person outside the organization.",
+          "titles": [
+            "a triage did not write one history entry per changed field",
+            "an unchanged field wrote a history entry",
+            "the history kept the text of an answer",
+            "a status change did not signal the reporter",
+            "a triage of an unknown report was accepted",
+            "a report filed for a caller did not name reporter and filer, or did not start pending",
+            "a report was filed for a person outside the organization",
+            "the reporter did not read exactly their own signal row"
+          ]
+        }
+      ],
+      "clauses": "F03: every organization's reports oldest first with the scrubbed copy and no original text (boundary fixture; journey on the page of a report whose copy is pending), bucket, status, assignee and answer (journey with the stored row, SQL history), status and answer at once in „Meine Meldungen“ (journey, live target), „Original öffnen“ with original text and attachments and one history entry per opening (journey for the text and its entry, boundary fixture for the attachment), everyone else gets „Seite nicht gefunden“ (journey for an admin, boundary fixture for every role and an unresolvable allowlist). F04: organization and member chosen, description and attachment (journey with the stored row and its file), the member finds it in „Meine Meldungen“ (journey), a person outside the organization is refused (SQL, boundary fixture).",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "werk-flow/werkflow-planning#335: every clause of both bullets read against the assertion bodies of the listed files."
+      }
+    },
+    {
+      "id": "e7-no-signal-visit",
+      "flowIds": [
+        "E7-F01"
+      ],
+      "evidence": [
+        {
+          "file": "tests/audit/security/offline-visit.spec.ts",
+          "kind": "browser",
+          "description": "At 375 px with the service worker: the start page keeps today's assignment, the signal goes on the job page, the clock starts, a report with two synthetic photos is saved on the device and the work switches onto the job. A reload and a new page without signal show the assignment with its „Stand“, the waiting clock and the kept draft, and end the work. The office changes the instruction and adds a start-blocking delivery prerequisite. With signal the server holds exactly the start's operation and one session with one segment, the device keeps the switch and the end as „Konflikt“ with the office reason, the stored day and the job page show the changed instruction, and the report arrives as one draft revision with two photos and one operation; a later start sends nothing again. A second member's start kept without signal is refused into a closed month and, after the membership is removed, on „Erneut senden“; both stay on the device as „Nicht übertragen“ with their reason, and the server records nothing.",
+          "titles": [
+            "E7-F01 a visit without signal survives a restart, and with signal everything arrives once while the conflict stays shown",
+            "E7-F01 a replay into a closed month and a replay after the membership was removed fail safely and stay on the phone"
+          ]
+        },
+        {
+          "file": "lib/field-sync/operations-http.test.ts",
+          "kind": "unit",
+          "description": "The real operations handler: a foreign organization's id, another person's session, a revoked membership and a closed period are refused, through a cookie and a bearer token alike.",
+          "titles": [
+            "a field sync replay is a fresh request: a foreign organization's id, another person's session, a revoked membership and a closed period are refused, a bearer token and a cookie reach the same result, and the online clock call is unchanged"
+          ]
+        }
+      ],
+      "clauses": "Today's assignment kept with signal, shown without signal and after a restart with „Stand“ (journey: reload and new page). Clock actions without signal marked „Wartet auf Netz“ (journey). A report with two photos kept on the device (journey, device store). Office changes the instruction and blocks the start meanwhile (journey seeds). With signal: one segment per recorded clock action and nothing else (journey, server rows), one revision with both photos and one operation (journey, server rows), the changed instruction on the phone (journey, stored day and job page), the switch kept as „Konflikt“ with its reason (journey). A closed month and a removed membership refuse the replay, it stays „Nicht übertragen“ with its reason, nothing is recorded (journey on the real handler; boundary fixture for cookie and bearer).",
+      "review": {
+        "kind": "assertions-reviewed",
+        "rationale": "werk-flow/werkflow-planning#321: every clause of the bullet read against the assertion bodies of the listed files."
+      }
+    }
+  ]
+}

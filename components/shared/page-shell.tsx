@@ -1,0 +1,58 @@
+import type { ReactNode } from 'react';
+
+import { cn } from '@/lib/utils';
+
+// The app shell's <main> carries no padding and no scroll region, so every
+// page column owns both. Before 2026-09-03 each page hand-rolled the column
+// with five different spellings; the service area had none, which left it
+// flush against the sidebar with unreachable overflow. These three parts are
+// the only page container. The raw class strings are lint-banned elsewhere.
+
+const MAX_WIDTH_CLASS = {
+  content: 'max-w-4xl',
+  wide: 'max-w-6xl',
+} as const;
+
+export type PageBodyMaxWidth = keyof typeof MAX_WIDTH_CLASS;
+
+export function PageShell({ className, children }: { className?: string; children: ReactNode }) {
+  return <div className={cn('flex h-full min-w-0 flex-col overflow-hidden', className)}>{children}</div>;
+}
+
+/**
+ * The scroll region. Vertical only: page-level horizontal scroll is forbidden
+ * on every viewport (design canon), so the region hides horizontal overflow
+ * and the mobile viewport audit fails on any content that would need it.
+ * The app layout ends the page column above the clock dock, so the body needs
+ * no clearance of its own. A body that scrolls without a focusable control
+ * becomes a focusable region for the keyboard (`usePageBodyKeyboardScroll`,
+ * run once by the app shell: a client component here would add its client
+ * reference to every route payload).
+ */
+export function PageBody({
+  className,
+  maxWidth,
+  children,
+}: {
+  className?: string;
+  maxWidth?: PageBodyMaxWidth;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-page-body=""
+      className={cn(
+        'min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6',
+        // Shown only while the body is its own focusable region (usePageBodyKeyboardScroll).
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50',
+        className,
+      )}
+    >
+      {maxWidth ? (
+        <div className={cn('mx-auto w-full', MAX_WIDTH_CLASS[maxWidth])}>{children}</div>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}

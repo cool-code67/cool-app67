@@ -1,0 +1,82 @@
+Haustechnik Krämer GmbH
+Organisation erstellen
+Dashboard
+Aufgaben
+3
+3 offene Aufgaben und Benachrichtigungen
+Kalender
+Zeiterfassung
+Qualifikationen
+Anfragen
+Aufträge
+Dokumente
+Inventar
+Angebote
+Rechnungen
+Service
+Arbeitsvorlagen
+Mitarbeiter
+Kunden
+Problem melden
+F2
+MK
+Martin Krämer
+martin.kraemer@haustechnik-kraemer.de
+Aufträge
+A-2026-0101
+Gastherme warten und Abgasmessung
+Nicht begonnen
+Mittel
+Arbeitsstand
+Nächster Schritt:
+Mitarbeiter zuweisen und einplanen
+Nicht begonnen
+Nicht geplant
+Kein Termin
+Ausführung starten
+Stornieren
+Parken
+Einsatzbereitschaft
+Kapazität & Verfügbarkeit
+Nicht bewertet
+Kein Termin geplant.
+Qualifikationen
+Nicht bewertet
+Kein Termin geplant.
+Einsatzort
+Erfüllt
+Einfamilienhaus
+Fahrzeit
+Nicht bewertet
+Fahrzeit nicht bewertet.
+Material
+Erfüllt
+Kein Materialbedarf geplant.
+Werkzeuge
+Nicht bewertet
+Werkzeugverfügbarkeit nicht bewertet.
+Blocker & Parkplatz
+Blocker hinzufügen
+Keine offenen Blocker.
+Voraussetzungen
+Voraussetzung hinzufügen
+Keine zusätzlichen Voraussetzungen.
+Abschlussprüfungen und Verlauf
+Übergabe an das Büro
+Noch kein Übergabepaket
+Übergabestand ansehen
+Details
+Auftragsnummer
+A-2026-0101
+Titel
+Gastherme warten und Abgasmessung
+Beschreibung
+Keine Beschreibung
+Status
+Nicht begonnen
+Keinem Projekt zugeordnet
+Projektleitung
+Noch keine Projektleitung.
+Sie prüft die Regie- und Änderungsnachweise dieses Auftrags.
+Projektleitung benennen
+Nicht eingestempelt

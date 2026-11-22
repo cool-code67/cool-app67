@@ -1,0 +1,169 @@
+'use client';
+
+import { Fragment } from 'react';
+import { Check } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PlainButton } from '@/components/ui/plain-button';
+import { SectionError } from '@/components/ui/section-error';
+import { Skeleton } from '@/components/ui/skeleton';
+import { pickerGroupHeading, pickerJobDetails } from '@/lib/time-tracking/picker-labels';
+import type { PickerJob } from '@/lib/time-tracking/picker-types';
+import { cn } from '@/lib/utils';
+
+export type { PickerJob };
+
+export function JobPickerLoadingRows() {
+  return (
+    <div className="space-y-0.5" role="status" aria-busy="true">
+      <span className="sr-only">Aufträge werden geladen.</span>
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 rounded-lg px-3 py-2.5">
+          <Skeleton className="size-5 shrink-0 rounded-full" />
+          <Skeleton className="h-4 w-48 max-w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function JobPickerEmptyState({ searchQuery }: { searchQuery: string }) {
+  return searchQuery ? (
+    <EmptyState title="Keine Aufträge gefunden" description="Prüfe die Schreibweise oder leere die Suche." />
+  ) : (
+    <EmptyState
+      title="Noch keine Aufträge verfügbar"
+      description="Sobald dir ein Auftrag zur Verfügung steht, kannst du ihn hier wählen."
+    />
+  );
+}
+
+type JobPickerOptionListProps = {
+  /** The server's matches in its order, grouped by `PickerGroup`. */
+  filteredJobs: readonly PickerJob[];
+  selectedJobId: string | null;
+  setSelectedJobId: (jobId: string | null) => void;
+  isLoading: boolean;
+  loadFailed: boolean;
+  onRetry: () => void;
+  searchQuery: string;
+  /** Shows the next page of matches; absent when none follow. */
+  onLoadMore: (() => void) | undefined;
+};
+
+/** The always-visible radio list of the clock flows: "Ohne Auftrag" first, then the jobs. */
+export function JobPickerOptionList({
+  filteredJobs,
+  selectedJobId,
+  setSelectedJobId,
+  isLoading,
+  loadFailed,
+  onRetry,
+  searchQuery,
+  onLoadMore,
+}: JobPickerOptionListProps) {
+  return (
+    <div className="space-y-0.5" role="radiogroup" aria-label="Auftrag">
+      <PlainButton
+        type="button"
+        role="radio"
+        aria-checked={selectedJobId === null}
+        onClick={() => setSelectedJobId(null)}
+        className={cn(
+          'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
+          selectedJobId === null ? 'bg-primary/10 ring-1 ring-primary/20' : 'hover:bg-accent',
+        )}
+      >
+        <JobPickerRadioMark checked={selectedJobId === null} />
+        <span className="text-muted-foreground">Ohne Auftrag</span>
+      </PlainButton>
+
+      {filteredJobs.map((job, index) => {
+        const heading = pickerGroupHeading(filteredJobs, index);
+        return (
+          <Fragment key={job.id}>
+            {heading && <p className="px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">{heading}</p>}
+            <PlainButton
+              type="button"
+              role="radio"
+              aria-checked={selectedJobId === job.id}
+              onClick={() => setSelectedJobId(job.id)}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
+                selectedJobId === job.id ? 'bg-primary/10 ring-1 ring-primary/20' : 'hover:bg-accent',
+              )}
+            >
+              <JobPickerRadioMark checked={selectedJobId === job.id} />
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 break-words font-medium" title={job.title}>
+                  {job.title}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{pickerJobDetails(job)}</p>
+              </div>
+            </PlainButton>
+          </Fragment>
+        );
+      })}
+
+      <JobPickerListStatus
+        filteredJobs={filteredJobs}
+        isLoading={isLoading}
+        loadFailed={loadFailed}
+        onRetry={onRetry}
+        searchQuery={searchQuery}
+        onLoadMore={onLoadMore}
+      />
+    </div>
+  );
+}
+
+/** The radio circle of one option, filled with a check when it is chosen. */
+export function JobPickerRadioMark({ checked }: { checked: boolean }) {
+  return (
+    <div
+      className={cn(
+        'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+        checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30',
+      )}
+    >
+      {checked && <Check className="h-3 w-3" />}
+    </div>
+  );
+}
+
+/** Below the options: the failed read with its retry, or the empty state, and the next page. */
+function JobPickerListStatus({
+  filteredJobs,
+  isLoading,
+  loadFailed,
+  onRetry,
+  searchQuery,
+  onLoadMore,
+}: Pick<
+  JobPickerOptionListProps,
+  'filteredJobs' | 'isLoading' | 'loadFailed' | 'onRetry' | 'searchQuery' | 'onLoadMore'
+>) {
+  return (
+    <>
+      {loadFailed && !isLoading ? (
+        <SectionError className="mt-2" onRetry={onRetry}>
+          Aufträge konnten nicht geladen werden.
+        </SectionError>
+      ) : filteredJobs.length === 0 && !isLoading ? (
+        <JobPickerEmptyState searchQuery={searchQuery} />
+      ) : null}
+      {onLoadMore && !loadFailed ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-2 w-full"
+          pending={isLoading}
+          onClick={onLoadMore}
+        >
+          Weitere Aufträge laden
+        </Button>
+      ) : null}
+    </>
+  );
+}

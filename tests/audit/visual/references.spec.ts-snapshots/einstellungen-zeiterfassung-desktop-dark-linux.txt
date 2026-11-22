@@ -1,0 +1,80 @@
+Haustechnik Krämer GmbH
+Organisation erstellen
+Dashboard
+Aufgaben
+3
+3 offene Aufgaben und Benachrichtigungen
+Kalender
+Zeiterfassung
+Qualifikationen
+Anfragen
+Aufträge
+Dokumente
+Inventar
+Angebote
+Rechnungen
+Service
+Arbeitsvorlagen
+Mitarbeiter
+Kunden
+Problem melden
+F2
+MK
+Martin Krämer
+martin.kraemer@haustechnik-kraemer.de
+Einstellungen
+Persönlich
+Profil
+Name und Profilbild
+Konto & Sicherheit
+E-Mail und Passwort
+Aufträge & Projekte
+Persönliche Tabellenansicht
+Abonnement & Abrechnung
+Plan und Abrechnung
+Organisation
+Dashboard
+Startansicht und Widgets
+Organisation
+Allgemeine Organisationsdaten
+Dokumente & Briefpapier
+Angebote als PDF
+Kalender
+Kalenderansichten und Regeln
+Zeiterfassung
+Arbeitszeiten und Freigaben
+Mitarbeiter
+Freigaben und Vertretungen
+Kunden
+Kundenverwaltung und Defaults
+Datenexport
+Alle Daten herunterladen
+Zeiterfassung
+Definiert Regeln für Zeitbuchungen, Pausen und Freigabeprozesse.
+Gilt für Haustechnik Krämer GmbH
+Pausenregel
+Lege fest, ob Pausen weiter manuell gestempelt werden oder automatisch abgezogen werden.
+Art der Pausenbuchung
+*
+Pflichtfeld
+Pause manuell stempeln
+Mitarbeiter starten und beenden ihre Pausen weiterhin selbst per Pause-Button.
+Automatische Schwelle (Minuten)
+*
+Pflichtfeld
+Ab dieser gesamten Anwesenheitszeit wird die automatische Pause berücksichtigt.
+Automatische Pausendauer (Minuten)
+Diese Minuten werden automatisch abgezogen, sobald die Schwelle erreicht ist.
+Zweite Stufe für lange Tage
+Ab der zweiten Schwelle gilt die längere Gesamtpause. Vorgabe nach ArbZG § 4: ab 9 Stunden insgesamt 45 Minuten.
+Sie gilt ab dem Speichern, frühere Tage behalten ihre Pause.
+Zweite Schwelle (Minuten)
+Ab dieser gesamten Anwesenheitszeit gilt die längere Pause.
+Pause gesamt ab der zweiten Schwelle (Minuten)
+Die gesamte Pause des Tages, nicht zusätzlich zur ersten Stufe.
+Die automatische Pause ist eine Rechenhilfe, kein Nachweis, dass die Pausen nach dem Arbeitszeitgesetz eingehalten wurden.
+Neue Regeln gelten sofort für offene und kommende Zeiterfassungen. Bereits abgeschlossene Historie wird nicht rückwirkend umgeschrieben.
+Zeiterfassung speichern
+Feiertagskalender
+Wähle das Bundesland, dessen gesetzliche Feiertage für die Sollarbeitszeit gelten. An Feiertagen ist die Sollzeit 0.
+Nicht eingestempelt

@@ -1,0 +1,153 @@
+'use client';
+
+import { useState } from 'react';
+
+import { useBanner } from '@/components/ui/banner';
+import { usePendingTask } from '@/hooks/use-server-action';
+import { describeFailure } from '@/lib/action-messages';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+import { createJob } from '@/lib/jobs/actions';
+import { ownWrites } from '@/lib/realtime/own-writes';
+import type { AssignmentApproval, AssignmentEvaluation } from '@/lib/qualifications/types';
+import type { CreateJobFormContentProps } from './create-job-form-content';
+import {
+  CREATE_JOB_ERROR_MESSAGES,
+  buildCreateJobInput,
+  type CreateJobFormValues,
+} from './create-job-submission';
+import { isPlanningWarning } from './planning-warning-result';
+import { usePlanningApprovalRetry } from './use-planning-approval-retry';
+
+type CreateJobSubmitOptions = {
+  values: CreateJobFormValues;
+  /** The project's defaults are still loading or failed to load. */
+  isBlocked: boolean;
+  /** The form-level error line. */
+  setError: (error: string | null) => void;
+  onSuccess: CreateJobFormContentProps['onSuccess'];
+  onSubmitDeferred: CreateJobFormContentProps['onSubmitDeferred'];
+};
+
+/** The required-field errors of the create form, keyed by field id. */
+function createJobFieldErrors({ jobNumber, title, description }: CreateJobFormValues) {
+  return {
+    'job-number': jobNumber.trim() ? undefined : 'Bitte gib eine Auftragsnummer ein.',
+    'job-title':
+      title.trim() || description.trim()
+        ? undefined
+        : 'Bitte gib mindestens einen Titel oder eine Beschreibung ein.',
+  };
+}
+
+type CreateJobFailureSetters = {
+  setJobNumberError: (error: string | null) => void;
+  setContentError: (error: string | null) => void;
+  setError: (error: string | null) => void;
+};
+
+/** Shows a refused create at the field it concerns, otherwise as the form-level error. */
+function showCreateJobFailure(
+  error: string,
+  { setJobNumberError, setContentError, setError }: CreateJobFailureSetters,
+) {
+  const message = describeFailure(error, CREATE_JOB_ERROR_MESSAGES, 'Unbekannter Fehler');
+  if (error === 'job_number_required' || error === 'job_number_taken') {
+    setJobNumberError(message);
+  } else if (error === 'title_or_description_required') {
+    setContentError(message);
+  } else {
+    setError(message);
+  }
+}
+
+/** Validation, the create call (or the deferred hand-over) and the field errors it reports. */
+export function useCreateJobSubmit({
+  values,
+  isBlocked,
+  setError,
+  onSuccess,
+  onSubmitDeferred,
+}: CreateJobSubmitOptions) {
+  const { selectedEmployees } = values;
+  const [qualificationWarning, setQualificationWarning] = useState<AssignmentEvaluation | null>(null);
+  const { run: runSubmit, isPending: isLoading } = usePendingTask();
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [jobNumberError, setJobNumberError] = useState<string | null>(null);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const { showBanner } = useBanner();
+  const { retryWithPlanningApproval, planningWarningDialog } = usePlanningApprovalRetry();
+
+  const submitJob = async (approval?: AssignmentApproval) => {
+    if (isBlocked) return;
+    setHasAttemptedSubmit(true);
+    setError(null);
+    setContentError(null);
+    setJobNumberError(null);
+
+    const fieldErrors = createJobFieldErrors(values);
+    setJobNumberError(fieldErrors['job-number'] ?? null);
+    setContentError(fieldErrors['job-title'] ?? null);
+    if (focusFirstInvalidField(fieldErrors)) return;
+
+    const input = buildCreateJobInput(values, approval);
+
+    if (onSubmitDeferred) {
+      onSubmitDeferred({ input, assignedUserIds: selectedEmployees });
+      return;
+    }
+
+    await runSubmit(async () => {
+      try {
+        const result = await retryWithPlanningApproval((planningApproval) =>
+          ownWrites.track(createJob({ ...input, planningApproval })),
+        );
+        // Taken back in the planning dialog: the form stays open for a change.
+        if (isPlanningWarning(result)) return;
+
+        if (!result.success) {
+          if (
+            (result.error === 'qualification_warning' || result.error === 'stale_evaluation') &&
+            'evaluation' in result
+          ) {
+            setQualificationWarning(result.evaluation);
+            return;
+          }
+          showCreateJobFailure(result.error, { setJobNumberError, setContentError, setError });
+          return;
+        }
+
+        setQualificationWarning(null);
+        showBanner({ variant: 'success', message: 'Auftrag erfolgreich erstellt!' });
+        await onSuccess?.({
+          job: result.job,
+          assignedUserIds: selectedEmployees,
+        });
+      } catch {
+        setError('Ein unerwarteter Fehler ist aufgetreten.');
+      }
+    });
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await submitJob();
+  };
+
+  const showContentError = hasAttemptedSubmit && contentError;
+  const showJobNumberError = hasAttemptedSubmit && jobNumberError;
+
+  return {
+    planningWarningDialog,
+    qualificationWarning,
+    setQualificationWarning,
+    isLoading,
+    contentError,
+    setContentError,
+    jobNumberError,
+    setJobNumberError,
+    showContentError,
+    showJobNumberError,
+    submitJob,
+    handleSubmit,
+  };
+}

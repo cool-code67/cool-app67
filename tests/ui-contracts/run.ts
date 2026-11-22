@@ -1,0 +1,557 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { compile } from '@tailwindcss/node';
+import { Scanner } from '@tailwindcss/oxide';
+import { z } from 'zod';
+import { calculateCandidateFingerprint } from '@/lib/testing/evidence/candidate-identity';
+import { withWorkspaceTestLock } from '@/lib/testing/runner/workspace-test-lock';
+import { runWithLogCleanup } from '@/lib/testing/runner/command-log';
+import { readUiContractReport } from './report';
+import { CONTRACT_SUPABASE_PUBLISHABLE_KEY, CONTRACT_SUPABASE_URL } from './supabase-contract-env';
+
+const repository = resolve(import.meta.dir, '../..');
+await withWorkspaceTestLock({ operation: 'UI component contracts', repositoryRoot: repository }, async () => {
+  const startedAt = new Date().toISOString();
+  const runId = `${startedAt.replaceAll(':', '-').replaceAll('.', '-')}-${randomUUID().slice(0, 8)}`;
+  const runDirectory = join(repository, '.agent-logs/ui-contracts', runId);
+  await mkdir(runDirectory, { recursive: true });
+  const candidateFingerprint = calculateCandidateFingerprint(repository);
+  const manifestPath = join(runDirectory, 'manifest.json');
+  const logPath = join(runDirectory, 'runner.log');
+  const manifest = {
+    version: 1,
+    runId,
+    startedAt,
+    candidateFingerprint,
+    arguments: process.argv.slice(2),
+    kind: 'isolated-component-contracts',
+    logPath,
+  };
+  let bundleSha256: string | undefined;
+  let childExitCode: number | null = null;
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, status: 'running' }, null, 2));
+  const directory = await mkdtemp(join(tmpdir(), 'werkflow-ui-contracts-'));
+  try {
+    const build = await Bun.build({
+      entrypoints: [join(import.meta.dir, 'fixture.tsx')],
+      outdir: directory,
+      target: 'browser',
+      format: 'iife',
+      define: {
+        'process.env.NODE_ENV': JSON.stringify('production'),
+        'process.env.NEXT_PUBLIC_SUPABASE_URL': JSON.stringify(CONTRACT_SUPABASE_URL),
+        'process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(CONTRACT_SUPABASE_PUBLISHABLE_KEY),
+        'process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA': JSON.stringify('contract-build'),
+      },
+      plugins: [
+        {
+          name: 'isolated-service-boundaries',
+          setup(builder) {
+            // The auth URL contracts drive the real browser client against routed Auth requests.
+            builder.onResolve({ filter: /^@\/lib\/supabase\/client$/ }, (args) => {
+              if (
+                args.importer.endsWith('auth-url-boundaries.tsx') ||
+                args.importer.endsWith('reset-password-form.tsx')
+              )
+                return { path: join(repository, 'lib/supabase/client.ts') };
+            });
+            builder.onResolve({ filter: /^@\/lib\/billing-parties\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'billing-parties-service-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^(?:@\/lib\/offers\/actions|next\/navigation)$/ }, (args) => {
+              if (args.path === '@/lib/offers/actions' || args.importer.endsWith('create-offer-dialog.tsx'))
+                return { path: join(import.meta.dir, 'offers-service-boundaries.ts') };
+            });
+            // The report dialog's contract runs the real launcher, dialog and upload
+            // client against stub actions, router, organization and redraw.
+            builder.onResolve(
+              {
+                filter:
+                  /^(?:@\/lib\/problem-reports\/(?:actions|file-actions|screenshot\/(?:redraw-screenshot|load-ui-string-catalog))|@\/components\/organization\/organization-context|next\/(?:navigation|link))$/,
+              },
+              (args) => {
+                const reportModule =
+                  args.importer.includes('/components/problem-reports/') ||
+                  args.importer.endsWith('lib/problem-reports/upload-client.ts');
+                if (reportModule) return { path: join(import.meta.dir, 'problem-report-boundaries.tsx') };
+              },
+            );
+            // Support's report page triages and opens originals through its contract's stand-ins.
+            builder.onResolve({ filter: /^@\/lib\/problem-reports\/support-actions$/ }, () => ({
+              path: join(import.meta.dir, 'support-triage-boundaries.tsx'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/clients\/(site-role-)?actions$/ }, () => ({
+              path: join(import.meta.dir, 'customer-service-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^next\/navigation$/ }, (args) => {
+              if (args.importer.endsWith('create-client-dialog.tsx'))
+                return { path: join(import.meta.dir, 'customer-service-boundaries.ts') };
+            });
+            // The capture dialog saves and navigates through the request contract's stand-ins.
+            builder.onResolve({ filter: /^(@\/lib\/requests\/actions|next\/navigation)$/ }, (args) => {
+              if (args.importer.endsWith('use-create-request-form.ts'))
+                return { path: join(import.meta.dir, 'request-capture-boundaries.tsx') };
+            });
+            // The attach dialog writes and navigates through the attach contract's stand-ins.
+            builder.onResolve({ filter: /^(@\/lib\/requests\/attach-actions|next\/navigation)$/ }, (args) => {
+              if (args.importer.endsWith('attach-request-dialog.tsx'))
+                return { path: join(import.meta.dir, 'request-attach-boundaries.tsx') };
+            });
+            builder.onResolve({ filter: /^@\/components\/organization\/organization-context$/ }, (args) => {
+              if (
+                args.importer.endsWith('use-suggested-record-number.ts') ||
+                args.importer.endsWith('use-request-work-targets.ts') ||
+                args.importer.endsWith('use-work-billing-parties.ts')
+              )
+                return { path: join(import.meta.dir, 'calendar-service-boundaries.tsx') };
+            });
+            builder.onResolve({ filter: /^@\/lib\/vacation\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'approval-service-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/sickness\/actions$/ }, (args) => {
+              if (args.importer.endsWith('use-sickness-report-record-form.ts'))
+                return { path: join(import.meta.dir, 'absence-service-boundaries.ts') };
+            });
+            // The CSV import dialog's repeat check, preview and booking answer through its contract's stand-ins.
+            builder.onResolve({ filter: /^@\/lib\/inventory\/import-actions$/ }, () => ({
+              path: join(import.meta.dir, 'inventory-import-boundaries.tsx'),
+            }));
+            // The wholesaler import dialog's actions and the material picker's catalog adopt answer through their contracts.
+            builder.onResolve({ filter: /^@\/lib\/inventory\/wholesaler-import-actions$/ }, () => ({
+              path: join(import.meta.dir, 'wholesaler-import-boundaries.tsx'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/inventory\/supplier-catalog-actions$/ }, () => ({
+              path: join(import.meta.dir, 'supplier-catalog-boundaries.tsx'),
+            }));
+            // The dialog reads a delivery in the browser through a fake of the private reader.
+            builder.onResolve({ filter: /^@\/vendor\/wholesaler-reader\/src\/index$/ }, () => ({
+              path: join(import.meta.dir, 'wholesaler-reader-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/members\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'member-role-service-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/org\/join-request-actions$/ }, () => ({
+              path: join(import.meta.dir, 'join-request-service-boundaries.ts'),
+            }));
+            builder.onResolve(
+              {
+                filter:
+                  /^@\/(components\/organization\/organization-context|components\/user\/user-profile-context|lib\/time-tracking\/segment-actions|components\/job-picker-modal)$/,
+              },
+              (args) => {
+                if (
+                  args.importer.endsWith('clock-state-provider.tsx') ||
+                  args.importer.endsWith('clock-unsent-replacement.tsx') ||
+                  args.importer.endsWith('clock-fab.tsx') ||
+                  args.importer.endsWith('clock-action-list.tsx') ||
+                  args.importer.endsWith('time-activity-dialog.tsx')
+                ) {
+                  return { path: join(import.meta.dir, 'clock-service-boundaries.tsx') };
+                }
+              },
+            );
+            // The correction form is outside the clock's contract; the unsent section only opens it prefilled.
+            builder.onResolve({ filter: /^@\/components\/manual-entry-dialog$/ }, (args) => {
+              if (args.importer.endsWith('clock-unsent-events.tsx'))
+                return { path: join(import.meta.dir, 'clock-unsent-boundaries.tsx') };
+            });
+            // The guided correction reads the person's entries and opens the correction form: both outside the clock's contract.
+            builder.onResolve(
+              {
+                filter:
+                  /^@\/(lib\/time-tracking\/entry-read-actions|components\/zeiterfassung\/(use-closed-time-periods|time-correction-dialog))$/,
+              },
+              (args) => {
+                if (args.importer.endsWith('clock-unsent-replacement.tsx'))
+                  return { path: join(import.meta.dir, 'clock-unsent-boundaries.tsx') };
+              },
+            );
+            builder.onResolve({ filter: /^(next\/link|next\/navigation)$/ }, (args) => {
+              if (args.importer.endsWith('sidebar-link.tsx'))
+                return { path: join(import.meta.dir, 'sidebar-service-boundaries.tsx') };
+            });
+            builder.onResolve({ filter: /^(next\/navigation|@\/lib\/org\/actions)$/ }, (args) => {
+              if (args.importer.endsWith('organization-context.tsx'))
+                return { path: join(import.meta.dir, 'organization-service-boundaries.ts') };
+            });
+            builder.onResolve({ filter: /^next\/link$/ }, (args) => {
+              if (
+                args.importer.endsWith('parkplatz-panel.tsx') ||
+                args.importer.endsWith('clients-table.tsx') ||
+                args.importer.endsWith('page-header.tsx') ||
+                args.importer.endsWith('anfragen-content.tsx') ||
+                args.importer.endsWith('client-sites-card.tsx') ||
+                args.importer.endsWith('reset-password-form.tsx') ||
+                args.importer.endsWith('aufgaben-task-row.tsx') ||
+                args.importer.endsWith('text-link.tsx') ||
+                args.importer.endsWith('client-duplicate-matches.tsx') ||
+                args.importer.endsWith('standalone-screen.tsx')
+              )
+                return { path: join(import.meta.dir, 'day-view-link-boundary.tsx') };
+            });
+            // The calendar views' one optimistic owner writes through these actions; the contract holds each write.
+            builder.onResolve({ filter: /^@\/lib\/(jobs|planning|work-lifecycle)\/actions$/ }, (args) => {
+              if (
+                args.importer.endsWith('use-calendar-visit-writes.ts') ||
+                args.importer.endsWith('use-calendar-park-mutations.ts')
+              )
+                return { path: join(import.meta.dir, 'calendar-views-service-boundaries.tsx') };
+            });
+            builder.onResolve({ filter: /^next\/navigation$/ }, (args) => {
+              if (
+                args.importer.endsWith('use-list-navigation.ts') ||
+                args.importer.endsWith('use-document-library-navigation.ts') ||
+                args.importer.endsWith('support-filing-form.tsx')
+              )
+                return { path: join(import.meta.dir, 'list-navigation-service-boundaries.ts') };
+            });
+            // The service-case evidence link and its dialog module write through these actions.
+            builder.onResolve(
+              { filter: /^@\/lib\/(service-cases|customer-relationships)\/actions$/ },
+              (args) => {
+                if (
+                  args.importer.endsWith('service-case-evidence-link.tsx') ||
+                  args.importer.endsWith('service-case-detail-dialogs.tsx')
+                )
+                  return { path: join(import.meta.dir, 'service-evidence-boundaries.ts') };
+              },
+            );
+            builder.onResolve({ filter: /^@\/lib\/jobs\/instruction-items-actions$/ }, () => ({
+              path: join(import.meta.dir, 'instruction-service-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/work-artifacts\/(?:customer-decision-)?actions$/ }, () => ({
+              path: join(import.meta.dir, 'work-artifact-boundaries.ts'),
+            }));
+            // The report drafts on a device: the active organization and the photo upload path.
+            builder.onResolve(
+              {
+                filter: /^@\/(components\/organization\/organization-context|lib\/documents\/upload-client)$/,
+              },
+              (args) => {
+                if (
+                  args.importer.endsWith('device-drafts.tsx') ||
+                  args.importer.endsWith('lib/field-sync/device/draft-sync.ts')
+                )
+                  return { path: join(import.meta.dir, 'device-draft-boundaries.ts') };
+              },
+            );
+            // The customer decision's signature upload records the file instead of storing it.
+            builder.onResolve({ filter: /^@\/lib\/documents\/upload-client$/ }, (args) => {
+              if (args.importer.endsWith('use-work-artifact-customer-actions.ts'))
+                return { path: join(import.meta.dir, 'work-artifact-boundaries.ts') };
+            });
+            // The job edit dialog's save, which its focus contract never reaches,
+            // and the job header's handle on the lazily loaded dialog.
+            builder.onResolve(
+              { filter: /^(@\/lib\/jobs\/actions|\.\/job-detail-content-dialogs)$/ },
+              (args) => {
+                if (
+                  args.importer.endsWith('use-edit-job-submit.ts') ||
+                  args.importer.endsWith('job-detail-header.tsx')
+                )
+                  return { path: join(import.meta.dir, 'edit-job-service-boundaries.ts') };
+              },
+            );
+            // The access proposal's form and office review write through held stand-ins.
+            builder.onResolve({ filter: /^@\/lib\/site-access-proposals\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'site-access-boundaries.tsx'),
+            }));
+            // The handover review saves its draft and previews through these held stand-ins.
+            builder.onResolve({ filter: /^@\/lib\/(work-handover|documents)\/actions$/ }, (args) => {
+              if (args.importer.includes('/components/auftraege/handover/'))
+                return { path: join(import.meta.dir, 'work-handover-service-boundaries.ts') };
+            });
+            builder.onResolve({ filter: /^@\/lib\/qualifications\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'qualification-service-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/org-export\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'organization-export-service-boundaries.ts'),
+            }));
+            builder.onResolve(
+              { filter: /^(?:@\/lib\/company-profile\/actions|\.\/actions|next\/navigation)$/ },
+              (args) => {
+                if (
+                  args.path === '@/lib/company-profile/actions' ||
+                  (args.path === './actions' &&
+                    args.importer.endsWith('lib/company-profile/upload-client.ts')) ||
+                  (args.path === 'next/navigation' &&
+                    args.importer.endsWith('einstellungen-page-skeleton.tsx'))
+                )
+                  return { path: join(import.meta.dir, 'company-profile-service-boundaries.ts') };
+              },
+            );
+            builder.onResolve({ filter: /^next\/navigation$/ }, (args) => {
+              if (args.importer.endsWith('use-export-builder.ts'))
+                return { path: join(import.meta.dir, 'organization-export-service-boundaries.ts') };
+            });
+            builder.onResolve({ filter: /^next\/image$/ }, (args) => {
+              if (args.importer.endsWith('standalone-screen.tsx'))
+                return { path: join(import.meta.dir, 'standalone-image-boundary.tsx') };
+            });
+            // The offline view's device read, held until the spec answers it.
+            builder.onResolve({ filter: /^@\/lib\/field-sync\/device\/today-store$/ }, (args) => {
+              if (args.importer.endsWith('offline-today.tsx'))
+                return { path: join(import.meta.dir, 'offline-today-service-boundaries.ts') };
+            });
+            // The pathname of the `(auth)` layout's landing wipe, moved by the spec.
+            builder.onResolve({ filter: /^next\/navigation$/ }, (args) => {
+              if (args.importer.endsWith('today-landing-wipe.tsx'))
+                return { path: join(import.meta.dir, 'today-landing-boundaries.ts') };
+            });
+            // The profile and memberships the start page refresh fixtures read in the browser.
+            builder.onResolve({ filter: /^@\/lib\/supabase\/client$/ }, (args) => {
+              if (
+                args.importer.endsWith('user-profile-context.tsx') ||
+                args.importer.endsWith('organization-context.tsx')
+              )
+                return { path: join(import.meta.dir, 'today-refresh-session-boundaries.ts') };
+            });
+            // The start page's refresh code, as a chunk that is gone after a deployment.
+            builder.onResolve({ filter: /^@\/lib\/field-sync\/device\/today-refresh$/ }, (args) => {
+              if (args.importer.endsWith('today-refresh-on-start.tsx'))
+                return { path: join(import.meta.dir, 'today-refresh-service-boundaries.ts') };
+            });
+            builder.onResolve({ filter: /^@\/lib\/time-accounts\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'time-account-boundaries.ts'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/calendar\/client$/ }, () => ({
+              path: join(import.meta.dir, 'calendar-service-boundaries.tsx'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/time-corrections\/actions$/ }, () => ({
+              path: join(import.meta.dir, 'calendar-views-service-boundaries.tsx'),
+            }));
+            builder.onResolve({ filter: /^@\/lib\/data\/background-read-client$/ }, () => ({
+              path: join(import.meta.dir, 'background-read-boundaries.ts'),
+            }));
+            // The clock's outbox, as a chunk the network can fail to deliver (clock-connection.spec.ts).
+            builder.onResolve({ filter: /^@\/components\/clock-unsent-events$/ }, (args) => {
+              if (args.importer.endsWith('clock-outbox-state.ts'))
+                return { path: join(import.meta.dir, 'clock-outbox-boundaries.ts') };
+            });
+            builder.onResolve({ filter: /^@\/components\/realtime\/realtime-provider$/ }, () => ({
+              path: join(repository, 'components/realtime/realtime-provider.tsx'),
+            }));
+            builder.onResolve(
+              {
+                filter:
+                  /^@\/(lib\/supabase\/client|components\/organization\/organization-context|components\/user\/user-profile-context)$/,
+              },
+              (args) => {
+                if (
+                  args.importer.endsWith('work-artifact-customer-decision.tsx') ||
+                  args.importer.endsWith('realtime-provider.tsx') ||
+                  args.importer.endsWith('use-calendar-range-data.ts') ||
+                  args.importer.endsWith('use-job-entity-options.ts') ||
+                  args.importer.endsWith('use-planning-options.ts')
+                ) {
+                  return { path: join(import.meta.dir, 'calendar-service-boundaries.tsx') };
+                }
+              },
+            );
+            builder.onResolve(
+              {
+                filter:
+                  /^@\/lib\/personnel\/(?:lifecycle|onboarding|document-download|handover|school-day)-actions$/,
+              },
+              (args) => ({
+                path: join(
+                  import.meta.dir,
+                  args.importer.endsWith('lib/documents/upload-client.ts')
+                    ? 'document-upload-boundaries.tsx'
+                    : 'personnel-boundaries.ts',
+                ),
+              }),
+            );
+            // The personnel sections get a stub upload client; the upload
+            // dialog runs the real one against stub Server Actions.
+            builder.onResolve({ filter: /^@\/lib\/documents\/upload-client$/ }, (args) => {
+              if (args.importer.includes('/components/mitarbeiter/'))
+                return { path: join(import.meta.dir, 'personnel-boundaries.ts') };
+            });
+            builder.onResolve(
+              {
+                filter:
+                  /^(?:@\/lib\/documents\/(?:upload|folder)-actions|@\/lib\/work-artifacts\/signature-upload-actions|\.\/upload-actions)$/,
+              },
+              (args) => {
+                if (args.path.startsWith('@/') || args.importer.endsWith('lib/documents/upload-client.ts'))
+                  return { path: join(import.meta.dir, 'document-upload-boundaries.tsx') };
+              },
+            );
+            builder.onResolve(
+              {
+                filter: /^(@\/lib\/work-lifecycle\/actions|@\/components\/realtime\/realtime-provider)$/,
+              },
+              () => ({
+                path: join(import.meta.dir, 'lifecycle-boundaries.ts'),
+              }),
+            );
+            builder.onResolve(
+              {
+                filter:
+                  /^(next\/navigation|@\/lib\/(subscription\/actions|settings\/email-change-actions|time-tracking\/(?:clock-state|entry-write|review)-actions|inventory\/(?:material-use-)?actions|supabase\/client))$/,
+              },
+              () => ({
+                path: join(import.meta.dir, 'service-boundaries.ts'),
+              }),
+            );
+            builder.onResolve(
+              {
+                filter: /(^server-only$|supabase\/(admin|server|service-role))/,
+              },
+              (args) => {
+                throw new Error(`Server dependency must never enter the UI fixture: ${args.path}`);
+              },
+            );
+          },
+        },
+      ],
+    });
+    if (!build.success) throw new AggregateError(build.logs, 'UI contract fixture compilation failed.');
+    const bundle = build.outputs.find((output) => output.path.endsWith('.js'));
+    if (!bundle) throw new Error('UI contract fixture bundle is missing.');
+    // Refuse an empty bundle before Playwright launches a browser.
+    const bundleSource = await readFile(bundle.path, 'utf8');
+    if (!bundleSource.trim()) throw new Error('UI contract fixture bundle is empty.');
+    bundleSha256 = createHash('sha256').update(bundleSource).digest('hex');
+    // The app's compiled stylesheet, for contracts that assert rendered
+    // geometry (clipping, touch targets). Specs opt in with addStyleTag.
+    const stylesheet = await compile(await readFile(join(repository, 'app/globals.css'), 'utf8'), {
+      base: join(repository, 'app'),
+      onDependency() {},
+    });
+    const cssPath = join(directory, 'app.css');
+    await writeFile(cssPath, stylesheet.build(new Scanner({ sources: stylesheet.sources }).scan()));
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        'x',
+        'playwright',
+        'test',
+        '--config',
+        join(import.meta.dir, 'playwright.config.ts'),
+        ...process.argv.slice(2),
+      ],
+      {
+        cwd: repository,
+        env: {
+          ...process.env,
+          WERKFLOW_UI_CONTRACT_BUNDLE: bundle.path,
+          WERKFLOW_UI_CONTRACT_CSS: cssPath,
+          WERKFLOW_UI_CONTRACT_RUN_DIRECTORY: runDirectory,
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+    const log = createWriteStream(logPath, { flags: 'a' });
+    let logError: Error | null = null;
+    log.on('error', (error) => {
+      logError ??= error;
+    });
+    const capture = async (
+      source: ReadableStream<Uint8Array>,
+      destination: NodeJS.WriteStream,
+    ): Promise<void> => {
+      const reader = source.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) return;
+          destination.write(value);
+          log.write(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    };
+    process.exitCode = await runWithLogCleanup({
+      command: async () => {
+        const output = Promise.allSettled([
+          capture(child.stdout, process.stdout),
+          capture(child.stderr, process.stderr),
+        ]);
+        childExitCode = await child.exited;
+        for (const result of await output) if (result.status === 'rejected') throw result.reason;
+        return childExitCode;
+      },
+      closeLog: () =>
+        new Promise<void>((resolveLog, rejectLog) => {
+          log.end((error?: Error | null) => {
+            const failure = logError ?? error;
+            if (failure) rejectLog(failure);
+            else resolveLog();
+          });
+        }),
+      reportSecondaryFailure: (error) => {
+        console.error(`UI runner log cleanup also failed: ${String(error)}`);
+      },
+    });
+    const listing = process.argv.includes('--list');
+    const { counts, reportError } = await readUiContractReport({
+      path: join(runDirectory, 'report.json'),
+      exitCode: process.exitCode,
+      listing,
+    });
+    const finalCandidateFingerprint = calculateCandidateFingerprint(repository);
+    const status =
+      process.exitCode !== 0
+        ? 'failed'
+        : listing
+          ? 'discovery'
+          : candidateFingerprint !== finalCandidateFingerprint
+            ? 'stale'
+            : 'passed';
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        {
+          ...manifest,
+          status,
+          bundleSha256,
+          completedAt: new Date().toISOString(),
+          exitCode: process.exitCode,
+          finalCandidateFingerprint,
+          counts,
+          reportError,
+          ...(process.exitCode !== 0
+            ? {
+                error: `Playwright exited with code ${process.exitCode}. Original output is recorded in runner.log.`,
+              }
+            : {}),
+        },
+        null,
+        2,
+      ),
+    );
+    if (status === 'stale')
+      throw new Error(
+        'UI contract inputs changed during the run. Results remain recorded but do not qualify the final candidate.',
+      );
+  } catch (error) {
+    const current = z.object({ status: z.string() }).parse(JSON.parse(await readFile(manifestPath, 'utf8')));
+    if (current.status === 'running')
+      await writeFile(
+        manifestPath,
+        JSON.stringify(
+          {
+            ...manifest,
+            status: 'failed',
+            bundleSha256,
+            exitCode: childExitCode,
+            completedAt: new Date().toISOString(),
+            error: error instanceof Error ? error.message : String(error),
+          },
+          null,
+          2,
+        ),
+      );
+    throw error;
+  } finally {
+    // mkdtemp owns this exact directory; no repository or user files are removed.
+    await rm(directory, { recursive: true, force: true });
+  }
+});

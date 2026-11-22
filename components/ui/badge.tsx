@@ -1,0 +1,50 @@
+import * as React from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { Slot } from '@radix-ui/react-slot';
+
+import { cn } from '@/lib/utils';
+
+const badgeVariants = cva(
+  'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3',
+  {
+    variants: {
+      // A badge names a state, so it never takes the orange action fill: three
+      // status badges had (rendered review of 2026-10-02). States are neutral,
+      // a reached good state is `success`, a state that waits for an approval
+      // `warning`, an error `destructive`.
+      variant: {
+        secondary: 'bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90',
+        success: 'bg-success-soft text-success-soft-foreground',
+        warning: 'bg-warning-soft text-warning-soft-foreground',
+        destructive:
+          'bg-destructive text-destructive-foreground focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive-hover [a&]:active:bg-destructive-active',
+        outline: 'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
+        ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
+        link: 'text-primary-text underline-offset-4 [a&]:hover:underline [a&]:hover:text-primary-text-hover [a&]:active:text-primary-text-active',
+      },
+    },
+    defaultVariants: {
+      variant: 'secondary',
+    },
+  },
+);
+
+function Badge({
+  className,
+  variant = 'secondary',
+  asChild = false,
+  ...props
+}: React.ComponentProps<'span'> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : 'span';
+
+  return (
+    <Comp
+      data-slot="badge"
+      data-variant={variant}
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
+  );
+}
+
+export { Badge, badgeVariants };

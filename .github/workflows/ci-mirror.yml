@@ -1,0 +1,113 @@
+# Built by the CI orchestrator from .github/workflows/date-lookahead.yml of the tested commit (bin/date-lookahead.ts).
+name: Date look-ahead
+on:
+  push:
+    branches:
+      - ci/**
+permissions:
+  contents: read
+concurrency:
+  group: date-lookahead
+  cancel-in-progress: false
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      legs: ${{ steps.legs.outputs.legs }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Restore the tested tree
+        run: |
+          want="$(git log -1 --format=%B HEAD | sed -n 's/^Source tree: //p')"
+          git rm --quiet .github/workflows/ci-mirror.yml
+          mkdir -p .github/workflows
+          for held in .github/held-workflows/*; do git mv "$held" .github/workflows/; done
+          git -c user.name='CI mirror' -c user.email=ci-mirror@ci.invalid commit --quiet --no-verify --no-gpg-sign -m 'The tested tree'
+          test "$(git rev-parse 'HEAD^{tree}')" = "$want"
+          git update-ref refs/remotes/origin/main HEAD
+      - uses: ./.github/actions/setup
+      - name: Plan the full run's groups
+        id: groups
+        run: bun scripts/ci-plan.ts --full 'Date look-ahead'
+      - name: Plan the dates
+        id: legs
+        env:
+          SHARDS: ${{ steps.groups.outputs.shards }}
+          SQL: ${{ steps.groups.outputs.sql }}
+          ASKED_DATE: ""
+          OPEN_ALERT: ""
+        run: |
+          bun scripts/date-lookahead-plan.ts
+  leg:
+    name: ${{ matrix.name }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 7
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.legs) }}
+    env:
+      INSTANT: ${{ matrix.instant }}
+      LEG_GROUPS: ${{ matrix.groups }}
+    steps:
+      - name: Free the runner's disk
+        if: matrix.browser
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Restore the tested tree
+        run: |
+          want="$(git log -1 --format=%B HEAD | sed -n 's/^Source tree: //p')"
+          git rm --quiet .github/workflows/ci-mirror.yml
+          mkdir -p .github/workflows
+          for held in .github/held-workflows/*; do git mv "$held" .github/workflows/; done
+          git -c user.name='CI mirror' -c user.email=ci-mirror@ci.invalid commit --quiet --no-verify --no-gpg-sign -m 'The tested tree'
+          test "$(git rev-parse 'HEAD^{tree}')" = "$want"
+          git update-ref refs/remotes/origin/main HEAD
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/local-stack
+      - uses: ./.github/actions/playwright
+      - name: Build the app
+        if: matrix.browser
+        run: bun run build
+      - name: Shift the clock
+        run: bash .github/scripts/shift-clock.sh set "$INSTANT"
+      - name: Start the test server
+        id: server
+        if: matrix.browser
+        run: |
+          nohup bun run test:server local --prebuilt > "$RUNNER_TEMP/test-server.log" 2>&1 &
+          server=$!
+          deadline=$((SECONDS + 300))
+          until grep -q 'Serving the recorded local build' "$RUNNER_TEMP/test-server.log" \
+            && curl --silent --fail --output /dev/null http://localhost:3000/login; do
+            if ! kill -0 "$server" 2> /dev/null || test $SECONDS -ge $deadline; then
+              cat "$RUNNER_TEMP/test-server.log"
+              exit 1
+            fi
+            sleep 5
+          done
+      - name: Run the groups on the shifted clock
+        run: bun scripts/verify.ts run --group "$LEG_GROUPS" --jobs 1 --untimed
+      - name: Restore the clock
+        if: always()
+        run: bash .github/scripts/shift-clock.sh restore
+      - name: Copy the server output
+        if: failure() && steps.server.conclusion != 'skipped'
+        run: |
+          mkdir -p .agent-logs
+          cp "$RUNNER_TEMP/test-server.log" .agent-logs/
+      - uses: ./.github/actions/upload-evidence
+        if: failure()
+        with:
+          name: ${{ matrix.slug }}

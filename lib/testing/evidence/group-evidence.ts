@@ -1,0 +1,460 @@
+import { createHash } from 'node:crypto';
+import { BROWSER_INPUT_DRIFT_MESSAGE } from './test-evidence';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, posix, resolve } from 'node:path';
+import ts from 'typescript';
+import { z } from 'zod';
+import { proofEnvironmentDigest } from './proof-environment';
+import { contentDigest } from './source-content';
+import { backendHealthSchema } from '../runner/backend-health';
+
+const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
+export const inputSnapshotSchema = z.object({
+  version: z.literal(1),
+  files: z.record(z.string(), digestSchema),
+  environment: digestSchema,
+});
+export type InputSnapshot = z.infer<typeof inputSnapshotSchema>;
+export type EvidenceGroup = {
+  id: string;
+  files: readonly string[];
+  sourcePrefixes: readonly string[];
+};
+
+export function hashValue(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+/** Files no test executes: agent tooling, and the ignore files that only shape this listing. */
+const AGENT_TOOLING_INPUTS: readonly string[] = ['.mcp.json', 't3.json'];
+
+/**
+ * Files that wire the verification itself: the agent hooks that install the edit guard, and the
+ * review configuration. Until 2026-10-16 they sat under the documentation exemption, so a change
+ * that removed the guard needed neither a review nor a verification (audit finding B10).
+ */
+function isVerificationWiring(file: string): boolean {
+  return (
+    file === '.claude/settings.json' ||
+    file.startsWith('.claude/hooks/') ||
+    file === '.codex/hooks.json' ||
+    file === '.coderabbit.yaml'
+  );
+}
+
+/** Runtime Markdown/MDX remains an input; guidance, tooling and isolated research are exempt. */
+export function isDocumentationInput(file: string): boolean {
+  if (isVerificationWiring(file)) return false;
+  return (
+    (/\.(md|mdx)$/.test(file) && (file.startsWith('docs/') || file.startsWith('tests/'))) ||
+    /^(AGENTS|CLAUDE|README)\.md$/i.test(file) ||
+    file.startsWith('.claude/') ||
+    file.startsWith('.agents/') ||
+    file.startsWith('temporary-transcripts/') ||
+    AGENT_TOOLING_INPUTS.includes(file) ||
+    /(^|\/)\.gitignore$/.test(file)
+  );
+}
+
+/**
+ * Includes additions and deletions through snapshot comparison, without
+ * recording secret values. The environment identity is the proof identity,
+ * never the build receipt's raw digest (see proof-environment.ts); code files
+ * are identified by their comment-free token stream (see source-content.ts).
+ */
+export function captureInputSnapshot(
+  repositoryRoot: string,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): InputSnapshot {
+  const listed = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  const files: Record<string, string> = {};
+  for (const file of [...new Set(listed.split('\0'))].sort()) {
+    if (!file || !existsSync(resolve(repositoryRoot, file))) continue;
+    // Historical prose cannot invalidate behavior proof. Current coverage is checked separately.
+    if (isDocumentationInput(file)) continue;
+    files[file] = contentDigest(file, readFileSync(resolve(repositoryRoot, file)));
+  }
+  return inputSnapshotSchema.parse({
+    version: 1,
+    files,
+    environment: proofEnvironmentDigest(repositoryRoot, environment),
+  });
+}
+
+export function changedInputs(previous: InputSnapshot | undefined, current: InputSnapshot): string[] {
+  if (!previous) return Object.keys(current.files);
+  const changed = [...new Set([...Object.keys(previous.files), ...Object.keys(current.files)])]
+    .filter((file) => previous.files[file] !== current.files[file])
+    .sort();
+  if (previous.environment !== current.environment) changed.push('<environment>');
+  return changed;
+}
+
+/**
+ * Whether a file is one of the prefixes or lies under one: `lib/x` and `lib/x/` both own
+ * `lib/x/y.ts`, never `lib/xy.ts`. It looks up the file and each of its folders, so a planner
+ * with thousands of files and prefixes does not compare every pair (until 2026-10-23 that
+ * comparison was 40 s of every `bun run test:plan`).
+ */
+function prefixMatcher(prefixes: readonly string[]): (file: string) => boolean {
+  const exact = new Set(prefixes);
+  const folders = new Set(prefixes.map((prefix) => (prefix.endsWith('/') ? prefix.slice(0, -1) : prefix)));
+  return (file) => {
+    if (exact.has(file)) return true;
+    for (let slash = file.indexOf('/'); slash >= 0; slash = file.indexOf('/', slash + 1))
+      if (folders.has(file.slice(0, slash))) return true;
+    return false;
+  };
+}
+
+/** An unresolved local or computed import requires all repository inputs. */
+export const UNKNOWN_IMPORT_DEPENDENCY = '<unknown-import-dependency>';
+
+/** How the repository's tsconfig resolves import names, and the files an import can reach. */
+type ImportResolution = {
+  available: ReadonlySet<string>;
+  /** Unsupported resolution can make a bare name a local module. */
+  unknownBareResolution: boolean;
+  aliases: readonly string[];
+  supportedRootAlias: boolean;
+};
+
+const tsconfigSchema = z.object({
+  extends: z.unknown().optional(),
+  compilerOptions: z
+    .object({
+      baseUrl: z.string().optional(),
+      paths: z.record(z.string(), z.array(z.string())).optional(),
+    })
+    .optional(),
+});
+
+function importResolution(repositoryRoot: string, files: readonly string[]): ImportResolution {
+  const available = new Set(files);
+  const configPath = resolve(repositoryRoot, 'tsconfig.json');
+  const config = existsSync(configPath) ? ts.readConfigFile(configPath, ts.sys.readFile) : undefined;
+  const parsedConfig = tsconfigSchema.safeParse(config?.config ?? {});
+  // Unsupported resolution can make a bare name a local module. In that case
+  // qualify broadly until its actual resolver is implemented and reviewed.
+  const unknownBareResolution = Boolean(
+    config?.error ||
+      !parsedConfig.success ||
+      (parsedConfig.success &&
+        (parsedConfig.data.extends !== undefined ||
+          parsedConfig.data.compilerOptions?.baseUrl !== undefined)),
+  );
+  const aliases = parsedConfig.success ? Object.keys(parsedConfig.data.compilerOptions?.paths ?? {}) : [];
+  const rootAlias = parsedConfig.success ? parsedConfig.data.compilerOptions?.paths?.['@/*'] : undefined;
+  const rootAliasTarget = rootAlias?.length === 1 ? rootAlias[0] : undefined;
+  const supportedRootAlias =
+    !config || (rootAliasTarget !== undefined && ['./*', '*'].includes(rootAliasTarget));
+  return { available, unknownBareResolution, aliases, supportedRootAlias };
+}
+
+function matchesAlias(aliases: readonly string[], name: string): boolean {
+  return aliases.some((alias) => {
+    const wildcard = alias.indexOf('*');
+    return wildcard < 0
+      ? name === alias
+      : name.startsWith(alias.slice(0, wildcard)) && name.endsWith(alias.slice(wildcard + 1));
+  });
+}
+
+/** The files a local import base can name, in TypeScript's lookup order. */
+function importCandidates(base: string): string[] {
+  const candidates = [
+    base,
+    ...[
+      '.ts',
+      '.tsx',
+      '.mts',
+      '.cts',
+      '.js',
+      '.jsx',
+      '.mjs',
+      '.cjs',
+      '.json',
+      '/index.ts',
+      '/index.tsx',
+      '/index.js',
+    ].map((suffix) => `${base}${suffix}`),
+  ];
+  // TypeScript permits an emitted .js/.mjs/.cjs suffix to refer to source.
+  if (/\.[cm]?jsx?$/.test(base)) {
+    const replacement = base.endsWith('.mjs') ? ['.mts'] : base.endsWith('.cjs') ? ['.cts'] : ['.ts', '.tsx'];
+    candidates.push(...replacement.map((suffix) => base.replace(/\.[cm]?jsx?$/, suffix)));
+  }
+  return candidates;
+}
+
+function resolveSourceImport(
+  resolution: ImportResolution,
+  importer: string,
+  name: string,
+): string | undefined {
+  if (!name.startsWith('.') && !name.startsWith('@/')) {
+    if (name.startsWith('node:')) return undefined;
+    return resolution.unknownBareResolution || matchesAlias(resolution.aliases, name)
+      ? UNKNOWN_IMPORT_DEPENDENCY
+      : undefined;
+  }
+  if (name.startsWith('@/') && !resolution.supportedRootAlias) return UNKNOWN_IMPORT_DEPENDENCY;
+  const base = posix.normalize(
+    name.startsWith('@/') ? name.slice(2) : `${dirname(importer).replaceAll('\\', '/')}/${name}`,
+  );
+  if (base === 'temporary-transcripts' || base.startsWith('temporary-transcripts/')) {
+    throw new Error(
+      `${importer} imports isolated research input ${name}. Move adopted implementation into its owning application module before using it.`,
+    );
+  }
+  return (
+    importCandidates(base).find((candidate) => resolution.available.has(candidate)) ??
+    UNKNOWN_IMPORT_DEPENDENCY
+  );
+}
+
+/** The module name expression of an import, export-from, `import()`, `require()` or `import =` site. */
+function importSite(node: ts.Node): { argument: ts.Expression | undefined } | undefined {
+  if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier)
+    return { argument: node.moduleSpecifier };
+  if (
+    ts.isCallExpression(node) &&
+    (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+      (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
+  )
+    return { argument: node.arguments[0] };
+  if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference))
+    return { argument: node.moduleReference.expression };
+  return undefined;
+}
+
+function sourceFileImports(repositoryRoot: string, file: string, resolution: ImportResolution): string[] {
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(resolve(repositoryRoot, file), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const imports = new Set<string>();
+  function visit(node: ts.Node): void {
+    const site = importSite(node);
+    if (site) {
+      const { argument } = site;
+      if (argument && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))) {
+        const dependency = resolveSourceImport(resolution, file, argument.text);
+        if (dependency) imports.add(dependency);
+      } else imports.add(UNKNOWN_IMPORT_DEPENDENCY);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return [...imports];
+}
+
+/**
+ * Static package imports are qualified through the globally selected lockfile.
+ * With `entries`, only the source files those entries reach are parsed: the
+ * same edges for that closure, without parsing the whole repository.
+ */
+export function sourceImportGraph(
+  repositoryRoot: string,
+  files: readonly string[],
+  entries?: readonly string[],
+): Map<string, string[]> {
+  const resolution = importResolution(repositoryRoot, files);
+  const graph = new Map<string, string[]>();
+  const pending = [...(entries ?? files)];
+  // An array iterator also visits the imports pushed during the walk.
+  for (const file of pending) {
+    if (graph.has(file) || !/\.[cm]?[jt]sx?$/.test(file) || !existsSync(resolve(repositoryRoot, file)))
+      continue;
+    const imports = sourceFileImports(repositoryRoot, file, resolution);
+    graph.set(file, imports);
+    if (entries) pending.push(...imports);
+  }
+  return graph;
+}
+
+/**
+ * Harness code that only a test can reach by importing it. A change there
+ * qualifies the groups whose specs (or their support modules) import it, not
+ * every group; before 2026-09-14 these directories were unowned and therefore
+ * global, so a one-function helper fix reran all forty release groups.
+ */
+const IMPORT_QUALIFIED_PREFIXES: readonly string[] = [
+  'tests/golden/support/',
+  'tests/audit/support/',
+  'tests/canary/support/',
+  'lib/testing/',
+  // The verifier, runner and repository scripts are harness entry points; their
+  // correctness is proven by unit:all and the static gates, not by rerunning
+  // every browser group they orchestrate.
+  'scripts/',
+];
+/** Loaded by a Playwright config path rather than an import; stays a shared input of every group. */
+const FRAMEWORK_LOADED_HELPERS: readonly string[] = ['tests/golden/support/run-reporter.ts'];
+
+export function groupInputFiles(input: {
+  group: EvidenceGroup;
+  groups: readonly EvidenceGroup[];
+  files: readonly string[];
+  graph: ReadonlyMap<string, readonly string[]>;
+}): string[] {
+  const selected = new Set<string>();
+  const declared = prefixMatcher([
+    ...input.groups.flatMap((group) => [...group.sourcePrefixes, ...group.files]),
+    ...IMPORT_QUALIFIED_PREFIXES,
+  ]);
+  const ownGroup = prefixMatcher(input.group.sourcePrefixes);
+  for (const file of input.files) {
+    const owned = declared(file) && !FRAMEWORK_LOADED_HELPERS.includes(file);
+    // A new or unowned input is global until somebody declares and reviews its ownership.
+    if (!owned || input.group.files.includes(file) || ownGroup(file)) selected.add(file);
+  }
+  // Global entries can import feature-owned code too. Selection is not visitation:
+  // an already-selected shared module must still contribute its own dependencies.
+  const pending = [...selected];
+  const visited = new Set<string>();
+  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (visited.has(file)) continue;
+    visited.add(file);
+    for (const dependency of input.graph.get(file) ?? []) {
+      if (dependency === UNKNOWN_IMPORT_DEPENDENCY) return [...input.files].sort();
+      selected.add(dependency);
+      if (!visited.has(dependency)) pending.push(dependency);
+    }
+  }
+  return [...selected].sort();
+}
+
+export function groupFingerprint(
+  group: EvidenceGroup,
+  snapshot: InputSnapshot,
+  files: readonly string[],
+): string {
+  return hashValue({
+    version: 1,
+    group,
+    environment: snapshot.environment,
+    files: files.map((file) => [file, snapshot.files[file] ?? 'deleted']),
+  });
+}
+
+export const groupResultSchema = z.object({
+  groupId: z.string().min(1),
+  fingerprint: digestSchema,
+  status: z.enum(['passed', 'failed', 'blocked']),
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime(),
+  durationMs: z.number().nonnegative(),
+  runKey: z.string().nullable(),
+  buildId: z.string().nullable(),
+  logPath: z.string(),
+  reason: z.string().nullable(),
+  /** The application-to-backend probe before a blocked or after a failed browser group. */
+  backendHealth: backendHealthSchema.optional(),
+});
+/** The report snapshot a result was recorded under, attached when history is read. */
+export type GroupResult = z.infer<typeof groupResultSchema> & { snapshot?: InputSnapshot };
+
+/** True when every listed input has the same content and the environment digest is unchanged. */
+export function inputsUnchangedBetween(
+  then: InputSnapshot,
+  now: InputSnapshot,
+  inputs: readonly string[],
+): boolean {
+  return (
+    then.environment === now.environment &&
+    inputs.every((file) => then.files[file] !== undefined && then.files[file] === now.files[file])
+  );
+}
+
+type ResultMatch = {
+  groupId: string;
+  fingerprint: string;
+  inputs?: readonly string[];
+  snapshot?: InputSnapshot;
+};
+
+/** The reason prefix of an attempt the run voided because an input changed meanwhile. */
+export const INPUT_DRIFT_REASON = 'Inputs changed during verification';
+
+/** A voided attempt neither proves nor blocks its group: the candidate it ran on no longer exists. The
+    parent voids on its own snapshot drift; the group runner voids on the candidate fingerprint (its
+    message reaches the result as the reason). */
+export function voidedByDrift(result: Pick<GroupResult, 'reason'>): boolean {
+  return (
+    result.reason?.startsWith(INPUT_DRIFT_REASON) ||
+    result.reason?.startsWith(BROWSER_INPUT_DRIFT_MESSAGE) ||
+    false
+  );
+}
+
+/**
+ * A result proves the current inputs when its fingerprint matches, or when the
+ * snapshot it was recorded under holds the same content for every current
+ * input. The second form keeps a proof valid across a qualification-rule
+ * change that narrows a group's inputs (2026-09-14).
+ */
+function resultMatches(result: GroupResult, input: ResultMatch): boolean {
+  if (result.groupId !== input.groupId) return false;
+  if (result.fingerprint === input.fingerprint) return true;
+  return Boolean(
+    input.inputs &&
+      input.snapshot &&
+      result.snapshot &&
+      inputsUnchangedBetween(result.snapshot, input.snapshot, input.inputs),
+  );
+}
+
+export function reusableGroupResult(
+  input: ResultMatch & { results: readonly GroupResult[] },
+): GroupResult | undefined {
+  // A later failure invalidates an older pass for the same inputs. Never cherry-pick a lucky pass.
+  const latest = input.results
+    .filter((result) => resultMatches(result, input) && !voidedByDrift(result))
+    .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
+    .at(-1);
+  return latest?.status === 'passed' ? latest : undefined;
+}
+
+/** One attempt of a group; a reused copy of a result in a later report has the same key. */
+export function groupAttemptKey(result: Pick<GroupResult, 'groupId' | 'startedAt'>): string {
+  return `${result.groupId}:${result.startedAt}`;
+}
+
+/**
+ * One failure on unchanged inputs may be retried once its environment cause is
+ * recorded: a browser attempt through its classified, replayed and cleaned run
+ * (`recoveredRunKeys`), an attempt without a run through its recorded diagnosis
+ * (`recoveredAttemptKeys`, group-diagnosis.ts). A second failure on the same
+ * inputs needs a change.
+ */
+export function groupAttemptProblem(
+  input: ResultMatch & {
+    results: readonly GroupResult[];
+    recoveredRunKeys?: readonly string[];
+    recoveredAttemptKeys?: readonly string[];
+  },
+): string | undefined {
+  const unique = new Map(
+    input.results
+      .filter(
+        (result) => resultMatches(result, input) && result.status !== 'blocked' && !voidedByDrift(result),
+      )
+      .map((result) => [groupAttemptKey(result), result]),
+  );
+  const attempts = [...unique.values()].sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+  const latest = attempts.at(-1);
+  if (latest?.status !== 'failed') return undefined;
+  const recovered = latest.runKey
+    ? input.recoveredRunKeys?.includes(latest.runKey)
+    : input.recoveredAttemptKeys?.includes(groupAttemptKey(latest));
+  if (recovered && attempts.filter((attempt) => attempt.status === 'failed').length === 1) return undefined;
+  return `The latest attempt failed on unchanged inputs. Diagnose the evidence before retrying; a repeat is not a repair. One environment failure may be retried once after its diagnosis is recorded (bun run test:runs classify ${latest.runKey ?? input.groupId} environment "<cause>" "<prevention>"${latest.runKey ? ', a retained replay and cleanup' : ''}); two failures on the same inputs require resolving the underlying cause.`;
+}

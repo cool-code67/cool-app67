@@ -1,0 +1,146 @@
+import 'server-only';
+
+import { logReadFailure } from '@/lib/data/read-request-cache';
+import { readProfileReferences } from '@/lib/profile-reference';
+import type { AdminClient } from '@/lib/supabase/admin';
+import { readInBatches } from '@/lib/supabase/query-batches';
+import {
+  toJobInstructionItem,
+  type JobInstructionItemRow,
+  type JobInstructionItemWithDetails,
+} from './types';
+
+/**
+ * The people, which of them are still members, the evidence requirements and
+ * the predecessors of the rows; null after a logged failed read.
+ */
+async function readInstructionItemMetadata(admin: AdminClient, orgId: string, rows: JobInstructionItemRow[]) {
+  const profileIds = Array.from(
+    new Set(
+      rows.flatMap((row) =>
+        [row.created_by, row.last_status_changed_by].filter((value): value is string => Boolean(value)),
+      ),
+    ),
+  );
+
+  const itemIds = rows.map((row) => row.id);
+
+  // Each batch holds whole items, so the per-item `sort_order` survives batching.
+  const [referencesResult, evidenceResult, dependencyResult] = await Promise.all([
+    readProfileReferences(admin, orgId, profileIds),
+    readInBatches(itemIds, (batch) =>
+      admin
+        .from('job_instruction_item_evidence_requirements')
+        .select('id, instruction_item_id, description, document_category')
+        .eq('organization_id', orgId)
+        .in('instruction_item_id', [...batch])
+        .order('sort_order'),
+    ),
+    readInBatches(itemIds, (batch) =>
+      admin
+        .from('job_instruction_item_dependencies')
+        .select('dependent_item_id, predecessor_item_id')
+        .eq('organization_id', orgId)
+        .in('dependent_item_id', [...batch]),
+    ),
+  ]);
+  const metadataError = referencesResult.error ?? evidenceResult.error ?? dependencyResult.error;
+  if (metadataError) {
+    logReadFailure('hydrateInstructionItems: metadata read failed', { code: metadataError.code });
+    return null;
+  }
+  return {
+    references: referencesResult.data,
+    evidence: evidenceResult.data,
+    dependencies: dependencyResult.data,
+  };
+}
+
+/** The live fulfillments of the requirements and the predecessors outside the rows; null after a logged failed read. */
+async function readInstructionItemFulfillments(
+  admin: AdminClient,
+  orgId: string,
+  requirementIds: string[],
+  missingPredecessorIds: string[],
+) {
+  const [fulfillmentResult, predecessorResult] = await Promise.all([
+    readInBatches(requirementIds, (batch) =>
+      admin
+        .from('job_instruction_item_evidence_fulfillments')
+        .select('id, evidence_requirement_id, document_id, artifact_revision_id, version')
+        .eq('organization_id', orgId)
+        .in('evidence_requirement_id', [...batch])
+        .is('removed_at', null),
+    ),
+    readInBatches(missingPredecessorIds, (batch) =>
+      admin
+        .from('job_instruction_items')
+        .select('id, content')
+        .eq('organization_id', orgId)
+        .in('id', [...batch]),
+    ),
+  ]);
+  const detailError = fulfillmentResult.error ?? predecessorResult.error;
+  if (detailError) {
+    logReadFailure('hydrateInstructionItems: fulfillment or predecessor read failed', {
+      code: detailError.code,
+    });
+    return null;
+  }
+  return { fulfillments: fulfillmentResult.data, predecessors: predecessorResult.data };
+}
+
+/**
+ * Adds provenance, evidence and predecessors to the rows. Returns null when any
+ * of these reads fails, so no caller shows an item without its requirements.
+ */
+export async function hydrateInstructionItems(
+  admin: AdminClient,
+  orgId: string,
+  rows: JobInstructionItemRow[],
+): Promise<JobInstructionItemWithDetails[] | null> {
+  const metadata = await readInstructionItemMetadata(admin, orgId, rows);
+  if (!metadata) return null;
+  const actorReference = (userId: string | null) => (userId ? metadata.references.get(userId) : null) ?? null;
+  const requirementIds = metadata.evidence.map((requirement) => requirement.id);
+  const contentById = new Map(rows.map((row) => [row.id, row.content]));
+  // A single saved item is hydrated alone; its predecessors still need their labels.
+  const missingPredecessorIds = metadata.dependencies
+    .map((dependency) => dependency.predecessor_item_id)
+    .filter((predecessorId) => !contentById.has(predecessorId));
+  const details = await readInstructionItemFulfillments(admin, orgId, requirementIds, missingPredecessorIds);
+  if (!details) return null;
+  for (const predecessor of details.predecessors) contentById.set(predecessor.id, predecessor.content);
+  // Grouped once, in read order, so each item keeps its requirements in `sort_order`.
+  const evidenceByItemId = Map.groupBy(metadata.evidence, (requirement) => requirement.instruction_item_id);
+  const dependenciesByItemId = Map.groupBy(
+    metadata.dependencies,
+    (dependency) => dependency.dependent_item_id,
+  );
+  const fulfillmentByRequirementId = new Map(
+    details.fulfillments.map((fulfillment) => [
+      fulfillment.evidence_requirement_id,
+      {
+        id: fulfillment.id,
+        documentId: fulfillment.document_id,
+        artifactRevisionId: fulfillment.artifact_revision_id,
+        version: fulfillment.version,
+      },
+    ]),
+  );
+  return rows.map((row) => ({
+    ...toJobInstructionItem(row),
+    creator: actorReference(row.created_by),
+    lastStatusChangedByProfile: actorReference(row.last_status_changed_by),
+    evidenceRequirements: (evidenceByItemId.get(row.id) ?? []).map((item) => ({
+      id: item.id,
+      description: item.description,
+      documentCategory: item.document_category,
+      fulfillment: fulfillmentByRequirementId.get(item.id) ?? null,
+    })),
+    predecessors: (dependenciesByItemId.get(row.id) ?? []).map((item) => ({
+      id: item.predecessor_item_id,
+      content: contentById.get(item.predecessor_item_id) ?? 'Früherer Eintrag',
+    })),
+  }));
+}

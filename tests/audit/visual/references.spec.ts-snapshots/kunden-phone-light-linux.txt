@@ -1,0 +1,27 @@
+Menü öffnen
+Kunden
+Kunde hinzufügen
+Hinzufügen
+Aktive Kunden
+4
+Kunden
+Bäckerei Sommer GmbH
+Gewerblich
+—
+Aktionen öffnen
+Familie Hoffmann
+Privat
+—
+Aktionen öffnen
+Praxis Dr. Wolf
+Gewerblich
+—
+Aktionen öffnen
+Wohnungsbaugenossenschaft Neckartal eG
+Gewerblich
+—
+Aktionen öffnen
+1–4
+von
+4
+Nicht eingestempelt
