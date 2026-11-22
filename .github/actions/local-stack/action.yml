@@ -1,0 +1,98 @@
+name: Local stack
+description: >-
+  Starts the Supabase CLI stack on the runner with every committed migration
+  applied, and points .env.local at it (docs/technical/environments.md, "The
+  local test stack"). The stack's keys are the CLI's shared local defaults.
+  The steps are scripts/ci/prepare.ts stack, stack-environment and env, which
+  every other runner takes too; this action adds GitHub's caches around them.
+inputs:
+  save-images:
+    description: Save the pulled images to the cache; one job per run does it.
+    default: 'false'
+  environment-only:
+    description: >-
+      Point .env.local at the stack from the cached stack environment and start
+      no stack. A cache miss starts the stack once to record it.
+    default: 'false'
+  point-env:
+    description: >-
+      Write .env.local from the stack environment. `false` leaves it to the job, which writes it
+      only for the build (scripts/ci/job.ts fast).
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    # The stack's URL and keys are the CLI's fixed defaults, so its .env.local depends only on the
+    # CLI version and config.toml. A shard that serves the Build job's build proves both match
+    # (scripts/test-server.ts --prebuilt); if that proof fails on a cache hit, raise the v1 here.
+    - name: Restore the stack environment
+      id: environment
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .env.local-stack-backup
+        key: supabase-environment-v1-2.116.0-${{ hashFiles('supabase/config.toml') }}
+
+    - name: Decide whether to start the stack
+      id: start
+      shell: bash
+      env:
+        START: ${{ inputs.environment-only != 'true' || steps.environment.outputs.cache-hit != 'true' }}
+      run: echo "start=$START" >> "$GITHUB_OUTPUT"
+
+    - if: steps.start.outputs.start == 'true'
+      uses: ./.github/actions/supabase-cli
+
+    # The stack's images, saved after the first start. A key change pulls them again.
+    - name: Restore the stack images
+      id: images
+      if: steps.start.outputs.start == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/supabase-images.tar
+        key: supabase-images-v3-ghcr-2.116.0-${{ hashFiles('supabase/config.toml') }}
+
+    - name: Load the stack images
+      if: steps.start.outputs.start == 'true' && steps.images.outputs.cache-hit == 'true'
+      shell: bash
+      run: docker load --quiet --input "$RUNNER_TEMP/supabase-images.tar"
+
+    # The stack with every committed migration, published on loopback only, its edge runtime ready and
+    # its environment recorded in .env.local-stack-backup.
+    - name: Start the stack
+      if: steps.start.outputs.start == 'true' && inputs.environment-only != 'true'
+      shell: bash
+      run: bun scripts/ci/prepare.ts stack
+
+    # The same stack, started only because the environment cache missed.
+    - name: Start the stack for its environment
+      if: steps.start.outputs.start == 'true' && inputs.environment-only == 'true'
+      shell: bash
+      run: bun scripts/ci/prepare.ts stack-environment
+
+    - name: Save the stack images
+      if: steps.start.outputs.start == 'true' && steps.images.outputs.cache-hit != 'true' && inputs.save-images == 'true'
+      shell: bash
+      run: |
+        docker ps --filter label=com.supabase.cli.project=werkflow-app --format '{{.Image}}' \
+          | sort -u | xargs docker save --output "$RUNNER_TEMP/supabase-images.tar"
+
+    - name: Cache the stack images
+      if: steps.start.outputs.start == 'true' && steps.images.outputs.cache-hit != 'true' && inputs.save-images == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/supabase-images.tar
+        key: ${{ steps.images.outputs.cache-primary-key }}
+
+    - name: Cache the stack environment
+      if: steps.start.outputs.start == 'true' && steps.environment.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .env.local-stack-backup
+        key: ${{ steps.environment.outputs.cache-primary-key }}
+
+    # The app's one-time-code secret goes to the job's environment, not .env.local, whose every byte
+    # the build identity hashes.
+    - name: Point .env.local at the stack
+      if: inputs.point-env == 'true'
+      shell: bash
+      run: bun scripts/ci/prepare.ts env

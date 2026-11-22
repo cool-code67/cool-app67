@@ -1,0 +1,225 @@
+export type FailureMode = 'returned' | 'thrown' | 'none';
+import { ROUTE_REFRESH_EVENT } from './lifecycle-boundaries';
+import { unexpectedWrite } from './held-write-boundary';
+import {
+  deleteEntryContract,
+  reviewChangeRequestContract,
+  reviewEntriesContract,
+} from './time-approval-boundaries';
+import { createJobMaterialLineContract, recordJobMaterialUseContract } from './material-boundaries';
+import { CLOCK_USER_ID } from './clock-state-fixture';
+import { CONTRACT_SUPABASE_URL } from './supabase-contract-env';
+import { FIELD_SYNC_TODAY_PATH } from '@/lib/field-sync/today-snapshot';
+import type { InventoryLocation, InventoryLocationType } from '@/lib/inventory/types';
+// Keep framework redirect/error classification real; only navigation and
+// external services are substituted by this fixture.
+export { unstable_rethrow } from 'next/dist/client/components/unstable-rethrow.browser';
+export type ServiceBoundaryState = {
+  authFailure: FailureMode;
+  paymentFailure: FailureMode;
+  callbackFailure: boolean;
+  navigation: string[];
+  callbackCalls: number;
+  createdLocations: string[];
+};
+
+declare global {
+  interface Window {
+    uiContractServices: ServiceBoundaryState;
+  }
+}
+
+export function initializeServiceBoundaries(): void {
+  const browserFetch = window.fetch.bind(window);
+  window.uiContractServices = {
+    authFailure: 'returned',
+    paymentFailure: 'thrown',
+    callbackFailure: false,
+    navigation: [],
+    callbackCalls: 0,
+    createdLocations: [],
+  };
+  window.fetch = Object.assign(
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
+      // The clock contract intercepts this GET at Playwright's network boundary.
+      if (
+        window.uiContractFixture === 'customer' &&
+        typeof input === 'string' &&
+        input.startsWith('/api/customer-page?') &&
+        (init?.method ?? 'GET') === 'GET'
+      ) {
+        return browserFetch(input, init);
+      }
+      if (
+        (window.uiContractFixture === 'clock' || window.uiContractFixture === 'lifecycle-field') &&
+        typeof input === 'string' &&
+        input.startsWith('/api/time-tracking-state?') &&
+        (init?.method ?? 'GET') === 'GET'
+      ) {
+        return browserFetch(input, init);
+      }
+      // The clock contract answers the time outbox's sends at Playwright's network boundary.
+      if (
+        window.uiContractFixture === 'clock' &&
+        input === '/api/field-sync/v1/operations' &&
+        init?.method === 'POST'
+      ) {
+        return browserFetch(input, init);
+      }
+      // The start page refresh contract answers the day's GET at Playwright's network boundary.
+      if (
+        (window.uiContractFixture === 'today-refresh-switch' ||
+          window.uiContractFixture === 'today-refresh-profile' ||
+          window.uiContractFixture === 'today-refresh-fallback') &&
+        typeof input === 'string' &&
+        input.startsWith(`${FIELD_SYNC_TODAY_PATH}?`) &&
+        (init?.method ?? 'GET') === 'GET'
+      ) {
+        return browserFetch(input, init);
+      }
+      // The auth URL contracts record every Auth request at Playwright's network boundary.
+      if (
+        (window.uiContractFixture === 'auth-url-session' ||
+          window.uiContractFixture === 'auth-url-reset-form') &&
+        String(input instanceof Request ? input.url : input).startsWith(CONTRACT_SUPABASE_URL)
+      ) {
+        return browserFetch(input, init);
+      }
+      // The report draft contracts answer the sync handler at Playwright's network boundary.
+      if (
+        window.uiContractFixture === 'work-artifact-report' &&
+        input === '/api/field-sync/v1/operations' &&
+        init?.method === 'POST'
+      ) {
+        return browserFetch(input, init);
+      }
+      // The report dialog's contract answers its storage PUTs at Playwright's network boundary.
+      if (
+        window.uiContractFixture === 'problem-report' &&
+        init?.method === 'PUT' &&
+        String(input instanceof Request ? input.url : input).startsWith('http://localhost/storage/')
+      ) {
+        return browserFetch(input, init);
+      }
+      // The company letterhead contract answers the Musterangebot at Playwright's network boundary.
+      if (
+        window.uiContractFixture === 'company-letterhead' &&
+        input === '/api/musterangebot' &&
+        (init?.method ?? 'GET') === 'GET'
+      ) {
+        return browserFetch(input, init);
+      }
+      // The offline retry's contract answers its connection check at Playwright's network boundary.
+      if (
+        window.uiContractFixture === 'offline-retry' &&
+        input === '/manifest.webmanifest' &&
+        init?.method === 'HEAD'
+      ) {
+        return browserFetch(input, init);
+      }
+      if (input !== '/auth/callback') throw new Error('Unexpected request in isolated UI contracts.');
+      window.uiContractServices.callbackCalls += 1;
+      if (window.uiContractServices.callbackFailure)
+        throw new Error('Simulated callback connection failure.');
+      return new Response(null, { status: 200 });
+    },
+    {
+      preconnect: () => {
+        throw new Error('Network preconnect is forbidden in isolated UI contracts.');
+      },
+    },
+  );
+}
+
+export async function createInventoryLocation(input: {
+  name: string;
+  description: string;
+  locationType: InventoryLocationType;
+}): Promise<{ success: true; location: InventoryLocation }> {
+  window.uiContractServices.createdLocations.push(input.name);
+  return {
+    success: true,
+    location: {
+      id: 'contract-location',
+      name: input.name,
+      description: input.description,
+      locationType: input.locationType,
+      parentLocationId: null,
+      sortOrder: 0,
+      isActive: true,
+    },
+  };
+}
+
+export function createSupabaseBrowserClient() {
+  return {
+    auth: {
+      // The browser's session, as the time outbox reads it before a send or a sign-out question.
+      getSession: async () => ({
+        data: { session: { user: { id: CLOCK_USER_ID }, access_token: 'contract-access-token' } },
+        error: null,
+      }),
+      signOut: async () => {
+        const failure = window.uiContractServices.authFailure;
+        if (failure === 'thrown') throw new Error('Simulated auth connection failure.');
+        return {
+          error: failure === 'returned' ? new Error('Simulated auth rejection.') : null,
+        };
+      },
+    },
+  };
+}
+
+export async function startOrganizationCheckout(): Promise<{ success: false; error: string }> {
+  const failure = window.uiContractServices.paymentFailure;
+  if (failure === 'thrown') throw new Error('Simulated payment connection failure.');
+  return { success: false, error: 'checkout_failed' };
+}
+
+export async function startSubscriptionCheckout(): Promise<{ success: false; error: string }> {
+  return startOrganizationCheckout();
+}
+
+export async function clearEmailChangeChallengeBeforeSignOut(): Promise<{
+  success: true;
+}> {
+  return { success: true };
+}
+// The real action answers with the organizations it clocked out; the hook reads `success`.
+export async function clockOutBeforeSignOut(): Promise<{ success: true; clockedOutOrgIds: string[] }> {
+  return { success: true, clockedOutOrgIds: [] };
+}
+
+// `@/lib/time-tracking/{entry-write,review}-actions`: the approval cards and the entry details dialog.
+export const reviewEntries = reviewEntriesContract;
+export const reviewChangeRequest = reviewChangeRequestContract;
+export const deleteEntry = deleteEntryContract;
+export const deleteEntriesBatch = unexpectedWrite;
+export const updateEntry = unexpectedWrite;
+export const addManualEntry = unexpectedWrite;
+
+// `@/lib/inventory/actions` and `material-use-actions`: the job material section plans one line and records a use.
+export const createJobMaterialLine = createJobMaterialLineContract;
+export const recordJobMaterialUse = recordJobMaterialUseContract;
+export const createProjectMaterialLine = unexpectedWrite;
+export const updateJobMaterialLine = unexpectedWrite;
+export const deleteJobMaterialLine = unexpectedWrite;
+export const takeJobMaterial = unexpectedWrite;
+export const takeProjectMaterial = unexpectedWrite;
+export const returnJobMaterial = unexpectedWrite;
+export function useRouter(): {
+  replace: (path: string) => void;
+  refresh: () => void;
+} {
+  return {
+    replace: (path) => window.uiContractServices.navigation.push(path),
+    refresh: () => {
+      window.uiContractServices.navigation.push('refresh');
+      window.dispatchEvent(new Event(ROUTE_REFRESH_EVENT));
+    },
+  };
+}
+
+export function useSearchParams(): URLSearchParams {
+  return new URLSearchParams();
+}

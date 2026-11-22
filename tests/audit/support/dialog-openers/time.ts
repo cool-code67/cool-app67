@@ -1,0 +1,421 @@
+import { expect, type Locator, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { addLocalDays } from '../../../../lib/date-time/berlin';
+import { formatSicknessRange } from '../../../../lib/sickness/types';
+import { rpcArgs } from '../../../../lib/supabase/rpc-args';
+import type { DialogOpenerId } from '../../../../lib/testing/selection/dialog-inventory';
+import {
+  getEmployeeRecordStateByUser,
+  seedOpenOnboardingRequirement,
+} from '../../../golden/support/db/personnel';
+import { createAdminClient } from '../../../golden/support/db/shared';
+import { seedSicknessReport } from '../../../golden/support/db/sickness';
+import {
+  seedApprovedManualInterval,
+  seedPendingManualInterval,
+} from '../../../golden/support/db/time-tracking';
+import { seedPendingVacationRequest } from '../../../golden/support/db/vacation';
+import {
+  newWorkArtifactButton,
+  workArtifactCreateDialog,
+} from '../../../golden/support/spec-helpers/work-artifact-dialog';
+import { hydratedAndSettled } from '../../../golden/support/steps/interaction';
+import {
+  deviceDraftDeleteButton,
+  deviceDraftDeleteConfirmation,
+  leaveDraftOnDevice,
+} from '../offline-drafts';
+import {
+  enlargeScreenshotButton,
+  openProblemReport,
+  problemReportButton,
+  problemReportDialog,
+  redactScreenshotMiddle,
+  screenshotRedactionView,
+} from '../../../golden/support/steps/problem-reports';
+import { ownEvidenceUploadButton, ownEvidenceUploadDialog } from '../../../golden/support/steps/personnel';
+import {
+  ownSicknessCancelButton,
+  ownSicknessDialog,
+  ownSicknessEndButton,
+  reportSicknessButton,
+} from '../../../golden/support/steps/sickness';
+import {
+  addMissedTimeButton,
+  approveAllTimeEntriesButton,
+  approveAllTimeEntriesConfirmation,
+  withdrawOwnSubmissionButtons,
+  withdrawSubmissionConfirmation,
+  chooseActivityDialog,
+  clockInJobPicker,
+  clockInLauncher,
+  clockSheetJobAction,
+  clockSheetMoreActivities,
+  clockStartSheet,
+  manualEntryDialog,
+  manualEntryHeaderButton,
+  openTimeApprovals,
+  TIME_CORRECTION_COPY,
+  timeCorrectionDialog,
+  timeHistoryPanel,
+  timeHistoryTab,
+} from '../../../golden/support/steps/time-tracking';
+import {
+  rejectVacationButton,
+  requestVacationButton,
+  vacationRejectDialog,
+  vacationRequestDialog,
+} from '../../../golden/support/steps/vacation';
+import {
+  accountMenuButton,
+  showOrganizationSwitcher,
+  signOutMenuItem,
+} from '../../../golden/support/steps/organization';
+import { fieldPackSiteAccessButton, fieldPackSiteAccessDialog } from '../../../golden/support/steps/work';
+import type { TestWorld } from '../../../golden/support/world';
+import type { DialogOpener } from '../dialog-opener';
+import { prepareLayoutDetails } from '../layout-fixtures';
+import {
+  seedRefusedTimeEvent,
+  unsentDeleteButton,
+  unsentDeleteConfirmation,
+  unsentDiscardButton,
+  unsentDiscardConfirmation,
+  unsentWorkDialog,
+} from '../time-outbox';
+import { surfaceFixture, type SurfaceContext } from '../surface-fixtures';
+import { worldName } from '../../../../lib/testing/seed-world-plan';
+
+// Zeiterfassung for the office and the field worker's own dialogs. Every row
+// these dialogs need belongs to the world's employee and lies away from the
+// business date, so no other audited page changes its default view.
+
+async function employeeRecordId(world: TestWorld): Promise<string> {
+  return (await getEmployeeRecordStateByUser(world.orgId, world.users.employee.id)).id;
+}
+
+function employeeName(world: TestWorld): string {
+  return `${world.users.employee.firstName} ${world.users.employee.lastName}`;
+}
+
+/** Returns a control once it is enabled: the page enables it after hydration or its read. */
+async function enabled(control: Locator): Promise<Locator> {
+  await expect(control).toBeEnabled();
+  return control;
+}
+
+/** Opens the stopped clock's sheet from the clock button; the sheet is the parent of nested dialogs. */
+/** The sign-out of the account menu, with the menu open: the trigger of the unsent-work question. */
+async function signOutControl(page: Page): Promise<Locator> {
+  // On a phone the profile card sits in the menu sheet.
+  await showOrganizationSwitcher(page);
+  await (await enabled(accountMenuButton(page))).click();
+  return enabled(signOutMenuItem(page));
+}
+
+async function openClockSheet(page: Page): Promise<Locator> {
+  await (await enabled(clockInLauncher(page))).click();
+  const sheet = clockStartSheet(page);
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+/**
+ * An employee's „Korrigieren“ on an own accepted entry of the history: the
+ * employee adds time through the header's „Zeit nachtragen“ and corrects
+ * recorded time from its row.
+ */
+async function historyCorrectOwnEntry({ page, world, businessDate }: SurfaceContext): Promise<Locator> {
+  await surfaceFixture(world, 'time.own-approved-interval', async () => {
+    const date = addLocalDays(businessDate, -6);
+    await seedApprovedManualInterval({
+      organizationId: world.orgId,
+      userId: world.users.employee.id,
+      date,
+      from: '07:00',
+      to: '08:00',
+    });
+    return date;
+  });
+  await page.reload();
+  await hydratedAndSettled(page);
+  await timeHistoryTab(page).click();
+  await expect(timeHistoryTab(page)).toHaveAttribute('aria-selected', 'true');
+  return enabled(
+    timeHistoryPanel(page).getByRole('button', { name: TIME_CORRECTION_COPY.correct, exact: true }).first(),
+  );
+}
+
+/** The history tab's „Zeit nachtragen“, which opens an empty correction. */
+async function historyAddTime({ page }: SurfaceContext): Promise<Locator> {
+  await timeHistoryTab(page).click();
+  await expect(timeHistoryTab(page)).toHaveAttribute('aria-selected', 'true');
+  return enabled(addMissedTimeButton(page));
+}
+
+/** Two pending manual submissions and one pending vacation request of the employee. */
+async function seedEmployeeApprovals({ world, businessDate }: SurfaceContext): Promise<void> {
+  await surfaceFixture(world, 'time.pending-submissions', async () => {
+    const first = await seedPendingManualInterval({
+      organizationId: world.orgId,
+      userId: world.users.employee.id,
+      date: addLocalDays(businessDate, -4),
+      from: '07:00',
+      to: '08:30',
+    });
+    await seedPendingManualInterval({
+      organizationId: world.orgId,
+      userId: world.users.employee.id,
+      date: addLocalDays(businessDate, -3),
+      from: '07:00',
+      to: '08:30',
+    });
+    return first.clockInId;
+  });
+  await surfaceFixture(world, 'time.pending-vacation', async () =>
+    seedPendingVacationRequest({
+      organizationId: world.orgId,
+      employeeRecordId: await employeeRecordId(world),
+      requestedBy: world.users.employee.id,
+      startDate: addLocalDays(businessDate, 60),
+      endDate: addLocalDays(businessDate, 61),
+    }),
+  );
+}
+
+/** The employee's own active sickness report, ahead of the business date; returns its range text. */
+async function ownSicknessRange({ page, world, businessDate }: SurfaceContext): Promise<string> {
+  const report = { startDate: addLocalDays(businessDate, 40), endDate: addLocalDays(businessDate, 41) };
+  await surfaceFixture(world, 'time.own-sickness', async () => {
+    await seedSicknessReport({
+      organizationId: world.orgId,
+      employeeRecordId: await employeeRecordId(world),
+      reportedBy: world.users.employee.id,
+      ...report,
+    });
+    return report.startDate;
+  });
+  await page.reload();
+  // Enter on server-rendered HTML before hydration opens nothing.
+  await hydratedAndSettled(page);
+  return formatSicknessRange(report);
+}
+
+/** The report dialog with one box drawn across its preview's middle. */
+async function openRedactedReport(page: Page): Promise<Locator> {
+  const dialog = await openProblemReport(page);
+  await redactScreenshotMiddle(dialog);
+  return dialog;
+}
+
+/**
+ * Links the layout Anlage to the layout job once, as the office does, so the
+ * employee's work pack on that job lists it with „Verlauf und Dokumente“.
+ */
+export function prepareFieldEquipment(world: TestWorld): Promise<string> {
+  return surfaceFixture(world, 'service.field-equipment', async () => {
+    const details = await prepareLayoutDetails(world);
+    const admin = createAdminClient();
+    const { data: equipment } = await admin
+      .from('installed_equipment')
+      .select('id, version')
+      .eq('organization_id', world.orgId)
+      .eq('equipment_number', details.equipmentNumber)
+      .single()
+      .throwOnError();
+    await admin
+      .rpc(
+        'set_installed_equipment_work_link',
+        rpcArgs('set_installed_equipment_work_link', {
+          p_organization_id: world.orgId,
+          p_equipment_id: equipment.id,
+          p_expected_version: equipment.version,
+          p_job_id: details.jobId,
+          p_project_id: null,
+          p_linked: true,
+          p_reason: 'Anlage für den Wartungsbesuch',
+          p_actor_id: world.users.admin.id,
+          p_idempotency_key: randomUUID(),
+        }),
+      )
+      .throwOnError();
+    return equipment.id;
+  });
+}
+
+export const TIME_OPENERS = {
+  'time.manual-entry': {
+    trigger: async ({ page }) => manualEntryHeaderButton(page),
+    layer: manualEntryDialog,
+  },
+  'field.manual-entry': {
+    trigger: async ({ page }) => manualEntryHeaderButton(page),
+    layer: manualEntryDialog,
+  },
+  'time.correction': {
+    trigger: historyAddTime,
+    layer: timeCorrectionDialog,
+  },
+  'field.time-correction': {
+    trigger: historyCorrectOwnEntry,
+    layer: timeCorrectionDialog,
+  },
+  'time.approve-all': {
+    trigger: async (context) => {
+      await seedEmployeeApprovals(context);
+      await openTimeApprovals(context.page);
+      return approveAllTimeEntriesButton(context.page);
+    },
+    layer: approveAllTimeEntriesConfirmation,
+  },
+  'time.vacation-reason': {
+    trigger: async (context) => {
+      await seedEmployeeApprovals(context);
+      await openTimeApprovals(context.page);
+      // The world can hold more than one pending request of the employee; any of them opens the same dialog.
+      return enabled(rejectVacationButton(context.page, employeeName(context.world)).first());
+    },
+    layer: vacationRejectDialog,
+  },
+  // The report dialog opens from the app shell on every page, like the clock button: the
+  // phone header's icon, the desktop sidebar's row. One opener per audit, the field
+  // worker's and the office's.
+  'reports.field': { trigger: async ({ page }) => problemReportButton(page), layer: problemReportDialog },
+  'reports.office': { trigger: async ({ page }) => problemReportButton(page), layer: problemReportDialog },
+  // The large redaction view over the report dialog, from its „Vergrößern“. One box is drawn
+  // first, so the view shows the cover as it reaches the upload.
+  'reports.redaction-field': {
+    trigger: async ({ page }) => enlargeScreenshotButton(await openRedactedReport(page)),
+    layer: screenshotRedactionView,
+    parents: (page) => [problemReportDialog(page)],
+  },
+  'reports.redaction-office': {
+    trigger: async ({ page }) => enlargeScreenshotButton(await openRedactedReport(page)),
+    layer: screenshotRedactionView,
+    parents: (page) => [problemReportDialog(page)],
+  },
+  'field.clock': {
+    trigger: async ({ page }) => enabled(clockInLauncher(page)),
+    layer: clockStartSheet,
+  },
+  'field.clock-unsent': {
+    trigger: async ({ page, world }) => {
+      await seedRefusedTimeEvent(page, world);
+      return enabled(clockInLauncher(page));
+    },
+    layer: clockStartSheet,
+  },
+  'field.unsent-delete': {
+    trigger: async ({ page, world }) => {
+      await seedRefusedTimeEvent(page, world);
+      return enabled(unsentDeleteButton(await openClockSheet(page)));
+    },
+    layer: unsentDeleteConfirmation,
+    parents: (page) => [clockStartSheet(page)],
+  },
+  'field.unsent-work': {
+    trigger: async ({ page, world }) => {
+      await seedRefusedTimeEvent(page, world);
+      return signOutControl(page);
+    },
+    layer: unsentWorkDialog,
+    returnFocus: ({ page }) => accountMenuButton(page),
+  },
+  'field.unsent-discard': {
+    trigger: async ({ page, world }) => {
+      await seedRefusedTimeEvent(page, world);
+      await (await signOutControl(page)).click();
+      await expect(unsentWorkDialog(page)).toBeVisible();
+      return enabled(unsentDiscardButton(page));
+    },
+    layer: unsentDiscardConfirmation,
+    parents: (page) => [unsentWorkDialog(page)],
+  },
+  'field.job-picker': {
+    trigger: async ({ page, world }) => {
+      // The layout job is assigned to the employee, so the picker lists a row.
+      await prepareLayoutDetails(world);
+      return enabled(clockSheetJobAction(await openClockSheet(page)));
+    },
+    layer: clockInJobPicker,
+    parents: (page) => [clockStartSheet(page)],
+  },
+  'field.time-activity': {
+    trigger: async ({ page }) => enabled(clockSheetMoreActivities(await openClockSheet(page))),
+    layer: chooseActivityDialog,
+    parents: (page) => [clockStartSheet(page)],
+  },
+  'field.vacation-request': {
+    trigger: async ({ page }) => enabled(requestVacationButton(page)),
+    layer: vacationRequestDialog,
+  },
+  'field.sickness-report': {
+    trigger: async ({ page }) => enabled(reportSicknessButton(page)),
+    layer: (page) => ownSicknessDialog(page, 'report'),
+  },
+  'field.withdraw-submission': {
+    trigger: async (context) => {
+      await seedEmployeeApprovals(context);
+      await context.page.reload();
+      await hydratedAndSettled(context.page);
+      await timeHistoryTab(context.page).click();
+      await expect(timeHistoryTab(context.page)).toHaveAttribute('aria-selected', 'true');
+      // The employee holds two seeded submissions; any row opens the same confirmation.
+      return enabled(withdrawOwnSubmissionButtons(context.page).first());
+    },
+    layer: withdrawSubmissionConfirmation,
+  },
+  'field.sickness-end': {
+    trigger: async (context) => enabled(ownSicknessEndButton(context.page, await ownSicknessRange(context))),
+    layer: (page) => ownSicknessDialog(page, 'end'),
+  },
+  'field.sickness-cancel': {
+    trigger: async (context) =>
+      enabled(ownSicknessCancelButton(context.page, await ownSicknessRange(context))),
+    layer: (page) => ownSicknessDialog(page, 'cancel'),
+  },
+  'field.evidence-upload': {
+    trigger: async ({ page, world }) => {
+      await surfaceFixture(world, 'time.own-requirement', async () =>
+        seedOpenOnboardingRequirement({
+          organizationId: world.orgId,
+          employeeRecordId: await employeeRecordId(world),
+          actorUserId: world.users.admin.id,
+          planName: worldName('Einarbeitung', world.runId),
+          requirementTitle: worldName('Gesundheitsnachweis vorlegen', world.runId),
+        }),
+      );
+      await page.reload();
+      await hydratedAndSettled(page);
+      return ownEvidenceUploadButton(page);
+    },
+    layer: ownEvidenceUploadDialog,
+  },
+  // The field worker's proposal from the pencil on the opened job's Einsatzort, in any proposal state.
+  // The technician's „Verlauf und Dokumente“ of the Anlage the office linked to the opened job.
+  'field.equipment-record': {
+    trigger: async ({ page, world }) => {
+      await prepareFieldEquipment(world);
+      await page.reload();
+      await hydratedAndSettled(page);
+      return page.getByRole('button', { name: /^Verlauf und Dokumente von / });
+    },
+    layer: (page) => page.getByRole('dialog', { name: 'Verlauf und Dokumente' }),
+  },
+  'field.site-access': {
+    trigger: async ({ page }) => fieldPackSiteAccessButton(page),
+    layer: fieldPackSiteAccessDialog,
+  },
+  'field.artifact': {
+    trigger: async ({ page }) => newWorkArtifactButton(page, { exact: true }),
+    layer: workArtifactCreateDialog,
+  },
+  'field.artifact-draft-delete': {
+    trigger: async ({ page }) => {
+      // A draft only this device holds; the audit opens its confirmation at several widths.
+      await leaveDraftOnDevice(page, 'Entwurf nur auf dem Gerät');
+      return deviceDraftDeleteButton(page, 'Entwurf nur auf dem Gerät');
+    },
+    layer: deviceDraftDeleteConfirmation,
+  },
+} satisfies Partial<Record<DialogOpenerId, DialogOpener>>;

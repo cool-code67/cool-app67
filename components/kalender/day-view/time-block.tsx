@@ -1,0 +1,226 @@
+'use client';
+
+import { PlainButton } from '@/components/ui/plain-button';
+import { memo } from 'react';
+import { ArrowDown, ArrowUp, Clock, Coffee } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { CalendarWorkBlock } from '@/lib/time-tracking/calendar-blocks';
+import { formatDuration } from '@/lib/time-tracking/helpers';
+import type { EntryChangeRequestMap } from '@/lib/time-tracking/types';
+import { TIME_ACTIVITY_LABELS } from '@/lib/time-tracking/types';
+import { DAY_MIN_ITEM_WIDTH } from '@/lib/calendar/day-layout';
+import type { TimeBlockSegment } from '@/lib/calendar/day-rows';
+import { formatMinutesOfDay } from '@/lib/calendar/drag-math';
+
+export type TimeBlockProps = {
+  block: CalendarWorkBlock;
+  segments: TimeBlockSegment[];
+  startMinutes: number;
+  endMinutes: number;
+  hourWidth: number;
+  laneTop: string;
+  laneHeight: string;
+  changeRequestMap: EntryChangeRequestMap;
+  showName: string | null;
+  canManage: boolean;
+  onOpen: (block: CalendarWorkBlock) => void;
+  onPointerDownMove: (event: React.PointerEvent<HTMLButtonElement>, block: CalendarWorkBlock) => void;
+  onPointerDownEdge: (
+    event: React.PointerEvent<HTMLSpanElement>,
+    block: CalendarWorkBlock,
+    edge: 'start' | 'end',
+  ) => void;
+};
+
+/** The minutes of one segment type: the block's work or its breaks. */
+function segmentMinutes(segments: TimeBlockSegment[], type: TimeBlockSegment['type']): number {
+  return segments
+    .filter((segment) => segment.type === type)
+    .reduce((total, segment) => total + (segment.endMinutes - segment.startMinutes), 0);
+}
+
+/** A break inside the block, with its cup once it is wide enough to show one. */
+function breakMark(
+  segment: TimeBlockSegment,
+  startMinutes: number,
+  hourWidth: number,
+): React.JSX.Element | false {
+  return (
+    segment.type === 'break' && (
+      <span
+        key={segment.id}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 flex items-center justify-center border-l border-calendar-actual-border bg-calendar-break text-calendar-break-foreground"
+        style={{
+          left: ((segment.startMinutes - startMinutes) / 60) * hourWidth,
+          width: Math.max(4, ((segment.endMinutes - segment.startMinutes) / 60) * hourWidth),
+        }}
+      >
+        {((segment.endMinutes - segment.startMinutes) / 60) * hourWidth > 28 && (
+          <Coffee className="size-3 opacity-70" />
+        )}
+      </span>
+    )
+  );
+}
+
+/** The block's text: the span and duration when it is wide enough, else its activity and duration. */
+function blockText(facts: {
+  block: CalendarWorkBlock;
+  compact: boolean;
+  pendingDelete: boolean;
+  hasRequest: boolean;
+  startMinutes: number;
+  recordedEndMinutes: number;
+  durationMinutes: number;
+  activityLabel: string;
+}): React.JSX.Element {
+  const { block, compact, pendingDelete, hasRequest, startMinutes, recordedEndMinutes } = facts;
+  const { durationMinutes, activityLabel } = facts;
+  return (
+    <span
+      className={cn(
+        'pointer-events-none relative z-10 flex min-w-0 items-center gap-1',
+        compact ? 'px-2' : 'px-3',
+      )}
+    >
+      {!compact &&
+        (pendingDelete ? (
+          <ArrowDown className="size-3 shrink-0" aria-hidden="true" />
+        ) : (
+          <Clock className="size-3 shrink-0 opacity-70" aria-hidden="true" />
+        ))}
+      {!compact && (
+        <span className="truncate">
+          <span className="font-medium tabular-nums">
+            {formatMinutesOfDay(startMinutes)}–
+            {block.isOpen ? 'jetzt' : formatMinutesOfDay(recordedEndMinutes)}
+          </span>
+          <span className="ml-1 opacity-80">
+            {pendingDelete ? 'Löschen' : formatDuration(durationMinutes)}
+          </span>
+          {hasRequest && <ArrowUp className="ml-1 inline size-3 opacity-70" aria-hidden="true" />}
+        </span>
+      )}
+      {compact && (
+        <span className="min-w-0 text-xs leading-tight">
+          <span className="block truncate font-medium">{activityLabel}</span>
+          <span className="block truncate tabular-nums">
+            {block.isOpen ? 'läuft' : formatDuration(durationMinutes)}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The two resize handles; a running block has no end to move. */
+function blockEdgeHandles(
+  block: CalendarWorkBlock,
+  onPointerDownEdge: TimeBlockProps['onPointerDownEdge'],
+): React.JSX.Element {
+  return (
+    <>
+      <span
+        role="presentation"
+        className="absolute inset-y-0 -left-2 w-6 cursor-ew-resize"
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onPointerDownEdge(event, block, 'start');
+        }}
+      >
+        <span className="absolute inset-y-0 left-2 w-2 opacity-0 transition-opacity group-hover/block:opacity-100 group-focus-visible/block:opacity-100 bg-calendar-actual-border" />
+      </span>
+      {!block.isOpen && (
+        <span
+          role="presentation"
+          className="absolute inset-y-0 -right-2 w-6 cursor-ew-resize"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            onPointerDownEdge(event, block, 'end');
+          }}
+        >
+          <span className="absolute inset-y-0 right-2 w-2 opacity-0 transition-opacity group-hover/block:opacity-100 group-focus-visible/block:opacity-100 bg-calendar-actual-border" />
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * One recorded block on the hour axis (P1-24a, package C): work segments in
+ * the actual tone, breaks quieter, pending entries hatched in the waiting
+ * tone, an open block growing to now. Click opens the entry details; the
+ * body drags, the 8px edges resize (24px hit area).
+ */
+export const TimeBlock = memo(function TimeBlock(props: TimeBlockProps) {
+  const { block, segments, startMinutes, endMinutes, hourWidth, laneTop, laneHeight } = props;
+  const { changeRequestMap, showName, canManage, onOpen, onPointerDownMove, onPointerDownEdge } = props;
+  const pending =
+    block.isPending ||
+    block.sourceEntries.some((entry) => entry.status === 'pending' || entry.status === 'pending_delete');
+  const pendingDelete = block.sourceEntries.some((entry) => entry.status === 'pending_delete');
+  const hasRequest = block.sourceEntries.some((entry) => changeRequestMap[entry.id]);
+  const recordedWidth = ((endMinutes - startMinutes) / 60) * hourWidth;
+  const width = Math.max(DAY_MIN_ITEM_WIDTH, recordedWidth);
+  const durationMinutes = segmentMinutes(segments, 'work');
+  const breakMinutes = segmentMinutes(segments, 'break');
+  const compact = width < 90;
+  const activityLabel = block.isOnBreak
+    ? 'Pause'
+    : TIME_ACTIVITY_LABELS[block.startEntry.activityKind ?? 'work'];
+  // A short block has a readable hit area; the bottom rule retains its true time extent.
+  const recordedEndMinutes = segments.reduce(
+    (latest, segment) => Math.max(latest, segment.endMinutes),
+    startMinutes,
+  );
+  const label = `${showName ? `${showName}, ` : ''}Arbeitszeit ${formatMinutesOfDay(startMinutes)} bis ${block.isOpen ? 'jetzt' : formatMinutesOfDay(recordedEndMinutes)}, ${activityLabel}, ${formatDuration(durationMinutes)}${breakMinutes > 0 ? `, Pause ${formatDuration(breakMinutes)}` : ''}${pendingDelete ? ', Löschung ausstehend' : pending ? ', Freigabe ausstehend' : ''}`;
+  return (
+    <PlainButton
+      type="button"
+      data-time-block={block.id}
+      data-pending={pending || undefined}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'group/block absolute flex items-center overflow-hidden rounded-md border text-left text-xs outline-none transition-[box-shadow] focus-visible:ring-2 focus-visible:ring-ring',
+        pending
+          ? 'border-warning/60 bg-warning-soft text-warning-soft-foreground'
+          : 'border-calendar-actual-border bg-calendar-actual text-calendar-actual-foreground',
+        block.isOpen && 'border-dashed',
+        canManage ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+      )}
+      style={{ left: (startMinutes / 60) * hourWidth, width, top: laneTop, height: laneHeight }}
+      onClick={() => onOpen(block)}
+      onPointerDown={(event) => {
+        if (canManage) onPointerDownMove(event, block);
+      }}
+    >
+      {segments.map((segment) => breakMark(segment, startMinutes, hourWidth))}
+      {recordedWidth < DAY_MIN_ITEM_WIDTH && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-0 left-0 h-1 bg-calendar-actual-border"
+          style={{ width: Math.max(2, recordedWidth) }}
+        />
+      )}
+      {pending && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,var(--warning)_4px,var(--warning)_5px)] opacity-30"
+        />
+      )}
+      {blockText({
+        block,
+        compact,
+        pendingDelete,
+        hasRequest,
+        startMinutes,
+        recordedEndMinutes,
+        durationMinutes,
+        activityLabel,
+      })}
+      {canManage && blockEdgeHandles(block, onPointerDownEdge)}
+    </PlainButton>
+  );
+});

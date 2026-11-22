@@ -1,0 +1,219 @@
+import type { ActionFailure } from '@/lib/action-result';
+import type { Database, Json } from '@/lib/supabase/database.types';
+
+export type WorkArtifactKind = Database['public']['Enums']['work_artifact_kind'];
+export type WorkArtifactStatus = Database['public']['Enums']['work_artifact_status'];
+export type WorkArtifactVisibility = Database['public']['Enums']['work_artifact_visibility'];
+export type WorkArtifactActionType = Database['public']['Enums']['work_artifact_action_type'];
+export type WorkArtifactMeasurementUnit = Database['public']['Enums']['work_artifact_measurement_unit'];
+export type WorkArtifactRow = Database['public']['Tables']['work_artifacts']['Row'];
+/** A revision as the server stores it, with the device marker the page never needs. */
+export type StoredWorkArtifactRevisionRow = Database['public']['Tables']['work_artifact_revisions']['Row'];
+/**
+ * A revision as a page sees it: without `draft_changed_at`, the device's last-change time of the
+ * draft the revision was written from, which only the draft attach compares.
+ */
+export type WorkArtifactRevisionRow = Omit<StoredWorkArtifactRevisionRow, 'draft_changed_at'>;
+/** The job or project an artifact belongs to. */
+export type WorkArtifactTarget = { targetType: 'job' | 'project'; targetId: string };
+export type WorkArtifactActionRow = Database['public']['Tables']['work_artifact_actions']['Row'];
+type WorkArtifactMeasurementLineRow = Database['public']['Tables']['work_artifact_measurement_lines']['Row'];
+type WorkArtifactDefectDetailRow = Database['public']['Tables']['work_artifact_defect_details']['Row'];
+type WorkArtifactChangeDetailRow = Database['public']['Tables']['work_artifact_change_details']['Row'];
+type WorkArtifactDocumentRow = Database['public']['Tables']['work_artifact_revision_documents']['Row'];
+type WorkArtifactSourceRow = Database['public']['Tables']['work_artifact_revision_sources']['Row'];
+
+export type WorkArtifactSummary = WorkArtifactRow & {
+  currentRevision: WorkArtifactRevisionRow;
+};
+
+export type WorkArtifactDetail = WorkArtifactRow & {
+  revisions: WorkArtifactRevisionRow[];
+  actions: WorkArtifactActionRow[];
+  measurementLines: WorkArtifactMeasurementLineRow[];
+  defectDetails: WorkArtifactDefectDetailRow[];
+  changeDetails: WorkArtifactChangeDetailRow[];
+  documents: WorkArtifactDocumentRow[];
+  sources: WorkArtifactSourceRow[];
+  /** The viewer reviews this Regie- oder Änderungsnachweis as the „Projektleitung“ of its work. */
+  canLeadReview: boolean;
+  /** The viewer reads it only as the work's lead: no new revision, customer step, link or export. */
+  leadReadOnly: boolean;
+};
+
+export type MeasurementLineInput = {
+  id?: string;
+  description: string;
+  location?: string;
+  quantity: string;
+  unit: WorkArtifactMeasurementUnit;
+  note?: string;
+};
+
+export type WorkArtifactContentInput = {
+  siteId?: string;
+  instructionItemId?: string;
+  summary?: string;
+  customerStatement?: string;
+  requiresCustomerResponse?: boolean;
+  requiresSignature?: boolean;
+  workDate?: string;
+  progress?: string;
+  peoplePresent?: string;
+  weatherConditions?: string;
+  siteConditions?: string;
+  deliveries?: string;
+  impediments?: string;
+  decisions?: string;
+  notableEvents?: string;
+  visitStartedAt?: string;
+  visitEndedAt?: string;
+  performedWork?: string;
+  outstandingWork?: string;
+  materialsSummary?: string;
+  nextVisitAt?: string;
+  measurementDate?: string;
+  measurementLocation?: string;
+  measurementNotes?: string;
+  measurementLines?: MeasurementLineInput[];
+  defectDescription?: string;
+  defectSeverity?: Database['public']['Enums']['work_artifact_defect_severity'];
+  defectLocation?: string;
+  responsibleEmployeeRecordId?: string;
+  responsibilityContext?: string;
+  dueDate?: string;
+  defectState?: Database['public']['Enums']['work_artifact_defect_state'];
+  proposedResolution?: string;
+  resolutionSummary?: string;
+  changeDescription?: string;
+  changeReason?: string;
+  requestedByContext?: string;
+  expectedLaborMinutes?: string;
+  actualLaborMinutes?: string;
+  expectedMaterialSummary?: string;
+  actualMaterialSummary?: string;
+  authorizationState?: Database['public']['Enums']['work_artifact_change_authorization_state'];
+  scheduleImpact?: string;
+};
+
+export type SaveWorkArtifactInput = {
+  artifactId: string;
+  revisionId: string;
+  expectedVersion: number | null;
+  targetType: 'job' | 'project';
+  targetId: string;
+  kind: WorkArtifactKind;
+  visibility: WorkArtifactVisibility;
+  capturedAt: string;
+  title: string;
+  content: WorkArtifactContentInput;
+  correctsRevisionId?: string;
+  correctionReason?: string;
+  submit: boolean;
+  submitActionId?: string;
+  /** The device's last-change time of the draft this save comes from, when it comes from one. */
+  draftChangedAt?: string;
+};
+
+export type WorkArtifactActionInput = {
+  artifactId: string;
+  revisionId: string;
+  actionId: string;
+  expectedVersion: number;
+  actionType: WorkArtifactReviewActionType;
+  reason?: string;
+  comment?: string;
+};
+
+/** A review step of the current revision; customer decisions, exports and voiding have their own actions. */
+export type WorkArtifactReviewActionType = Extract<
+  WorkArtifactActionType,
+  'review_requested' | 'review_withdrawn' | 'internal_approved' | 'internal_rejected' | 'correction_requested'
+>;
+
+export type WorkArtifactMutationResult =
+  | { success: true; artifactId: string; version: number; status: WorkArtifactStatus; data?: Json }
+  | ActionFailure;
+
+/**
+ * A saved Arbeitsnachweis with its detail as read after the write in the same
+ * request, so the editor shows the saved version without a second round trip.
+ * `artifact` is null when that read failed; the editor then reads it itself.
+ */
+export type WorkArtifactSaveResult =
+  | (Extract<WorkArtifactMutationResult, { success: true }> & { artifact: WorkArtifactDetail | null })
+  | ActionFailure;
+
+/** A work report's Beginn and Ende as recorded instants; null where the time records give none. */
+export type RecordedVisitWindow = { startedAt: string | null; endedAt: string | null };
+
+export const NO_RECORDED_VISIT: RecordedVisitWindow = { startedAt: null, endedAt: null };
+
+export type WorkArtifactTimeSourceOption = {
+  id: string;
+  label: string;
+  sourceType: 'time_entry' | 'time_segment';
+};
+
+/** The most photos one report draft carries from a phone (field sync `work_artifact.draft`). */
+export const WORK_ARTIFACT_DRAFT_PHOTO_LIMIT = 20;
+
+export const WORK_ARTIFACT_KINDS = [
+  'site_diary',
+  'work_report',
+  'measurement',
+  'defect',
+  'change_work',
+] as const satisfies readonly WorkArtifactKind[];
+
+export const WORK_ARTIFACT_STATUSES = [
+  'draft',
+  'submitted',
+  'approved',
+  'rejected',
+  'correction_requested',
+  'voided',
+] as const satisfies readonly WorkArtifactStatus[];
+
+export const WORK_ARTIFACT_KIND_LABELS: Record<WorkArtifactKind, string> = {
+  site_diary: 'Bautagebuch',
+  work_report: 'Arbeitsbericht',
+  measurement: 'Aufmaß',
+  defect: 'Mangel',
+  change_work: 'Regie-/Änderungsnachweis',
+};
+
+export const WORK_ARTIFACT_STATUS_LABELS: Record<WorkArtifactStatus, string> = {
+  draft: 'Entwurf',
+  submitted: 'Zur Prüfung',
+  approved: 'Intern freigegeben',
+  rejected: 'Abgelehnt',
+  correction_requested: 'Korrektur angefordert',
+  voided: 'Ungültig',
+};
+
+// The defect labels of the editor, the read view and the field history. They sit here, not
+// in the editor's content module, so the field history's chunk shares no editor code.
+export const DEFECT_SEVERITY_LABELS: Record<
+  NonNullable<WorkArtifactContentInput['defectSeverity']>,
+  string
+> = { low: 'Niedrig', medium: 'Mittel', high: 'Hoch', critical: 'Kritisch' };
+export const DEFECT_STATE_LABELS: Record<NonNullable<WorkArtifactContentInput['defectState']>, string> = {
+  open: 'Offen',
+  in_progress: 'In Bearbeitung',
+  resolved: 'Behoben',
+};
+
+export const WORK_ARTIFACT_UNIT_LABELS: Record<WorkArtifactMeasurementUnit, string> = {
+  piece: 'Stk.',
+  meter: 'm',
+  square_meter: 'm²',
+  cubic_meter: 'm³',
+  liter: 'l',
+  kilogram: 'kg',
+  hour: 'Std.',
+  flat_rate: 'Pauschale',
+};
+
+export const WORK_ARTIFACT_LEGAL_NOTICE =
+  'Die erfasste Bestätigung oder Unterschrift dokumentiert den Vorgang zu genau dieser Version. WerkFlow bestätigt damit keine besondere Rechtswirksamkeit und keine qualifizierte elektronische Signatur.';

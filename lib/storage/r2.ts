@@ -1,0 +1,527 @@
+// Server-only Cloudflare R2 object storage client (S3-compatible API).
+//
+// This module is the provider-neutral seam decided in
+// docs/decisions/0001-infrastructure-stack.md: all file bytes live in object
+// storage and are transferred directly between the browser and the bucket via
+// short-lived signed URLs. Server code authorizes and signs; it must never
+// stream file bytes itself (Vercel Functions cap request bodies at ~4.5 MB).
+//
+// The Bun scripts and the browser-test seed import this module, so it cannot
+// import 'server-only' (that package throws outside the React server build).
+// lib/security/storage-import-boundary.test.ts keeps it out of every browser
+// bundle instead.
+
+import {
+  CopyObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { randomUUID } from 'node:crypto';
+
+import { logError } from '../logging';
+import { isJsonRecord } from '../supabase/json';
+import { isUuid } from '../validation/uuid';
+
+const SIGNED_UPLOAD_URL_EXPIRES_SECONDS = 60 * 30;
+const SIGNED_DOWNLOAD_URL_EXPIRES_SECONDS = 60 * 10;
+// Signed URLs must stay short-lived; nothing in the app needs more than an hour.
+const SIGNED_URL_MAX_EXPIRES_SECONDS = 60 * 60;
+const SIGNED_URL_MIN_EXPIRES_SECONDS = 60;
+const DELETE_BATCH_SIZE = 1000;
+
+function clampExpiry(expiresInSeconds: number): number {
+  if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
+    return SIGNED_URL_MIN_EXPIRES_SECONDS;
+  }
+  return Math.min(
+    Math.max(Math.floor(expiresInSeconds), SIGNED_URL_MIN_EXPIRES_SECONDS),
+    SIGNED_URL_MAX_EXPIRES_SECONDS,
+  );
+}
+
+type R2Config = {
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucketName: string;
+  jurisdiction: string;
+  // Optional full endpoint override (docs/decisions/0006-testing-architecture.md): the local test stack serves an
+  // S3-compatible endpoint on localhost that the account/jurisdiction URL scheme cannot express. Cloud environments leave it
+  // unset; the test preflight rejects it outside the local target.
+  endpointOverride: string | null;
+};
+
+type StorageObjectHead = {
+  exists: boolean;
+  sizeBytes: number | null;
+  contentType: string | null;
+};
+
+let cachedClient: S3Client | null = null;
+let cachedConfig: R2Config | null = null;
+
+function getR2Config(): R2Config {
+  if (cachedConfig) return cachedConfig;
+
+  const accountId = process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  const bucketName = process.env.R2_BUCKET_NAME;
+  // EU-jurisdiction buckets are only reachable through the `eu.` endpoint.
+  const jurisdiction = process.env.R2_JURISDICTION ?? 'eu';
+
+  if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) {
+    throw new Error(
+      'Missing R2 configuration. Expected R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME environment variables.',
+    );
+  }
+
+  cachedConfig = {
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucketName,
+    jurisdiction,
+    endpointOverride: process.env.R2_ENDPOINT?.trim() || null,
+  };
+  return cachedConfig;
+}
+
+export function getR2Endpoint(): string {
+  const config = getR2Config();
+  if (config.endpointOverride) return config.endpointOverride;
+  const jurisdictionSegment = config.jurisdiction ? `${config.jurisdiction}.` : '';
+  return `https://${config.accountId}.${jurisdictionSegment}r2.cloudflarestorage.com`;
+}
+
+function getR2BucketName(): string {
+  return getR2Config().bucketName;
+}
+
+function getR2Client(): S3Client {
+  if (cachedClient) return cachedClient;
+
+  const config = getR2Config();
+  cachedClient = new S3Client({
+    region: 'auto',
+    endpoint: getR2Endpoint(),
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+  });
+
+  return cachedClient;
+}
+
+// RFC 6266 / RFC 5987 encoding so umlauts and other non-ASCII file names
+// survive the Content-Disposition header.
+function buildContentDisposition(type: 'inline' | 'attachment', fileName?: string): string {
+  if (!fileName) return type;
+
+  const fallback = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+  return `${type}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
+ * Every storage key starts with the owning organization id (document, version
+ * and payroll-export paths all build it that way). Every exported operation
+ * takes the server-resolved organization id explicitly and refuses any key
+ * outside it, so a wrong or forged path can never reach another organization's
+ * object even if a caller is mistaken. Exported for its unit test.
+ * @internal
+ */
+export function assertOrganizationStorageKey(organizationId: string, path: string): void {
+  const segments = path.split('/');
+  if (
+    !isUuid(organizationId) ||
+    segments.length < 2 ||
+    segments[0] !== organizationId ||
+    segments.some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error('storage_key_outside_organization');
+  }
+}
+
+/** The organization scope every storage operation carries. */
+type OrganizationScope = { organizationId: string };
+
+/**
+ * The key a browser upload of `path` writes before finalize promotes it. No
+ * row ever references a staging key, so a signed PUT that is still valid after
+ * finalize can no longer change the bytes a row points at.
+ */
+export function uploadStagingPath(organizationId: string, path: string): string {
+  assertOrganizationStorageKey(organizationId, path);
+  return `${organizationId}/staging/${path.slice(organizationId.length + 1)}`;
+}
+
+/**
+ * Signs a PUT for the staging key of `path`, never for `path` itself;
+ * `promoteUploadedObject` copies the bytes to a key of its own at finalize.
+ */
+export async function createSignedUploadUrl({
+  organizationId,
+  path,
+  contentType,
+  expiresInSeconds = SIGNED_UPLOAD_URL_EXPIRES_SECONDS,
+}: OrganizationScope & {
+  path: string;
+  contentType: string;
+  expiresInSeconds?: number;
+}): Promise<string> {
+  const stagingPath = uploadStagingPath(organizationId, path);
+  const command = new PutObjectCommand({
+    Bucket: getR2BucketName(),
+    Key: stagingPath,
+    ContentType: contentType,
+  });
+
+  // Pin the content type into the signature so the uploading client must send
+  // exactly the declared type; otherwise the presigned PUT leaves it unsigned.
+  return getSignedUrl(getR2Client(), command, {
+    expiresIn: clampExpiry(expiresInSeconds),
+    signableHeaders: new Set(['content-type']),
+  });
+}
+
+export async function createSignedDownloadUrl({
+  organizationId,
+  path,
+  disposition = 'inline',
+  downloadFileName,
+  expiresInSeconds = SIGNED_DOWNLOAD_URL_EXPIRES_SECONDS,
+}: OrganizationScope & {
+  path: string;
+  disposition?: 'inline' | 'attachment';
+  downloadFileName?: string | undefined;
+  expiresInSeconds?: number;
+}): Promise<string> {
+  assertOrganizationStorageKey(organizationId, path);
+  const command = new GetObjectCommand({
+    Bucket: getR2BucketName(),
+    Key: path,
+    ResponseContentDisposition: buildContentDisposition(disposition, downloadFileName),
+  });
+
+  return getSignedUrl(getR2Client(), command, { expiresIn: clampExpiry(expiresInSeconds) });
+}
+
+/** Whether an object of the organization is stored at the key, and its size. */
+export async function headStorageObject({
+  organizationId,
+  path,
+}: OrganizationScope & { path: string }): Promise<StorageObjectHead> {
+  assertOrganizationStorageKey(organizationId, path);
+  try {
+    const result = await getR2Client().send(new HeadObjectCommand({ Bucket: getR2BucketName(), Key: path }));
+
+    return {
+      exists: true,
+      sizeBytes: typeof result.ContentLength === 'number' ? result.ContentLength : null,
+      contentType: result.ContentType ?? null,
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return { exists: false, sizeBytes: null, contentType: null };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Reads the bucket's metadata with the runtime credentials: the health check's
+ * harmless authenticated call (app/api/health/route.ts). It names no object key.
+ */
+export async function headStorageBucket(timeoutMs: number): Promise<void> {
+  await getR2Client().send(new HeadBucketCommand({ Bucket: getR2BucketName() }), {
+    abortSignal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+function isNotFoundError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  if ('name' in error && error.name === 'NotFound') return true;
+  return '$metadata' in error && isJsonRecord(error.$metadata) && error.$metadata.httpStatusCode === 404;
+}
+
+/** Copies an object inside one organization: source and target both lie under its prefix. */
+export async function copyStorageObject({
+  organizationId,
+  sourcePath,
+  targetPath,
+  contentType,
+}: OrganizationScope & {
+  sourcePath: string;
+  targetPath: string;
+  contentType?: string | null;
+}): Promise<void> {
+  assertOrganizationStorageKey(organizationId, sourcePath);
+  assertOrganizationStorageKey(organizationId, targetPath);
+  const bucket = getR2BucketName();
+
+  await getR2Client().send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      Key: targetPath,
+      CopySource: `${bucket}/${encodeURIComponent(sourcePath).replace(/%2F/g, '/')}`,
+      // Preserve or override metadata explicitly; REPLACE keeps behavior
+      // deterministic when a content type is provided.
+      ...(contentType ? { MetadataDirective: 'REPLACE' as const, ContentType: contentType } : {}),
+    }),
+  );
+}
+
+/** The head of a promoted upload and the key its copy was written to. */
+export type PromotedUpload = StorageObjectHead & { path: string };
+
+/**
+ * The key one write attempt of `path` uses: the folder and file name of `path`
+ * with a fresh id before the name. No two attempts share a key, so an attempt
+ * never writes or removes a key another attempt already registered.
+ */
+export function attemptStoragePath(path: string): string {
+  const nameStart = path.lastIndexOf('/') + 1;
+  return `${path.slice(0, nameStart)}${randomUUID()}-${path.slice(nameStart)}`;
+}
+
+/**
+ * Copies a browser upload from the staging key of `path` to a key of its own
+ * on the server and returns the head and key of the copy. The copy is what
+ * finalize verifies and registers: only the server writes it, and only this
+ * attempt. The staging object stays, so a finalize whose registration may not
+ * have committed can copy it again under the same upload. A missing staging
+ * object reads as a missing upload.
+ */
+export async function copyStagedUpload({
+  organizationId,
+  path,
+}: OrganizationScope & { path: string }): Promise<PromotedUpload> {
+  const stagingPath = uploadStagingPath(organizationId, path);
+  const attemptPath = attemptStoragePath(path);
+  try {
+    await copyStorageObject({ organizationId, sourcePath: stagingPath, targetPath: attemptPath });
+  } catch (error) {
+    if (isNotFoundError(error))
+      return { exists: false, sizeBytes: null, contentType: null, path: attemptPath };
+    throw error;
+  }
+  try {
+    return { ...(await headStorageObject({ organizationId, path: attemptPath })), path: attemptPath };
+  } catch (error) {
+    await discardStorageObjects({ organizationId, paths: [attemptPath] });
+    throw error;
+  }
+}
+
+/**
+ * `copyStagedUpload`, then removes the staging object: a retry of this upload
+ * finds nothing left to copy.
+ */
+export async function promoteUploadedObject(
+  scope: OrganizationScope & { path: string },
+): Promise<PromotedUpload> {
+  const copy = await copyStagedUpload(scope);
+  if (copy.exists) {
+    await discardStorageObjects({
+      organizationId: scope.organizationId,
+      paths: [uploadStagingPath(scope.organizationId, scope.path)],
+    });
+  }
+  return copy;
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  if ('name' in error && error.name === 'PreconditionFailed') return true;
+  return '$metadata' in error && isJsonRecord(error.$metadata) && error.$metadata.httpStatusCode === 412;
+}
+
+/**
+ * What a write did: stored the bytes, or, with `ifAbsent`, found the key
+ * taken and kept the object there, whose size it reports.
+ */
+export type StoredObject = { created: true } | { created: false; sizeBytes: number | null };
+
+async function putObject(key: string, body: Uint8Array | Buffer, contentType: string, ifAbsent: boolean) {
+  await getR2Client().send(
+    new PutObjectCommand({
+      Bucket: getR2BucketName(),
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      ...(ifAbsent ? { IfNoneMatch: '*' } : {}),
+    }),
+  );
+}
+
+export async function putStorageObject({
+  organizationId,
+  path,
+  body,
+  contentType,
+  ifAbsent = false,
+}: OrganizationScope & {
+  path: string;
+  body: Uint8Array | Buffer;
+  contentType: string;
+  /** Write only when no object has the key; the first object stored there never changes. */
+  ifAbsent?: boolean;
+}): Promise<StoredObject> {
+  assertOrganizationStorageKey(organizationId, path);
+  try {
+    await putObject(path, body, contentType, ifAbsent);
+    return { created: true };
+  } catch (error) {
+    if (!ifAbsent || !isPreconditionFailed(error)) throw error;
+    const head = await headStorageObject({ organizationId, path });
+    return { created: false, sizeBytes: head.sizeBytes };
+  }
+}
+
+/**
+ * WerkFlow's own books: the originals of its invoices to its customers
+ * (lib/werkflow-billing/). Their keys start with `werkflow-billing/`, never an
+ * organization id, so no organization operation, deletion or purge in this
+ * module reaches them, and they outlive the customer's organization.
+ */
+const WERKFLOW_BILLING_KEY = /^werkflow-billing\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+
+/** Stores a WerkFlow billing original once: a taken key keeps its first object, whose size it reports. */
+export async function putWerkflowBillingObject({
+  path,
+  body,
+  contentType,
+}: {
+  path: string;
+  body: Uint8Array;
+  contentType: string;
+}): Promise<StoredObject> {
+  if (
+    !WERKFLOW_BILLING_KEY.test(path) ||
+    path.split('/').some((segment) => segment === '..' || segment === '.')
+  ) {
+    throw new Error('storage_key_outside_werkflow_billing');
+  }
+  try {
+    await putObject(path, body, contentType, true);
+    return { created: true };
+  } catch (error) {
+    if (!isPreconditionFailed(error)) throw error;
+    const result = await getR2Client().send(new HeadObjectCommand({ Bucket: getR2BucketName(), Key: path }));
+    return {
+      created: false,
+      sizeBytes: typeof result.ContentLength === 'number' ? result.ContentLength : null,
+    };
+  }
+}
+
+/**
+ * The bytes of one object of the organization, read on the server: only the
+ * organization export (lib/org-export/) packs stored originals into its
+ * archive. A missing object throws `storage_object_missing`.
+ */
+export async function readStorageObject({
+  organizationId,
+  path,
+}: OrganizationScope & { path: string }): Promise<Uint8Array> {
+  assertOrganizationStorageKey(organizationId, path);
+  try {
+    const result = await getR2Client().send(new GetObjectCommand({ Bucket: getR2BucketName(), Key: path }));
+    if (!result.Body) throw new Error('storage_object_missing');
+    return await result.Body.transformToByteArray();
+  } catch (error) {
+    if (isNotFoundError(error) || (isJsonRecord(error) && error.name === 'NoSuchKey'))
+      throw new Error('storage_object_missing');
+    throw error;
+  }
+}
+
+export async function deleteStorageObjects({
+  organizationId,
+  paths,
+}: OrganizationScope & { paths: readonly string[] }): Promise<void> {
+  // The organization id is checked even for an empty batch, so a call with a
+  // forged scope fails the same way whatever it would delete.
+  if (!isUuid(organizationId)) throw new Error('storage_key_outside_organization');
+  for (const path of paths) assertOrganizationStorageKey(organizationId, path);
+  if (paths.length === 0) return;
+
+  const client = getR2Client();
+  const bucket = getR2BucketName();
+
+  let failedKeyCount = 0;
+
+  for (let index = 0; index < paths.length; index += DELETE_BATCH_SIZE) {
+    const batch = paths.slice(index, index + DELETE_BATCH_SIZE);
+    const result = await client.send(
+      new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: { Objects: batch.map((path) => ({ Key: path })), Quiet: true },
+      }),
+    );
+
+    failedKeyCount += (result.Errors ?? []).filter((deleteError) => deleteError.Key).length;
+  }
+
+  if (failedKeyCount > 0) {
+    throw new Error(`Failed to delete ${failedKeyCount} object(s)`);
+  }
+}
+
+/**
+ * Best-effort removal of objects that no row references: a refused or
+ * abandoned upload, a rolled-back copy. The caller already returns its own
+ * outcome, so a failed removal is logged and leaves an orphan; it never
+ * becomes a second error for the user.
+ */
+export async function discardStorageObjects(
+  scope: OrganizationScope & { paths: readonly string[] },
+): Promise<void> {
+  await deleteStorageObjects(scope).catch((error: unknown) => {
+    logError('storage_cleanup_failed', error);
+  });
+}
+
+/** Lists the object keys under a folder of one organization: `<organization>/` or deeper. */
+export async function listStorageObjectPaths({
+  organizationId,
+  prefix,
+}: OrganizationScope & { prefix: string }): Promise<string[]> {
+  if (!prefix.endsWith('/')) throw new Error('storage_key_outside_organization');
+  assertOrganizationStorageKey(organizationId, `${prefix}object`);
+  const client = getR2Client();
+  const bucket = getR2BucketName();
+  const paths: string[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const result = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const object of result.Contents ?? []) {
+      if (object.Key) paths.push(object.Key);
+    }
+
+    continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return paths;
+}

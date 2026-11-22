@@ -1,0 +1,114 @@
+/**
+ * Bounded id-list reads. PostgREST receives `.in('id', ids)`
+ * as a GET query string; the API gateway rejects long ones ("URI too long"),
+ * which a typical calendar window reaches. A batch of 100 UUIDs is about
+ * 3.7 KB and stays under that limit. The batching tests build their
+ * boundary inputs from this constant.
+ * @internal
+ */
+export const ID_BATCH_SIZE = 100;
+
+function chunkIds(ids: readonly string[], size = ID_BATCH_SIZE): string[][] {
+  if (!Number.isInteger(size) || size < 1) throw new Error('A batch size must be a positive integer.');
+  const unique = [...new Set(ids)];
+  const chunks: string[][] = [];
+  for (let index = 0; index < unique.length; index += size) {
+    chunks.push(unique.slice(index, index + size));
+  }
+  return chunks;
+}
+
+/**
+ * Batches in flight at once; 2,500 ids are 25 batches, not 25 parallel connections.
+ * The unit test measures the peak against this constant.
+ * @internal
+ */
+export const BATCH_CONCURRENCY = 8;
+
+/**
+ * Maps the items, at most `BATCH_CONCURRENCY` at a time, and returns the
+ * results in item order. After a window that holds a failed result it starts
+ * no further window, so the results end there.
+ */
+export async function mapInWindows<Item, Result>(
+  items: readonly Item[],
+  map: (item: Item) => PromiseLike<Result>,
+  failed: (result: Result) => boolean,
+): Promise<Result[]> {
+  const results: Result[] = [];
+  for (let index = 0; index < items.length; index += BATCH_CONCURRENCY) {
+    const window = await Promise.all(items.slice(index, index + BATCH_CONCURRENCY).map(map));
+    results.push(...window);
+    if (window.some(failed)) break;
+  }
+  return results;
+}
+
+/**
+ * Runs one query per batch, at most `BATCH_CONCURRENCY` at a time, and
+ * concatenates the rows in id order. The first error wins; callers keep their
+ * existing error handling.
+ */
+export async function readInBatches<Row, ReadError extends { message: string }>(
+  ids: readonly string[],
+  read: (batch: readonly string[]) => PromiseLike<{ data: Row[] | null; error: ReadError | null }>,
+  size = ID_BATCH_SIZE,
+): Promise<{ data: Row[]; error: ReadError | null }> {
+  const results = await mapInWindows(chunkIds(ids, size), read, (result) => result.error !== null);
+  const failed = results.find((result) => result.error);
+  if (failed?.error) return { data: [], error: failed.error };
+  return { data: results.flatMap((result) => result.data ?? []), error: null };
+}
+
+/**
+ * PostgREST caps every response at the project's `max_rows` (1,000 on the
+ * local stack and on hosted projects by default) and truncates silently, so
+ * an unpaged organization read of 2,500 jobs returns 1,000 rows and no error.
+ * Page size equals the cap: a shorter page is the true end. The paging tests
+ * build their boundary inputs from this constant.
+ * @internal
+ */
+export const ROW_PAGE_SIZE = 1_000;
+
+/**
+ * Reads every row through `range` pages until a short page, or reports an
+ * overflow once more than `cap` rows exist. The page builder must apply a
+ * deterministic order (end with an `id` tiebreaker) or pages can overlap.
+ */
+export async function readAllRows<Row, ReadError extends { message: string }>(
+  page: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: ReadError | null }>,
+  options: { cap: number },
+): Promise<{ data: Row[]; error: ReadError | null; overflow: boolean }> {
+  if (!Number.isInteger(options.cap) || options.cap < 1)
+    throw new Error('A row cap must be a positive integer.');
+  const rows: Row[] = [];
+  for (let from = 0; ; from += ROW_PAGE_SIZE) {
+    const result = await page(from, from + ROW_PAGE_SIZE - 1);
+    if (result.error) return { data: [], error: result.error, overflow: false };
+    const batch = result.data ?? [];
+    rows.push(...batch);
+    if (rows.length > options.cap) return { data: [], error: null, overflow: true };
+    if (batch.length < ROW_PAGE_SIZE) return { data: rows, error: null, overflow: false };
+  }
+}
+
+/**
+ * Declared bound for whole-organization list pages. Above it a page reports
+ * the overflow instead of rendering a partial list; such a list needs a
+ * server search or pagination.
+ */
+export const LIST_ROW_CAP = 10_000;
+
+/** Complete bounded reads whose overflow follows the same failure path as a query error. */
+export async function readCompleteRows<Row, ReadError extends { message: string }>(
+  page: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: ReadError | null }>,
+  cap: number,
+): Promise<{ data: Row[]; error: ReadError | { code: 'row_overflow'; message: string } | null }> {
+  const result = await readAllRows(page, { cap });
+  return result.overflow
+    ? {
+        data: [],
+        error: { code: 'row_overflow', message: 'The complete read exceeded its declared row bound.' },
+      }
+    : { data: result.data, error: result.error };
+}

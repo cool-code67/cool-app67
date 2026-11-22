@@ -1,0 +1,100 @@
+'use client';
+
+import { useState, type ReactElement } from 'react';
+
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+import { WORK_TEMPLATE_TARGET_TYPES, type WorkTemplateTargetType } from '@/lib/work-templates/types';
+
+import type { CreateTemplateInput } from './work-template-editor-shared';
+
+// Closes on submit; the owner renders the optimistic row and reports the outcome.
+export function CreateTemplateDialog({
+  open,
+  onOpenChange,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreate: (input: CreateTemplateInput) => void;
+}): ReactElement {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [targetType, setTargetType] = useState<WorkTemplateTargetType>('job');
+  const [error, setError] = useState<string | null>(null);
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const nameError = name.trim() ? undefined : 'Bitte gib einen Namen an.';
+    setError(nameError ?? null);
+    if (focusFirstInvalidField({ 'new-template-name': nameError })) return;
+    onCreate({ name, description, targetType });
+    setName('');
+    setDescription('');
+    setTargetType('job');
+    setError(null);
+    onOpenChange(false);
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={submit} className="contents">
+          <DialogHeader>
+            <DialogTitle>Arbeitsvorlage erstellen</DialogTitle>
+            <DialogDescription>
+              Lege zuerst Ziel und Namen fest. Inhalte ergänzt du im nächsten Schritt.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Field label="Name" htmlFor="new-template-name" required error={error}>
+              <Input
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError(null);
+                }}
+              />
+            </Field>
+            <Field label="Gilt für" htmlFor="new-template-target">
+              <Select
+                value={targetType}
+                onValueChange={(value) => {
+                  const target = WORK_TEMPLATE_TARGET_TYPES.find((candidate) => candidate === value);
+                  if (target) setTargetType(target);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="job">Aufträge</SelectItem>
+                  <SelectItem value="project">Projekte</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Beschreibung" htmlFor="new-template-description">
+              <Textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Abbrechen
+            </Button>
+            <Button type="submit">Erstellen</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

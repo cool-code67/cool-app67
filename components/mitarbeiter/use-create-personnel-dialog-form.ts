@@ -1,0 +1,150 @@
+'use client';
+
+import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+import { useBanner } from '@/components/ui/banner';
+import { useServerAction } from '@/hooks/use-server-action';
+import { useSuggestedRecordNumber } from '@/hooks/use-suggested-record-number';
+import { describeFailure } from '@/lib/action-messages';
+import { createPersonnelRecord } from '@/lib/personnel/actions';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+
+const LAST_NAME_REQUIRED_MESSAGE = 'Bitte gib mindestens einen Nachnamen an.';
+const CREATE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  invalid_entry_date: 'Bitte gib ein gültiges Eintrittsdatum an.',
+  number_taken: 'Diese Personalnummer ist bereits vergeben.',
+  create_failed: 'Die Personalakte konnte nicht angelegt werden.',
+};
+const CREATE_FAILURE_FALLBACK = 'Die Personalakte konnte nicht angelegt werden.';
+
+type PersonnelRecordFields = {
+  firstName: string;
+  lastName: string;
+  employeeNumber: string;
+  entryDate: string;
+  notes: string;
+};
+
+/** The create input: trimmed values, an empty optional field left out. */
+function newPersonnelRecordInput({
+  firstName,
+  lastName,
+  employeeNumber,
+  entryDate,
+  notes,
+}: PersonnelRecordFields) {
+  return {
+    ...(firstName.trim() ? { firstName: firstName.trim() } : {}),
+    lastName: lastName.trim(),
+    ...(employeeNumber.trim() ? { employeeNumber: employeeNumber.trim() } : {}),
+    ...(entryDate ? { entryDate } : {}),
+    ...(notes.trim() ? { notes: notes.trim() } : {}),
+  };
+}
+
+/** Fills the suggested personnel number while the dialog is open; the ref marks a typed number. */
+function useSuggestedPersonnelNumber(open: boolean, setEmployeeNumber: (suggestion: string) => void) {
+  // Guards for the async number suggestion: a suggestion must never overwrite
+  // a number the user has already typed (see the P1-02 dialogs for the same
+  // pattern; CodeRabbit caught the unguarded variant as a real defect).
+  const numberTouchedRef = useRef(false);
+
+  useSuggestedRecordNumber('next-personnel-number', open, (suggestion) => {
+    if (!numberTouchedRef.current) setEmployeeNumber(suggestion);
+  });
+
+  return numberTouchedRef;
+}
+
+/** Open state, fields, number suggestion and save of the create-personnel dialog. */
+export function useCreatePersonnelDialogForm() {
+  const router = useRouter();
+  const { showBanner } = useBanner();
+  const [open, setOpen] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [employeeNumber, setEmployeeNumber] = useState('');
+  const [entryDate, setEntryDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const { run: runSave, isPending: isSaving } = useServerAction(createPersonnelRecord);
+  const [error, setError] = useState<string | null>(null);
+  const [lastNameError, setLastNameError] = useState<string | null>(null);
+  const numberTouchedRef = useSuggestedPersonnelNumber(open, setEmployeeNumber);
+
+  const resetForm = () => {
+    setFirstName('');
+    setLastName('');
+    setEmployeeNumber('');
+    setEntryDate('');
+    setNotes('');
+    setError(null);
+    setLastNameError(null);
+    numberTouchedRef.current = false;
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) resetForm();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSaving) return;
+    setError(null);
+
+    const nextLastNameError = lastName.trim().length === 0 ? LAST_NAME_REQUIRED_MESSAGE : undefined;
+    setLastNameError(nextLastNameError ?? null);
+    if (focusFirstInvalidField({ 'personnel-last-name': nextLastNameError })) return;
+
+    // A rejected Server Action shows the fallback and releases the dialog.
+    const result = await runSave(
+      newPersonnelRecordInput({ firstName, lastName, employeeNumber, entryDate, notes }),
+    ).catch(() => null);
+    if (!result) {
+      setError(CREATE_FAILURE_FALLBACK);
+      return;
+    }
+
+    if (result.success) {
+      setOpen(false);
+      resetForm();
+      showBanner({
+        variant: 'success',
+        message: 'Die Personalakte wurde angelegt.',
+      });
+      router.push(`/mitarbeiter/${result.recordId}`);
+    } else {
+      setError(describeFailure(result.error, CREATE_FAILURE_MESSAGES, CREATE_FAILURE_FALLBACK));
+    }
+  };
+
+  const handleLastNameChange = (value: string) => {
+    setLastNameError(null);
+    setLastName(value);
+  };
+
+  const handleEmployeeNumberChange = (value: string) => {
+    numberTouchedRef.current = true;
+    setEmployeeNumber(value);
+  };
+
+  return {
+    open,
+    firstName,
+    setFirstName,
+    lastName,
+    handleLastNameChange,
+    employeeNumber,
+    handleEmployeeNumberChange,
+    entryDate,
+    setEntryDate,
+    notes,
+    setNotes,
+    isSaving,
+    error,
+    lastNameError,
+    handleOpenChange,
+    handleSubmit,
+  };
+}

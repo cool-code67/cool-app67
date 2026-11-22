@@ -1,0 +1,141 @@
+'use client';
+
+import type { ReactElement } from 'react';
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Field } from '@/components/ui/field';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  correctInstalledEquipmentTerminalAction,
+  setInstalledEquipmentArchived,
+} from '@/lib/installed-equipment/actions';
+import type { EquipmentDetail } from '@/lib/installed-equipment/types';
+import type { EquipmentActionDialogProps, EquipmentDetailActions } from './use-equipment-detail-actions';
+
+type EquipmentCorrectionDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  actions: EquipmentDetailActions;
+  terminalEvent: EquipmentDetail['events'][number] | undefined;
+};
+
+export function EquipmentCorrectionDialog({
+  open,
+  onOpenChange,
+  actions,
+  terminalEvent,
+}: EquipmentCorrectionDialogProps): ReactElement {
+  const { busy, item, reason, setReason, reasonError, attempted, errorFor } = actions;
+  const { perform, rejectInvalid } = actions;
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange} pending={busy.isBusy('correction')}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Abschlussaktion korrigieren?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Die ursprüngliche Aktion bleibt sichtbar. Bei einer Ersetzung wird der irrtümliche Nachfolger als
+            korrigierter Datensatz erhalten.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Field
+          label="Korrekturgrund"
+          htmlFor="equipment-correction-reason"
+          required
+          error={attempted === 'correction' ? reasonError : undefined}
+        >
+          <Textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+        </Field>
+        <AlertDialogFooter error={errorFor('correction')}>
+          <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+          <AlertDialogAction
+            pending={busy.isBusy('correction')}
+            onClick={(event) => {
+              event.preventDefault();
+              if (!terminalEvent) return;
+              if (rejectInvalid('correction', { 'equipment-correction-reason': reasonError })) return;
+              perform(
+                'correction',
+                () =>
+                  correctInstalledEquipmentTerminalAction({
+                    equipmentId: item.id,
+                    expectedVersion: item.version,
+                    correctsEventId: terminalEvent.id,
+                    effectiveAt: new Date().toISOString(),
+                    reason,
+                    idempotencyKey: crypto.randomUUID(),
+                  }),
+                () => onOpenChange(false),
+              );
+            }}
+          >
+            Korrektur festhalten
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+export function EquipmentArchiveDialog({
+  open,
+  onOpenChange,
+  actions,
+}: EquipmentActionDialogProps): ReactElement {
+  const { busy, item, reason, setReason, reasonError, attempted, errorFor } = actions;
+  const { perform, rejectInvalid } = actions;
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange} pending={busy.isBusy('archive')}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {item.archivedAt ? 'Anlage wiederherstellen?' : 'Anlage archivieren?'}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Die Identität, Dokumente, Arbeitsbezüge und Historie bleiben erhalten.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Field
+          label="Begründung"
+          htmlFor="equipment-archive-reason"
+          required
+          error={attempted === 'archive' ? reasonError : undefined}
+        >
+          <Textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+        </Field>
+        <AlertDialogFooter error={errorFor('archive')}>
+          <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+          <AlertDialogAction
+            pending={busy.isBusy('archive')}
+            onClick={(event) => {
+              event.preventDefault();
+              if (rejectInvalid('archive', { 'equipment-archive-reason': reasonError })) return;
+              perform(
+                'archive',
+                () =>
+                  setInstalledEquipmentArchived({
+                    equipmentId: item.id,
+                    expectedVersion: item.version,
+                    archived: !item.archivedAt,
+                    reason,
+                    idempotencyKey: crypto.randomUUID(),
+                  }),
+                () => onOpenChange(false),
+              );
+            }}
+          >
+            {item.archivedAt ? 'Wiederherstellen' : 'Archivieren'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}

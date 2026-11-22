@@ -1,0 +1,466 @@
+'use client';
+
+import { useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+
+import { LocationSelectWithCreate } from '@/components/inventar/location-select-with-create';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorText } from '@/components/ui/error-text';
+import { Field } from '@/components/ui/field';
+import { InlinePending } from '@/components/ui/inline-pending';
+import { Input } from '@/components/ui/input';
+import { QuantityStepper } from '@/components/ui/quantity-stepper';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { SelectWithCreate } from '@/components/ui/select-with-create';
+import { Textarea } from '@/components/ui/textarea';
+import { useJobEntityOptions, type JobEntityOptionsState } from '@/hooks/use-job-entity-options';
+import { getInventoryUnitLabel, type InventoryLocation } from '@/lib/inventory/types';
+import { OFFERED_INVENTORY_UNITS } from '@/lib/inventory/units';
+import type { JobEntityOption } from '@/lib/jobs/option-types';
+import { formatDecimalDe, parseDecimalInput } from '@/lib/ui/decimal';
+import { cn } from '@/lib/utils';
+import type { WorkTemplateDraft } from '@/lib/work-templates/types';
+
+import {
+  newId,
+  type CreateInventoryItemInput,
+  type CreatedInventoryItem,
+} from './work-template-editor-shared';
+
+type WorkTemplateMaterialLineDraft = WorkTemplateDraft['materials'][number];
+
+function createdOption(item: CreatedInventoryItem): JobEntityOption {
+  return {
+    value: item.id,
+    label: item.name,
+    description: item.internalSku ?? undefined,
+    unit: item.unit,
+    isBillable: item.isBillable,
+  };
+}
+
+export function MaterialsEditor({
+  draft,
+  editable,
+  onChange,
+  onPatch,
+  createdItems,
+  inventoryLocations,
+  onCreateItem,
+  isItemPending,
+}: {
+  draft: WorkTemplateDraft;
+  editable: boolean;
+  onChange: (draft: WorkTemplateDraft) => void;
+  onPatch: (patch: (current: WorkTemplateDraft) => WorkTemplateDraft) => void;
+  createdItems: CreatedInventoryItem[];
+  inventoryLocations: InventoryLocation[];
+  onCreateItem: (lineId: string, input: CreateInventoryItemInput) => void;
+  isItemPending: (itemId: string) => boolean;
+}) {
+  function add() {
+    onChange({
+      ...draft,
+      materials: [
+        ...draft.materials,
+        {
+          id: newId(),
+          itemId: '',
+          preferredLocationId: null,
+          plannedQuantity: 1,
+          isBillable: true,
+          notes: null,
+          sortOrder: draft.materials.length,
+        },
+      ],
+    });
+  }
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold">Geplantes Material</h3>
+          <p className="text-sm text-muted-foreground">
+            Mengen werden geplant, nicht reserviert oder ausgebucht.
+          </p>
+        </div>
+        {editable && (
+          <Button type="button" size="sm" variant="outline" onClick={add}>
+            <Plus className="size-4" />
+            Material
+          </Button>
+        )}
+      </div>
+      {draft.materials.map((line) => (
+        <WorkTemplateMaterialLine
+          key={line.id}
+          line={line}
+          pending={isItemPending(line.itemId)}
+          draft={draft}
+          editable={editable}
+          onChange={onChange}
+          onPatch={onPatch}
+          createdItems={createdItems}
+          inventoryLocations={inventoryLocations}
+          onCreateItem={onCreateItem}
+        />
+      ))}
+    </section>
+  );
+}
+
+/** The line with this article chosen; it takes the article's billable default when the option knows it. */
+function withArticle(
+  line: WorkTemplateMaterialLineDraft,
+  itemId: string,
+  items: JobEntityOption[],
+): WorkTemplateMaterialLineDraft {
+  return {
+    ...line,
+    itemId,
+    isBillable: items.find((option) => option.value === itemId)?.isBillable ?? line.isBillable,
+  };
+}
+
+/**
+ * The article options of one line. The catalog is searched on the server one page at a time; an
+ * article created here is known locally until the server confirms it.
+ */
+function useMaterialLineArticles(line: WorkTemplateMaterialLineDraft, createdItems: CreatedInventoryItem[]) {
+  const created = createdItems.map(createdOption);
+  const search = useJobEntityOptions(
+    { kind: 'inventory-items' },
+    line.itemId && !createdItems.some((item) => item.id === line.itemId) ? [line.itemId] : [],
+  );
+  const items = [
+    ...search.options,
+    ...created.filter((option) => !search.options.some((known) => known.value === option.value)),
+  ];
+  const chosen = items.find((option) => option.value === line.itemId);
+  return { search, items, chosen };
+}
+
+function WorkTemplateMaterialLine({
+  line,
+  pending,
+  draft,
+  editable,
+  onChange,
+  onPatch,
+  createdItems,
+  inventoryLocations,
+  onCreateItem,
+}: {
+  line: WorkTemplateMaterialLineDraft;
+  pending: boolean;
+  draft: WorkTemplateDraft;
+  editable: boolean;
+  onChange: (draft: WorkTemplateDraft) => void;
+  onPatch: (patch: (current: WorkTemplateDraft) => WorkTemplateDraft) => void;
+  createdItems: CreatedInventoryItem[];
+  inventoryLocations: InventoryLocation[];
+  onCreateItem: (lineId: string, input: CreateInventoryItemInput) => void;
+}) {
+  const { search, items, chosen } = useMaterialLineArticles(line, createdItems);
+  function updateLine(update: (item: WorkTemplateMaterialLineDraft) => WorkTemplateMaterialLineDraft) {
+    onChange({
+      ...draft,
+      materials: draft.materials.map((item) => (item.id === line.id ? update(item) : item)),
+    });
+  }
+  return (
+    <Card
+      className={cn('gap-3 py-4', pending && 'opacity-70')}
+      aria-busy={pending || undefined}
+      data-testid="work-template-material"
+      data-row-id={line.id}
+    >
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        <MaterialArticleField
+          line={line}
+          pending={pending}
+          editable={editable}
+          items={items}
+          search={search}
+          onSelect={(value) => updateLine((item) => withArticle(item, value, items))}
+          onCreateItem={onCreateItem}
+        />
+        <MaterialLocationField
+          line={line}
+          editable={editable}
+          inventoryLocations={inventoryLocations}
+          onPatch={onPatch}
+        />
+        <Field label="Geplante Menge" htmlFor={`quantity-${line.id}`}>
+          <PlannedQuantityStepper
+            id={`quantity-${line.id}`}
+            quantity={line.plannedQuantity}
+            disabled={!editable}
+            onQuantityChange={(plannedQuantity) => updateLine((item) => ({ ...item, plannedQuantity }))}
+            unitLabel={chosen?.unit === undefined ? undefined : getInventoryUnitLabel(chosen.unit)}
+          />
+        </Field>
+        <MaterialLineActions
+          isBillable={line.isBillable}
+          editable={editable}
+          onBillableChange={(isBillable) => updateLine((item) => ({ ...item, isBillable }))}
+          onRemove={() =>
+            onChange({ ...draft, materials: draft.materials.filter((item) => item.id !== line.id) })
+          }
+        />
+        <MaterialNotesField
+          line={line}
+          editable={editable}
+          onNotesChange={(notes) => updateLine((item) => ({ ...item, notes }))}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function MaterialArticleField({
+  line,
+  pending,
+  editable,
+  items,
+  search,
+  onSelect,
+  onCreateItem,
+}: {
+  line: WorkTemplateMaterialLineDraft;
+  pending: boolean;
+  editable: boolean;
+  items: JobEntityOption[];
+  search: JobEntityOptionsState;
+  onSelect: (itemId: string) => void;
+  onCreateItem: (lineId: string, input: CreateInventoryItemInput) => void;
+}) {
+  return (
+    <Field
+      label={
+        <span className="inline-flex items-center gap-2">
+          Artikel
+          <InlinePending active={pending} label="Artikel wird erstellt" />
+        </span>
+      }
+      htmlFor={`material-item-${line.id}`}
+    >
+      <SelectWithCreate
+        id={`material-item-${line.id}`}
+        items={items}
+        getOption={(item) => item}
+        onSearchChange={search.onSearchChange}
+        loading={search.loading}
+        loadFailure={search.loadFailure}
+        onLoadMore={search.onLoadMore}
+        value={line.itemId}
+        onValueChange={onSelect}
+        createLabel="Neuen Artikel erstellen"
+        disabled={!editable}
+        renderCreateDialog={({ open, onOpenChange }) => (
+          <CreateMaterialDialog
+            open={open}
+            onOpenChange={onOpenChange}
+            onSubmit={(input) => onCreateItem(line.id, input)}
+          />
+        )}
+      />
+    </Field>
+  );
+}
+
+function MaterialLocationField({
+  line,
+  editable,
+  inventoryLocations,
+  onPatch,
+}: {
+  line: WorkTemplateMaterialLineDraft;
+  editable: boolean;
+  inventoryLocations: InventoryLocation[];
+  onPatch: (patch: (current: WorkTemplateDraft) => WorkTemplateDraft) => void;
+}) {
+  return (
+    <Field label="Bevorzugtes Lager" htmlFor={`material-location-${line.id}`}>
+      <LocationSelectWithCreate
+        id={`material-location-${line.id}`}
+        locations={inventoryLocations}
+        value={line.preferredLocationId ?? ''}
+        onValueChange={(value) =>
+          onPatch((current) => ({
+            ...current,
+            materials: current.materials.map((item) =>
+              item.id === line.id ? { ...item, preferredLocationId: value || null } : item,
+            ),
+          }))
+        }
+        allowNone
+        disabled={!editable}
+      />
+    </Field>
+  );
+}
+
+function MaterialLineActions({
+  isBillable,
+  editable,
+  onBillableChange,
+  onRemove,
+}: {
+  isBillable: boolean;
+  editable: boolean;
+  onBillableChange: (isBillable: boolean) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-end justify-between gap-3">
+      <label className="flex h-11 items-center gap-2">
+        <Checkbox
+          checked={isBillable}
+          disabled={!editable}
+          onCheckedChange={(checked) => onBillableChange(checked === true)}
+        />
+        Abrechenbar
+      </label>
+      {editable && (
+        <Button type="button" size="icon" variant="ghost" onClick={onRemove} aria-label="Material löschen">
+          <Trash2 className="size-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function MaterialNotesField({
+  line,
+  editable,
+  onNotesChange,
+}: {
+  line: WorkTemplateMaterialLineDraft;
+  editable: boolean;
+  onNotesChange: (notes: string | null) => void;
+}) {
+  return (
+    <Field label="Notiz" htmlFor={`material-notes-${line.id}`} className="sm:col-span-2">
+      <Textarea
+        value={line.notes ?? ''}
+        disabled={!editable}
+        onChange={(event) => onNotesChange(event.target.value || null)}
+      />
+    </Field>
+  );
+}
+
+const UNIT_OPTIONS = OFFERED_INVENTORY_UNITS.map((unit) => ({ value: unit.code, label: unit.label }));
+
+// Closes on submit; the editor selects the optimistic article on the line and reports the outcome.
+function CreateMaterialDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (input: CreateInventoryItemInput) => void;
+}) {
+  const [name, setName] = useState('');
+  const [unit, setUnit] = useState('piece');
+  const [error, setError] = useState<string | null>(null);
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!name.trim()) {
+      setError('Bitte gib einen Namen an.');
+      return;
+    }
+    onSubmit({ name, unit });
+    setName('');
+    setError(null);
+    onOpenChange(false);
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={submit} className="contents">
+          <DialogHeader>
+            <DialogTitle>Artikel erstellen</DialogTitle>
+            <DialogDescription>Der Artikel wird ohne Bestand angelegt.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Field label="Name" htmlFor="quick-item-name" required>
+              <Input
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError(null);
+                }}
+              />
+            </Field>
+            <Field label="Einheit" htmlFor="quick-item-unit" required>
+              <SearchableSelect
+                options={UNIT_OPTIONS}
+                value={unit}
+                onChange={setUnit}
+                searchPlaceholder="Einheit suchen …"
+                emptyMessage="Keine Einheit gefunden"
+              />
+            </Field>
+            <ErrorText>{error}</ErrorText>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Abbrechen
+            </Button>
+            <Button type="submit">Erstellen</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Keeps the typed text, so a comma or a trailing zero survives while the user
+ * types „0,125“; the draft stores the parsed number with the column's three
+ * fractional digits.
+ */
+function PlannedQuantityStepper({
+  id,
+  quantity,
+  disabled,
+  onQuantityChange,
+  unitLabel,
+}: {
+  id: string;
+  quantity: number;
+  disabled: boolean;
+  onQuantityChange: (quantity: number) => void;
+  unitLabel: string | undefined;
+}) {
+  const [text, setText] = useState(() => formatDecimalDe(quantity, 3));
+  const shown = parseDecimalInput(text) === quantity ? text : formatDecimalDe(quantity, 3);
+  return (
+    <QuantityStepper
+      id={id}
+      value={shown}
+      min={0.001}
+      step={1}
+      disabled={disabled}
+      onChange={(value) => {
+        setText(value);
+        onQuantityChange(parseDecimalInput(value));
+      }}
+      unitLabel={unitLabel}
+    />
+  );
+}

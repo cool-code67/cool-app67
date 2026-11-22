@@ -1,0 +1,218 @@
+'use server';
+
+import type { ActionResult } from '@/lib/action-result';
+import { loggedRead } from '@/lib/data/read-request-cache';
+import { randomInt } from 'crypto';
+import { z } from '@/lib/zod';
+import { updateTag } from 'next/cache';
+import type { User } from '@supabase/supabase-js';
+import { CACHE_TAGS, getAuthenticatedUser } from '@/lib/data/cached';
+import { getEmailOtpHashSecret, getSupabaseSecretKey } from '@/lib/env/server';
+import { getInitialEmailChangeWizardState } from '@/lib/settings/email-change-state';
+import { isDefiniteEmailUpdateRejection } from '@/lib/settings/email-change-rules';
+import { hashEmailChangeOtp } from '@/lib/settings/otp-hash';
+import { transitionEmailChange } from '@/lib/settings/email-change-transition';
+import {
+  CURRENT_EMAIL_OTP_EXPIRY_MINUTES,
+  CURRENT_EMAIL_OTP_LENGTH,
+  type EmailChangeActionError,
+  type EmailChangeActionResult,
+} from '@/lib/settings/email-change.types';
+import { consumeRateLimit } from '@/lib/security/rate-limit';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+
+const otpCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/);
+const newEmailSchema = z.string().trim().toLowerCase().pipe(z.email().max(320));
+
+function hashOtpCode(user: User, code: string): string {
+  return hashEmailChangeOtp({ secret: getEmailOtpHashSecret(), userId: user.id, code });
+}
+
+function generateOtpCode(): string {
+  return String(randomInt(0, 10 ** CURRENT_EMAIL_OTP_LENGTH)).padStart(CURRENT_EMAIL_OTP_LENGTH, '0');
+}
+
+/** A failure with the wizard state the client shows next. */
+async function emailChangeFailure(error: EmailChangeActionError): Promise<EmailChangeActionResult> {
+  return { success: false, error, state: await getInitialEmailChangeWizardState() };
+}
+
+/** A success with the wizard state the client shows next. */
+async function emailChangeSuccess(): Promise<EmailChangeActionResult> {
+  return { success: true, state: await getInitialEmailChangeWizardState() };
+}
+
+// The 60-second send window per account (transition_email_change) paces
+// resends; this budget caps codes per hour per account and per recipient, so
+// the wizard cannot mail a stream of addresses. It runs before the transition,
+// so a refused request leaves the challenge untouched. A limiter that cannot
+// decide refuses with a retryable failure (rate-limit.ts).
+async function consumeEmailChangeCodeLimit(
+  userId: string,
+  recipient: string,
+): Promise<EmailChangeActionResult | null> {
+  const verdict = await consumeRateLimit(
+    { action: 'email_change_code_per_user', subject: userId },
+    { action: 'email_change_code_per_recipient', subject: recipient },
+  );
+  if (verdict === 'limited') return emailChangeFailure('too_many_attempts');
+  if (verdict === 'unavailable') return emailChangeFailure('unexpected_error');
+  return null;
+}
+
+async function sendEmailChangeOtpEmail(params: {
+  userId: string;
+  email: string;
+  code: string;
+  kind: 'current' | 'new';
+}): Promise<EmailChangeActionResult> {
+  const admin = createSupabaseAdminClient();
+  const { data: profile } = await loggedRead(
+    'sendEmailChangeOtpEmail: profiles read failed',
+    admin.from('profiles').select('first_name').eq('id', params.userId).maybeSingle(),
+  );
+  const secretKey = getSupabaseSecretKey();
+  const mailed = await admin.functions.invoke('send-email-change-current-otp', {
+    headers: { apikey: secretKey, Authorization: `Bearer ${secretKey}` },
+    body: {
+      to: params.email,
+      firstName: typeof profile?.first_name === 'string' ? profile.first_name : null,
+      code: params.code,
+      expiresInMinutes: CURRENT_EMAIL_OTP_EXPIRY_MINUTES,
+      kind: params.kind,
+    },
+  });
+  // functions-js types a failure's error as any.
+  const error: unknown = mailed.error;
+  return error ? emailChangeFailure('email_send_failed') : emailChangeSuccess();
+}
+
+export async function requestCurrentEmailChangeOtp(): Promise<EmailChangeActionResult> {
+  const user = await getAuthenticatedUser();
+  if (!user) return emailChangeFailure('not_authenticated');
+  if (!user.email) return emailChangeFailure('no_active_email');
+  const email = user.email.trim().toLowerCase();
+  const refused = await consumeEmailChangeCodeLimit(user.id, email);
+  if (refused) return refused;
+  const code = generateOtpCode();
+  const result = await transitionEmailChange(user, 'request_current', { codeHash: hashOtpCode(user, code) });
+  if ('error' in result) return emailChangeFailure(result.error);
+  return sendEmailChangeOtpEmail({ userId: user.id, email, code, kind: 'current' });
+}
+
+export async function verifyCurrentEmailChangeOtp(code: string): Promise<EmailChangeActionResult> {
+  const user = await getAuthenticatedUser();
+  if (!user) return emailChangeFailure('not_authenticated');
+  const parsed = otpCodeSchema.safeParse(code);
+  if (!parsed.success) return emailChangeFailure('invalid_code');
+  const result = await transitionEmailChange(user, 'verify_current', {
+    codeHash: hashOtpCode(user, parsed.data),
+  });
+  return 'error' in result ? emailChangeFailure(result.error) : emailChangeSuccess();
+}
+
+/** `email` is the parsed, lower-case destination address. */
+async function sendNewEmailCode(
+  user: User,
+  email: string,
+  operation: 'save_new' | 'resend_new',
+): Promise<EmailChangeActionResult> {
+  if (email === user.email?.trim().toLowerCase()) return emailChangeFailure('invalid_email');
+  const refused = await consumeEmailChangeCodeLimit(user.id, email);
+  if (refused) return refused;
+  const code = generateOtpCode();
+  const result = await transitionEmailChange(user, operation, {
+    codeHash: hashOtpCode(user, code),
+    newEmail: email,
+  });
+  if ('error' in result) return emailChangeFailure(result.error);
+  return sendEmailChangeOtpEmail({ userId: user.id, email, code, kind: 'new' });
+}
+
+export async function savePendingNewEmailVerification(newEmail: string): Promise<EmailChangeActionResult> {
+  const user = await getAuthenticatedUser();
+  if (!user) return emailChangeFailure('not_authenticated');
+  const parsed = newEmailSchema.safeParse(newEmail);
+  if (!parsed.success) return emailChangeFailure('invalid_email');
+  return sendNewEmailCode(user, parsed.data, 'save_new');
+}
+
+export async function touchPendingNewEmailVerification(newEmail: string): Promise<EmailChangeActionResult> {
+  const user = await getAuthenticatedUser();
+  if (!user) return emailChangeFailure('not_authenticated');
+  const parsed = newEmailSchema.safeParse(newEmail);
+  if (!parsed.success) return emailChangeFailure('invalid_email');
+  return sendNewEmailCode(user, parsed.data, 'resend_new');
+}
+
+export async function verifyNewEmailChangeOtp(code: string): Promise<EmailChangeActionResult> {
+  const user = await getAuthenticatedUser();
+  if (!user) return emailChangeFailure('not_authenticated');
+  const parsed = otpCodeSchema.safeParse(code);
+  if (!parsed.success) return emailChangeFailure('new_email_invalid_code');
+  const claim = await transitionEmailChange(user, 'verify_new', { codeHash: hashOtpCode(user, parsed.data) });
+  if ('error' in claim) return emailChangeFailure(claim.error);
+  if (claim.status !== 'claimed' && claim.status !== 'completion_pending') {
+    return emailChangeFailure('unexpected_error');
+  }
+  const completionInput = { challengeId: claim.challengeId, completionToken: claim.token };
+  if (claim.status === 'claimed') {
+    const admin = createSupabaseAdminClient();
+    try {
+      const { error } = await admin.auth.admin.updateUserById(user.id, {
+        email: claim.email,
+        email_confirm: true,
+        user_metadata: { ...user.user_metadata, email: claim.email, email_verified: true },
+      });
+      if (error) {
+        // A rejected request cannot still execute. A timeout or 5xx can, so its
+        // claim stays locked until the changed account can be reconciled.
+        if (isDefiniteEmailUpdateRejection(error.status)) {
+          await transitionEmailChange(user, 'abandon_rejected_completion', completionInput);
+          return emailChangeFailure('unexpected_error');
+        }
+        return emailChangeFailure('completion_pending');
+      }
+    } catch {
+      return emailChangeFailure('completion_pending');
+    }
+  }
+  // Repeated calls only reconcile. They never issue another Auth update or
+  // replace the destination while the first request might still be running.
+  const completed = await transitionEmailChange(user, 'complete', completionInput);
+  if ('error' in completed) return emailChangeFailure(completed.error);
+  if (completed.status !== 'completed') return emailChangeFailure('unexpected_error');
+  updateTag(CACHE_TAGS.profile(user.id));
+  return {
+    success: true,
+    state: {
+      step: 'idle',
+      currentEmail: completed.email,
+      newEmail: null,
+      currentOtpExpiresAt: null,
+      currentOtpResendAvailableAt: null,
+      currentEmailVerifiedExpiresAt: null,
+      newEmailOtpExpiresAt: null,
+      newEmailResendAvailableAt: null,
+    },
+  };
+}
+
+export async function resetEmailChangeWizard(): Promise<EmailChangeActionResult> {
+  const user = await getAuthenticatedUser();
+  if (!user) return emailChangeFailure('not_authenticated');
+  const result = await transitionEmailChange(user, 'reset');
+  return 'error' in result ? emailChangeFailure(result.error) : emailChangeSuccess();
+}
+
+export async function clearEmailChangeChallengeBeforeSignOut(): Promise<
+  ActionResult<object, EmailChangeActionError>
+> {
+  const user = await getAuthenticatedUser();
+  if (!user) return { success: true };
+  const result = await transitionEmailChange(user, 'reset');
+  return 'error' in result ? { success: false, error: result.error } : { success: true };
+}

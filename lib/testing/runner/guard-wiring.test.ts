@@ -1,0 +1,157 @@
+// Rule test: both agent tools run the edit guard before every tool call that can write a file,
+// Claude runs the delete guard before every shell call, and both run the sign-in, Boat key, heavy
+// command, second-stack and shared stack migration guards, the device guard before T3's device_open,
+// and the child-start guard before T3's thread starts.
+import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { z } from 'zod';
+
+const repositoryRoot = resolve(import.meta.dir, '../../..');
+const GUARD = 'scripts/guard-edits-during-verification.ts';
+const DELETE_GUARD = '.claude/hooks/refuse-unresolvable-delete.ts';
+const PRODUCTION_MCP_GUARD = '.claude/hooks/refuse-production-mcp.ts';
+const SIGN_IN_GUARD = '.claude/hooks/refuse-account-sign-in.ts';
+const BOAT_KEY_GUARD = '.claude/hooks/refuse-boat-key-reads.ts';
+const HEAVY_COMMAND_GUARD = '.claude/hooks/refuse-heavy-commands.ts';
+const SECOND_STACK_GUARD = '.claude/hooks/refuse-second-stack.ts';
+const CHILD_START_GUARD = '.claude/hooks/refuse-child-start-without-room.ts';
+const DEVICE_GUARD = '.claude/hooks/refuse-device-without-room.ts';
+const STACK_MIGRATION_GUARD = '.claude/hooks/refuse-shared-stack-migration.ts';
+
+const hookFileSchema = z.object({
+  hooks: z.object({
+    PreToolUse: z.array(
+      z.object({
+        matcher: z.string(),
+        hooks: z.array(z.object({ type: z.string(), command: z.string() })),
+      }),
+    ),
+  }),
+});
+
+/** The tools whose calls run the given hook script, read from a hook file's PreToolUse matchers. */
+function guardedTools(file: string, tools: readonly string[], script = GUARD): string[] {
+  const { hooks } = hookFileSchema.parse(JSON.parse(readFileSync(resolve(repositoryRoot, file), 'utf8')));
+  return tools.filter((tool) =>
+    hooks.PreToolUse.some(
+      (entry) =>
+        new RegExp(`^(?:${entry.matcher})$`).test(tool) &&
+        entry.hooks.some((hook) => hook.type === 'command' && hook.command.includes(script)),
+    ),
+  );
+}
+
+// The edit guard (docs/technical/testing.md, "How a run executes") only works while both tools call it.
+test('Claude runs the edit guard before every file and shell tool', () => {
+  const tools = ['Edit', 'Write', 'NotebookEdit', 'Bash'];
+  expect(guardedTools('.claude/settings.json', tools)).toEqual(tools);
+});
+
+// Codex names its tools in hook payloads as its hooks documentation states
+// (https://learn.chatgpt.com/docs/hooks, "Tool coverage"): every shell command,
+// unified exec (exec_command) included, matches `Bash`; an edit matches
+// `apply_patch`, `Edit` or `Write` and reports `tool_name: "apply_patch"`; Bash
+// and apply_patch carry `tool_input.command`. So these matchers cover every
+// Codex call; an internal function name such as exec_command never reaches a hook.
+test('Codex runs the edit guard before every file and shell tool', () => {
+  const tools = ['apply_patch', 'Edit', 'Write', 'Bash'];
+  expect(guardedTools('.codex/hooks.json', tools)).toEqual(tools);
+});
+
+// Only Claude Code's built-in safety check stops on a delete it cannot resolve
+// (lib/testing/runner/unresolvable-delete.ts); Codex in full access runs it without asking.
+test('Claude runs the delete guard before every shell call', () => {
+  expect(guardedTools('.claude/settings.json', ['Bash'], DELETE_GUARD)).toEqual(['Bash']);
+});
+
+// Agents never read production data (lib/security/production-access.ts); both tools name an
+// MCP tool `mcp__<server>__<tool>` in hook payloads.
+test('both agent tools run the production MCP guard before every MCP tool', () => {
+  const tools = [
+    'mcp__supabase__execute_sql',
+    'mcp__supabase-prod-readonly__execute_sql',
+    'mcp__claude_ai_Supabase__list_tables',
+  ];
+  expect(guardedTools('.claude/settings.json', tools, PRODUCTION_MCP_GUARD)).toEqual(tools);
+  expect(guardedTools('.codex/hooks.json', tools, PRODUCTION_MCP_GUARD)).toEqual(tools);
+});
+
+// No agent starts a sign-in or runs an account-wide CLI (lib/security/account-sign-in.ts); both
+// tools name every shell call `Bash`.
+test('both agent tools run the sign-in guard before every shell call', () => {
+  expect(guardedTools('.claude/settings.json', ['Bash'], SIGN_IN_GUARD)).toEqual(['Bash']);
+  expect(guardedTools('.codex/hooks.json', ['Bash'], SIGN_IN_GUARD)).toEqual(['Bash']);
+});
+
+// Only the process that calls Boat reads the Boat API key (lib/security/boat-key-access.ts). Claude
+// reads files through Read and Grep as well as the shell; Codex reads them only through the shell.
+test('both agent tools run the Boat key guard before every call that can read a file', () => {
+  const tools = ['Bash', 'Read', 'Grep'];
+  expect(guardedTools('.claude/settings.json', tools, BOAT_KEY_GUARD)).toEqual(tools);
+  expect(guardedTools('.codex/hooks.json', ['Bash'], BOAT_KEY_GUARD)).toEqual(['Bash']);
+});
+
+// A whole-repository tsc, a broad lint or a Next build runs only in a heavy slot or on Boat
+// (lib/testing/runner/heavy-command.ts); both tools name every shell call `Bash`.
+test('both agent tools run the heavy command guard before every shell call', () => {
+  expect(guardedTools('.claude/settings.json', ['Bash'], HEAVY_COMMAND_GUARD)).toEqual(['Bash']);
+  expect(guardedTools('.codex/hooks.json', ['Bash'], HEAVY_COMMAND_GUARD)).toEqual(['Bash']);
+});
+
+// A machine runs one local Supabase stack (lib/testing/runner/second-stack.ts); both tools name
+// every shell call `Bash`.
+test('both agent tools run the second-stack guard before every shell call', () => {
+  expect(guardedTools('.claude/settings.json', ['Bash'], SECOND_STACK_GUARD)).toEqual(['Bash']);
+  expect(guardedTools('.codex/hooks.json', ['Bash'], SECOND_STACK_GUARD)).toEqual(['Bash']);
+});
+
+// A thread starts on a machine only while it has room (lib/testing/runner/child-start.ts). Claude
+// names T3 Code's server `t3-code`, Codex `t3_code`, so the matcher leaves the server open. It names
+// only the three tools that start a thread: every other T3 call runs without the measurement.
+test('both agent tools run the child-start guard before each tool that starts a thread, and before no other', () => {
+  const starts = ['delegate_task', 't3_thread_launch', 'create_threads'].flatMap((tool) => [
+    `mcp__t3-code__${tool}`,
+    `mcp__t3_code__${tool}`,
+  ]);
+  const others = [
+    'mcp__t3-code__t3_thread_send',
+    'mcp__t3-code__task_status',
+    'mcp__supabase__execute_sql',
+    'Bash',
+  ];
+  for (const file of ['.claude/settings.json', '.codex/hooks.json']) {
+    expect(guardedTools(file, starts, CHILD_START_GUARD)).toEqual(starts);
+    expect(guardedTools(file, others, CHILD_START_GUARD)).toEqual([]);
+  }
+});
+
+// No branch applies its own migration to the shared local stack
+// (lib/testing/local-stack/shared-stack-migration.ts); both tools name every shell call `Bash`.
+test('both agent tools run the shared stack migration guard before every shell call', () => {
+  expect(guardedTools('.claude/settings.json', ['Bash'], STACK_MIGRATION_GUARD)).toEqual(['Bash']);
+  expect(guardedTools('.codex/hooks.json', ['Bash'], STACK_MIGRATION_GUARD)).toEqual(['Bash']);
+});
+
+// A simulator or emulator boots only with measured room (lib/testing/runner/device-room.ts); T3's
+// device tool is `device_open` on its `t3-code` MCP server in both tools.
+test('both agent tools run the device guard before every device_open', () => {
+  const tools = ['mcp__t3-code__device_open'];
+  expect(guardedTools('.claude/settings.json', tools, DEVICE_GUARD)).toEqual(tools);
+  expect(guardedTools('.codex/hooks.json', tools, DEVICE_GUARD)).toEqual(tools);
+});
+
+test('Claude denies its file tools the Boat API key, the Boat CLI config and the hand-out secret', () => {
+  const settings = z
+    .object({ permissions: z.object({ deny: z.array(z.string()) }) })
+    .parse(JSON.parse(readFileSync(resolve(repositoryRoot, '.claude/settings.json'), 'utf8')));
+  for (const rule of [
+    'Read(~/.config/werkflow/boat-api-key)',
+    'Read(~/.config/ascii/boat/**)',
+    'Edit(~/.config/werkflow/boat-api-key)',
+    'Edit(~/.config/ascii/boat/**)',
+    'Read(~/.config/werkflow/problem-report-handout.env)',
+    'Edit(~/.config/werkflow/problem-report-handout.env)',
+  ])
+    expect(settings.permissions.deny).toContain(rule);
+});

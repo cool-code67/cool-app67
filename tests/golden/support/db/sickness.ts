@@ -1,0 +1,141 @@
+import { toVacationDayPortion } from '../../../../lib/vacation/types';
+import { createAdminClient } from './shared';
+
+// P1-08: latest sickness report of a record plus its append-only event trail —
+// the DB-side proof for reported facts, corrections, evidence bookkeeping,
+// and traceable cancellation.
+export type SicknessReportDbState = {
+  id: string;
+  status: string;
+  absenceType: string;
+  startDate: string;
+  endDate: string | null;
+  dayPortion: string;
+  evidenceRequired: boolean;
+  evidenceStatus: string;
+  cancellationReason: string | null;
+  eventTypes: string[];
+};
+
+export async function getLatestSicknessReportState(
+  orgId: string,
+  employeeRecordId: string,
+): Promise<SicknessReportDbState> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('sickness_reports')
+    .select(
+      'id, status, absence_type, start_date, end_date, day_portion, evidence_required, evidence_status, cancellation_reason',
+    )
+    .eq('organization_id', orgId)
+    .eq('employee_record_id', employeeRecordId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  if (error || !data) {
+    throw new Error(`No sickness report found for record ${employeeRecordId}: ${error?.message}`);
+  }
+
+  const { data: events, error: eventsError } = await admin
+    .from('sickness_report_events')
+    .select('event_type, created_at')
+    .eq('sickness_report_id', data.id)
+    .order('created_at', { ascending: true });
+  if (eventsError) {
+    throw new Error(`Sickness event query failed: ${eventsError.message}`);
+  }
+
+  return {
+    id: data.id,
+    status: data.status,
+    absenceType: data.absence_type,
+    startDate: data.start_date,
+    endDate: data.end_date ?? null,
+    dayPortion: data.day_portion,
+    evidenceRequired: data.evidence_required,
+    evidenceStatus: data.evidence_status,
+    cancellationReason: data.cancellation_reason ?? null,
+    eventTypes: (events ?? []).map((event) => event.event_type),
+  };
+}
+
+/** A reported full-day sickness, written like the self-report action. Setup only. */
+export async function seedSicknessReport(input: {
+  organizationId: string;
+  employeeRecordId: string;
+  reportedBy: string;
+  startDate: string;
+  endDate: string;
+}): Promise<void> {
+  const { error } = await createAdminClient().from('sickness_reports').insert({
+    organization_id: input.organizationId,
+    employee_record_id: input.employeeRecordId,
+    absence_type: 'krankheit',
+    start_date: input.startDate,
+    end_date: input.endDate,
+    day_portion: 'full',
+    status: 'reported',
+    evidence_required: false,
+    evidence_status: 'not_required',
+    reported_by: input.reportedBy,
+  });
+  if (error) throw new Error(`Sickness report setup failed: ${error.message}`);
+}
+
+// P1-08: the effective absence spans (approved vacation + active sickness,
+// open ends clamped to the window) for one record — the same inputs the app's
+// target loaders build, so spec Soll expectations can never drift from the
+// product's own arithmetic.
+export async function getAbsenceSpansForRecord(
+  orgId: string,
+  employeeRecordId: string,
+  windowStartIso: string,
+  windowEndIso: string,
+): Promise<
+  Array<{
+    type: 'vacation' | 'sickness';
+    startDate: string;
+    endDate: string;
+    dayPortion: 'full' | 'half_day';
+  }>
+> {
+  const admin = createAdminClient();
+  const [vacationResult, sicknessResult] = await Promise.all([
+    admin
+      .from('vacation_requests')
+      .select('start_date, end_date, day_portion')
+      .eq('organization_id', orgId)
+      .eq('employee_record_id', employeeRecordId)
+      .eq('status', 'approved')
+      .lte('start_date', windowEndIso)
+      .gte('end_date', windowStartIso),
+    admin
+      .from('sickness_reports')
+      .select('start_date, end_date, day_portion')
+      .eq('organization_id', orgId)
+      .eq('employee_record_id', employeeRecordId)
+      .eq('status', 'reported')
+      .lte('start_date', windowEndIso)
+      .or(`end_date.gte.${windowStartIso},end_date.is.null`),
+  ]);
+  if (vacationResult.error || sicknessResult.error) {
+    throw new Error(
+      `Absence span query failed: ${vacationResult.error?.message ?? sicknessResult.error?.message}`,
+    );
+  }
+
+  return [
+    ...(vacationResult.data ?? []).map((row) => ({
+      type: 'vacation' as const,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      dayPortion: toVacationDayPortion(row.day_portion),
+    })),
+    ...(sicknessResult.data ?? []).map((row) => ({
+      type: 'sickness' as const,
+      startDate: row.start_date,
+      endDate: row.end_date ?? windowEndIso,
+      dayPortion: toVacationDayPortion(row.day_portion),
+    })),
+  ];
+}

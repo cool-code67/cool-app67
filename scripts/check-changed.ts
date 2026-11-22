@@ -1,0 +1,108 @@
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { CHANGED_CHECK_BASE, changedCheckPlan, unitTestSourcesOf } from '../lib/testing/runner/changed-check';
+import { acquireHeavySlot } from '../lib/testing/runner/heavy-slot';
+
+// `bun run check:changed`: the fast check an agent runs before it pushes
+// (docs/technical/testing.md, "Run checks while you work"). It formats and
+// lints the files that differ from the merge base, typechecks and looks for
+// unused code across the repository, checks that an added migration sorts
+// after main's newest, brings the shared local stack to main and fails while
+// it holds anything main lacks, and runs the unit tests beside the changed files.
+// Committed, uncommitted and untracked changes all count.
+// It holds one of the machine's heavy slots until it exits (lib/testing/runner/heavy-slot.ts).
+await acquireHeavySlot('check:changed');
+const repositoryRoot = resolve(import.meta.dir, '..');
+
+function git(...args: string[]): string[] {
+  return execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+    .split('\0')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+const [base] = git('merge-base', 'HEAD', CHANGED_CHECK_BASE);
+if (!base) throw new Error(`No merge base with ${CHANGED_CHECK_BASE}; fetch it first.`);
+const present = (file: string): boolean => existsSync(resolve(repositoryRoot, file));
+const changed = [
+  ...new Set([
+    ...git('diff', '--name-only', '--no-renames', '--diff-filter=d', '-z', base, '--'),
+    ...git('ls-files', '--others', '--exclude-standard', '-z'),
+  ]),
+].filter(present);
+const unitTestSources = unitTestSourcesOf(
+  git('ls-files', '-z', 'lib/*.test.ts', 'lib/*.test.tsx', 'lib/*.test.mjs'),
+  present,
+  (file) => readFileSync(resolve(repositoryRoot, file), 'utf8'),
+);
+const plan = changedCheckPlan(changed, present, unitTestSources);
+
+type Outcome = { name: string; code: number; seconds: number; output: string };
+
+function step(name: string, command: readonly string[]): Promise<Outcome> {
+  const started = Date.now();
+  const [executable, ...args] = command;
+  if (!executable) throw new Error(`Step ${name} has no command.`);
+  return new Promise((resolveStep, reject) => {
+    const child = spawn(executable, args, { cwd: repositoryRoot, env: process.env });
+    let output = '';
+    child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    child.once('error', reject);
+    child.once('close', (code) =>
+      resolveStep({ name, code: code ?? 1, seconds: (Date.now() - started) / 1000, output }),
+    );
+  });
+}
+
+const bin = (tool: string): string => resolve(repositoryRoot, 'node_modules/.bin', tool);
+const started = Date.now();
+console.info(
+  `[check:changed] ${changed.length} changed files since ${base.slice(0, 12)} (merge base with ${CHANGED_CHECK_BASE}); ${plan.unitTests.length} unit test files.`,
+);
+const outcomes = await Promise.all([
+  plan.formatted.length
+    ? step('format', [
+        bin('prettier'),
+        '--check',
+        '--log-level',
+        'warn',
+        '--ignore-unknown',
+        ...plan.formatted,
+      ])
+    : null,
+  plan.linted.length
+    ? step('lint', [bin('eslint'), '--max-warnings', '0', '--no-warn-ignored', ...plan.linted])
+    : null,
+  // Cold on purpose: TypeScript 7.0.2's incremental build info keeps stale diagnostics after a JSON
+  // module or a lib/target change (microsoft/TypeScript#64025, #64552). A cold run takes about 10 s.
+  step('typecheck', [
+    'node',
+    resolve(repositoryRoot, 'node_modules/typescript7/bin/tsc'),
+    '--noEmit',
+    '--incremental',
+    'false',
+  ]),
+  step('unused', [bin('knip'), '--no-progress', '--cache']),
+  step('migration order', [process.execPath, 'scripts/check-migration-order.ts']),
+  // The stack every worktree shares is main at some commit (lib/testing/local-stack/stack-sync.ts).
+  step('shared stack', [process.execPath, 'scripts/local-stack.ts', 'sync', '--no-wait']),
+  plan.unitTests.length
+    ? step('unit', [process.execPath, 'scripts/run-unit-tests.ts', ...plan.unitTests])
+    : null,
+]);
+let failed = false;
+for (const outcome of outcomes) {
+  if (!outcome) continue;
+  const passed = outcome.code === 0;
+  failed ||= !passed;
+  if (!passed) console.error(outcome.output.trim());
+  console.info(
+    `[check:changed] ${passed ? 'pass' : 'FAIL'} ${outcome.name} (${outcome.seconds.toFixed(1)} s)`,
+  );
+}
+console.info(
+  `[check:changed] ${failed ? 'failed' : 'passed'} in ${((Date.now() - started) / 1000).toFixed(1)} s.`,
+);
+process.exitCode = failed ? 1 : 0;

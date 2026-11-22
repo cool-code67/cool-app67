@@ -1,0 +1,622 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { jsonRecordOrEmpty } from '../../../../lib/supabase/json';
+import { rpcArgs } from '../../../../lib/supabase/rpc-args';
+import { createAdminClient, persisted, type Persisted } from './shared';
+
+export type EmployeeRecordState = {
+  id: string;
+  userId: string | null;
+  employeeNumber: string | null;
+  entryDate: string | null;
+  exitDate: string | null;
+  recordCountForUser: number;
+  // Null once the membership was removed (e.g. the destructive-removal check).
+  membershipJoinedAt: string | null;
+};
+
+// P1-03: DB-side proof for personnel facts the UI cannot show directly —
+// exactly one record per person per organization, the backfilled entry date,
+// and the exit marking after a destructive membership removal.
+export async function getEmployeeRecordStateByUser(
+  orgId: string,
+  userId: string,
+): Promise<EmployeeRecordState> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('employee_records')
+    .select('id, user_id, employee_number, entry_date, exit_date')
+    .eq('organization_id', orgId)
+    .eq('user_id', userId);
+
+  if (error || !data || data.length === 0) {
+    throw new Error(`No employee record found for user ${userId}: ${error?.message}`);
+  }
+
+  const { data: membership } = await admin
+    .from('organization_members')
+    .select('joined_at')
+    .eq('organization_id', orgId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const [row] = data;
+  if (!row) throw new Error(`No employee record found for user ${userId}`);
+  return {
+    id: row.id,
+    userId: row.user_id ?? null,
+    employeeNumber: row.employee_number ?? null,
+    entryDate: row.entry_date ?? null,
+    exitDate: row.exit_date ?? null,
+    recordCountForUser: data.length,
+    membershipJoinedAt: membership?.joined_at ?? null,
+  };
+}
+
+export type EmployeeRecordEventState = {
+  eventType: string;
+  eventPayload: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: string;
+};
+
+export async function getEmployeeRecordEventStates(
+  orgId: string,
+  employeeRecordId: string,
+): Promise<EmployeeRecordEventState[]> {
+  const { data, error } = await createAdminClient()
+    .from('employee_record_events')
+    .select('event_type, event_payload, created_by, created_at')
+    .eq('organization_id', orgId)
+    .eq('employee_record_id', employeeRecordId)
+    .order('created_at', { ascending: true });
+  if (error) {
+    throw new Error(`Employee record events query failed: ${error.message}`);
+  }
+
+  return (data ?? []).map((event) => ({
+    eventType: event.event_type,
+    eventPayload: jsonRecordOrEmpty(event.event_payload),
+    createdBy: event.created_by ?? null,
+    createdAt: event.created_at,
+  }));
+}
+
+export type ResponsibilityConfigurationState = {
+  id: string;
+  mode: string;
+  holderEmployeeRecordIds: string[];
+};
+
+export async function getLatestResponsibilityConfigurationState(
+  orgId: string,
+  responsibility: 'time_approval' | 'leave_approval',
+): Promise<ResponsibilityConfigurationState> {
+  const admin = createAdminClient();
+  const { data: configuration, error } = await admin
+    .from('organization_responsibility_configurations')
+    .select('id, mode')
+    .eq('organization_id', orgId)
+    .eq('responsibility', responsibility)
+    .order('effective_from', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  if (error || !configuration) {
+    throw new Error(`Responsibility configuration missing: ${error?.message}`);
+  }
+
+  const { data: assignments, error: assignmentError } = await admin
+    .from('organization_responsibility_assignments')
+    .select('employee_record_id')
+    .eq('configuration_id', configuration.id);
+  if (assignmentError) {
+    throw new Error(`Responsibility assignments query failed: ${assignmentError.message}`);
+  }
+
+  return {
+    id: configuration.id,
+    mode: configuration.mode,
+    holderEmployeeRecordIds: (assignments ?? []).map((assignment) => assignment.employee_record_id).sort(),
+  };
+}
+
+/** Stores one employment condition version, so a test owns the entitlement it builds on. */
+export async function seedEmploymentCondition(input: {
+  organizationId: string;
+  employeeRecordId: string;
+  actorUserId: string;
+  validFrom: string;
+  employmentType: 'vollzeit' | 'teilzeit' | 'ausbildung' | 'minijob' | 'sonstiges';
+  weeklyHours: number | null;
+  vacationDaysPerYear: number | null;
+  note: string;
+}): Promise<void> {
+  const { error } = await createAdminClient().from('employment_conditions').upsert(
+    {
+      organization_id: input.organizationId,
+      employee_record_id: input.employeeRecordId,
+      valid_from: input.validFrom,
+      employment_type: input.employmentType,
+      weekly_hours: input.weeklyHours,
+      vacation_days_per_year: input.vacationDaysPerYear,
+      note: input.note,
+      created_by: input.actorUserId,
+    },
+    { onConflict: 'employee_record_id,valid_from' },
+  );
+  if (error) throw new Error(`Employment condition setup failed: ${error.message}`);
+}
+
+/**
+ * Stores an onboarding plan with one open, non-blocking requirement, so the person's own
+ * personnel tasks show on /aufgaben. Setup only; returns the requirement id.
+ */
+export async function seedOpenOnboardingRequirement(input: {
+  organizationId: string;
+  employeeRecordId: string;
+  actorUserId: string;
+  planName: string;
+  requirementTitle: string;
+}): Promise<string> {
+  const admin = createAdminClient();
+  const { data: plan, error: planError } = await admin
+    .from('personnel_onboarding_plans')
+    .insert({
+      organization_id: input.organizationId,
+      employee_record_id: input.employeeRecordId,
+      name: input.planName,
+      created_by: input.actorUserId,
+    })
+    .select('id')
+    .single();
+  if (planError || !plan) throw new Error(`Onboarding plan setup failed: ${planError?.message}`);
+  const { data: requirement, error: requirementError } = await admin
+    .from('personnel_onboarding_requirements')
+    .insert({
+      organization_id: input.organizationId,
+      plan_id: plan.id,
+      employee_record_id: input.employeeRecordId,
+      requirement_type: 'document',
+      title: input.requirementTitle,
+      sort_order: 0,
+      created_by: input.actorUserId,
+    })
+    .select('id')
+    .single();
+  if (requirementError || !requirement)
+    throw new Error(`Onboarding requirement setup failed: ${requirementError?.message}`);
+  return requirement.id;
+}
+
+/**
+ * Pins one responsibility to the role default or to named holders through the product's own
+ * configuration function, so a test owns its starting state instead of inheriting another test's.
+ */
+export async function setResponsibilityHolders(input: {
+  organizationId: string;
+  ownerUserId: string;
+  responsibility: 'time_approval' | 'leave_approval';
+  holderEmployeeRecordIds: readonly string[] | 'role_default';
+}): Promise<void> {
+  const admin = createAdminClient();
+  const { data: current, error: currentError } = await admin
+    .from('organization_responsibility_configurations')
+    .select('id')
+    .eq('organization_id', input.organizationId)
+    .eq('responsibility', input.responsibility)
+    .order('effective_from', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  // Membership triggers record a role-default configuration for every organization.
+  if (currentError || !current)
+    throw new Error(`Responsibility setup lookup failed: ${currentError?.message ?? 'no configuration'}`);
+  const roleDefault = input.holderEmployeeRecordIds === 'role_default';
+  const { error } = await admin.rpc('apply_responsibility_configuration', {
+    p_organization_id: input.organizationId,
+    p_responsibility: input.responsibility,
+    p_mode: roleDefault ? 'role_default' : 'selected',
+    p_employee_record_ids: roleDefault ? [] : [...input.holderEmployeeRecordIds],
+    p_actor_id: input.ownerUserId,
+    p_expected_configuration_id: current.id,
+  });
+  if (error) throw new Error(`Responsibility setup failed: ${error.message}`);
+}
+
+/**
+ * Every employee record of the organization gets one work schedule, so planning
+ * for a person no longer raises the "no schedule" warning that needs a reason.
+ */
+export async function giveEmployeesWorkSchedules(input: {
+  organizationId: string;
+  actorUserId: string;
+  validFrom: string;
+  weekdayMinutes: number;
+  weekendMinutes: number;
+  note: string;
+}): Promise<void> {
+  const admin = createAdminClient();
+  const { data: employees, error: employeeError } = await admin
+    .from('employee_records')
+    .select('id')
+    .eq('organization_id', input.organizationId);
+  if (employeeError || !employees?.length)
+    throw new Error(`Work schedule setup failed: ${employeeError?.message ?? 'no employees'}`);
+  const { error } = await admin.from('work_schedules').upsert(
+    employees.map((employee) => ({
+      organization_id: input.organizationId,
+      employee_record_id: employee.id,
+      valid_from: input.validFrom,
+      monday_minutes: input.weekdayMinutes,
+      tuesday_minutes: input.weekdayMinutes,
+      wednesday_minutes: input.weekdayMinutes,
+      thursday_minutes: input.weekdayMinutes,
+      friday_minutes: input.weekdayMinutes,
+      saturday_minutes: input.weekendMinutes,
+      sunday_minutes: input.weekendMinutes,
+      note: input.note,
+      created_by: input.actorUserId,
+    })),
+    { onConflict: 'employee_record_id,valid_from' },
+  );
+  if (error) throw new Error(`Work schedule setup failed: ${error.message}`);
+}
+
+/** Moves the entry date back so time on `date` belongs to an active employment; never moves it forward. */
+export async function ensureEmployedSince(input: {
+  organizationId: string;
+  userIds: readonly string[];
+  date: string;
+}): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('employee_records')
+    .update({ entry_date: input.date })
+    .eq('organization_id', input.organizationId)
+    .in('user_id', [...input.userIds])
+    .or(`entry_date.is.null,entry_date.gt.${input.date}`);
+  if (error) throw new Error(`Employment backdating failed: ${error.message}`);
+}
+
+export async function prepareP123PersonnelPrerequisites(input: {
+  organizationId: string;
+  actorUserId: string;
+  validFrom: string;
+}): Promise<Array<{ id: string; userId: string | null }>> {
+  const admin = createAdminClient();
+  const { data: employees, error: employeeError } = await admin
+    .from('employee_records')
+    .select('id, user_id, employee_number')
+    .eq('organization_id', input.organizationId)
+    .order('id');
+  if (employeeError || !employees?.length)
+    throw new Error(`P1-23 employee setup failed: ${employeeError?.message ?? 'no employees'}`);
+  const { error: dateError } = await admin
+    .from('employee_records')
+    .update({ entry_date: input.validFrom })
+    .eq('organization_id', input.organizationId);
+  if (dateError) throw new Error(`P1-23 entry-date setup failed: ${dateError.message}`);
+  for (const employee of employees) {
+    if (employee.employee_number) continue;
+    const { error: numberError } = await admin
+      .from('employee_records')
+      .update({ employee_number: `P123-${employee.id.slice(0, 8)}` })
+      .eq('id', employee.id)
+      .eq('organization_id', input.organizationId);
+    if (numberError) throw new Error(`P1-23 employee-number setup failed: ${numberError.message}`);
+  }
+  const weekdayMinutes = [480, 420, 360, 240];
+  const { error: scheduleError } = await admin.from('work_schedules').upsert(
+    employees.map((employee, index) => {
+      const dailyMinutes = weekdayMinutes[index % weekdayMinutes.length] ?? 480;
+      return {
+        organization_id: input.organizationId,
+        employee_record_id: employee.id,
+        valid_from: input.validFrom,
+        monday_minutes: dailyMinutes,
+        tuesday_minutes: dailyMinutes,
+        wednesday_minutes: dailyMinutes,
+        thursday_minutes: dailyMinutes,
+        friday_minutes: dailyMinutes,
+        saturday_minutes: 0,
+        sunday_minutes: 0,
+        note: 'P1-23 acceptance prerequisite',
+        created_by: input.actorUserId,
+      };
+    }),
+    { onConflict: 'employee_record_id,valid_from' },
+  );
+  if (scheduleError) throw new Error(`P1-23 schedule setup failed: ${scheduleError.message}`);
+  return employees.map((employee) => ({
+    id: employee.id,
+    userId: employee.user_id,
+  }));
+}
+
+export async function openRemainingP123Accounts(input: {
+  organizationId: string;
+  actorUserId: string;
+  openedOn: string;
+}): Promise<void> {
+  const admin = createAdminClient();
+  const [{ data: employees, error: employeeError }, { data: accounts, error: accountError }] =
+    await Promise.all([
+      admin.from('employee_records').select('id').eq('organization_id', input.organizationId).order('id'),
+      admin.from('time_accounts').select('employee_record_id').eq('organization_id', input.organizationId),
+    ]);
+  if (employeeError || accountError)
+    throw new Error(
+      `P1-23 account fixture lookup failed: ${employeeError?.message ?? accountError?.message}`,
+    );
+  const existing = new Set((accounts ?? []).map((account) => account.employee_record_id));
+  for (const employee of employees ?? []) {
+    if (existing.has(employee.id)) continue;
+    const requestHash = createHash('sha256')
+      .update(`${input.organizationId}:${employee.id}:${input.openedOn}`)
+      .digest('hex');
+    const operationId = `${requestHash.slice(0, 8)}-${requestHash.slice(8, 12)}-${requestHash.slice(12, 16)}-${requestHash.slice(16, 20)}-${requestHash.slice(20, 32)}`;
+    const { error } = await admin.rpc('open_time_account', {
+      p_organization_id: input.organizationId,
+      p_employee_record_id: employee.id,
+      p_opening_minutes: 0,
+      p_opened_on: input.openedOn,
+      p_reason: 'P1-23 acceptance opening',
+      p_actor_id: input.actorUserId,
+      p_operation_id: operationId,
+      p_request_hash: requestHash,
+    });
+    // The UI's own opening may commit between the lookup and this call: an account that
+    // exists now is the precondition this helper establishes, not a failure.
+    if (error && !error.message.includes('time_accounts_employee_unique'))
+      throw new Error(`P1-23 account fixture RPC failed: ${error.message}`);
+  }
+}
+
+export async function getP124State(organizationId: string) {
+  const admin = createAdminClient();
+  const [
+    access,
+    accessTransitions,
+    employment,
+    employmentTransitions,
+    plans,
+    requirements,
+    protectedDocuments,
+    releases,
+    acknowledgements,
+    operations,
+    events,
+  ] = await Promise.all([
+    admin
+      .from('personnel_access_lifecycles')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at'),
+    admin
+      .from('personnel_access_transitions')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at')
+      .order('id'),
+    admin
+      .from('personnel_employment_lifecycles')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at'),
+    admin
+      .from('personnel_employment_transitions')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at')
+      .order('id'),
+    admin
+      .from('personnel_onboarding_plans')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at'),
+    admin
+      .from('personnel_onboarding_requirements')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at')
+      .order('id'),
+    admin
+      .from('personnel_documents')
+      .select('*, documents!inner(display_name)')
+      .eq('organization_id', organizationId)
+      .order('classified_at')
+      .order('id'),
+    admin
+      .from('personnel_document_releases')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('released_at')
+      .order('id'),
+    admin
+      .from('personnel_acknowledgements')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('acknowledged_at'),
+    admin
+      .from('personnel_lifecycle_operations')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at'),
+    admin
+      .from('employee_record_events')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at')
+      .order('id'),
+  ]);
+  const results = [
+    access,
+    accessTransitions,
+    employment,
+    employmentTransitions,
+    plans,
+    requirements,
+    protectedDocuments,
+    releases,
+    acknowledgements,
+    operations,
+    events,
+  ];
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw new Error(`P1-24 state lookup failed: ${failed.error.message}`);
+  return {
+    access: access.data ?? [],
+    accessTransitions: accessTransitions.data ?? [],
+    employment: employment.data ?? [],
+    employmentTransitions: employmentTransitions.data ?? [],
+    plans: plans.data ?? [],
+    requirements: requirements.data ?? [],
+    protectedDocuments: protectedDocuments.data ?? [],
+    releases: releases.data ?? [],
+    acknowledgements: acknowledgements.data ?? [],
+    operations: operations.data ?? [],
+    events: events.data ?? [],
+  };
+}
+
+/**
+ * A personnel record without app access, written like the "Personalakte anlegen" action
+ * (record plus its `created` event). Setup only; audit P1-24 creates one through the dialog.
+ */
+export async function seedNoLoginPersonnelRecord(input: {
+  organizationId: string;
+  actorUserId: string;
+  firstName: string;
+  lastName: string;
+  entryDate: string;
+}): Promise<string> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('employee_records')
+    .insert({
+      organization_id: input.organizationId,
+      first_name: input.firstName,
+      last_name: input.lastName,
+      entry_date: input.entryDate,
+      created_by: input.actorUserId,
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(`No-login personnel record setup failed: ${error.message}`);
+  const { error: eventError } = await admin.from('employee_record_events').insert({
+    organization_id: input.organizationId,
+    employee_record_id: data.id,
+    event_type: 'created',
+    event_payload: {
+      first_name: input.firstName,
+      last_name: input.lastName,
+      entry_date: input.entryDate,
+    },
+    created_by: input.actorUserId,
+  });
+  if (eventError) throw new Error(`No-login personnel event setup failed: ${eventError.message}`);
+  return data.id;
+}
+
+/** One work schedule version of one personnel record, full days Monday to Friday. Setup only. */
+export async function seedWorkSchedule(input: {
+  organizationId: string;
+  employeeRecordId: string;
+  actorUserId: string;
+  validFrom: string;
+  weekdayMinutes: number;
+  note: string;
+}): Promise<void> {
+  const { error } = await createAdminClient().from('work_schedules').upsert(
+    {
+      organization_id: input.organizationId,
+      employee_record_id: input.employeeRecordId,
+      valid_from: input.validFrom,
+      monday_minutes: input.weekdayMinutes,
+      tuesday_minutes: input.weekdayMinutes,
+      wednesday_minutes: input.weekdayMinutes,
+      thursday_minutes: input.weekdayMinutes,
+      friday_minutes: input.weekdayMinutes,
+      saturday_minutes: 0,
+      sunday_minutes: 0,
+      note: input.note,
+      created_by: input.actorUserId,
+    },
+    { onConflict: 'employee_record_id,valid_from' },
+  );
+  if (error) throw new Error(`Work schedule setup failed: ${error.message}`);
+}
+
+/** An invitation in a given state, written without sending an email. Setup only. */
+export async function seedOrganizationInvite(input: {
+  organizationId: string;
+  email: string;
+  status: 'pending' | 'cancelled';
+}): Promise<string> {
+  const { data, error } = await createAdminClient()
+    .from('organization_invites')
+    .insert({
+      organization_id: input.organizationId,
+      email: input.email.toLowerCase(),
+      invite_code: randomUUID().replaceAll('-', ''),
+      invited_role: 'employee',
+      status: input.status,
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(`Invitation setup failed: ${error.message}`);
+  return data.id;
+}
+
+/** An onboarding plan, created through the product's own function like the plan dialog. Setup only. */
+export async function seedPersonnelOnboardingPlan(input: {
+  organizationId: string;
+  employeeRecordId: string;
+  actorUserId: string;
+  name: string;
+  templateVersionId: string | null;
+  targetStartDate: string | null;
+}): Promise<string> {
+  const request = { employeeRecordId: input.employeeRecordId, name: input.name, operationId: randomUUID() };
+  const { data, error } = await createAdminClient().rpc(
+    'create_personnel_onboarding_plan',
+    // The function takes null for a plan without a template or a start date (as in the plan action).
+    rpcArgs('create_personnel_onboarding_plan', {
+      p_actor_id: input.actorUserId,
+      p_organization_id: input.organizationId,
+      p_employee_record_id: input.employeeRecordId,
+      p_template_version_id: input.templateVersionId,
+      p_name: input.name,
+      p_target_start_date: input.targetStartDate,
+      p_operation_id: request.operationId,
+      p_request_hash: createHash('sha256').update(JSON.stringify(request)).digest('hex'),
+    }),
+  );
+  if (error || !data) throw new Error(`Onboarding plan setup failed: ${error?.message}`);
+  return data;
+}
+
+export type PersistedEmployeeRecord = Persisted<{
+  id: string;
+  organizationId: string;
+  firstName: string | null;
+  lastName: string | null;
+  employeeNumber: string | null;
+}>;
+
+/** The personnel record a dialog just created, read back by the id its detail URL carries. */
+export async function getEmployeeRecordById(id: string): Promise<PersistedEmployeeRecord> {
+  const { data, error } = await createAdminClient()
+    .from('employee_records')
+    .select('id, organization_id, first_name, last_name, employee_number')
+    .eq('id', id)
+    .single();
+  if (error) throw new Error(`Employee record ${id} lookup failed: ${error.message}`);
+  return persisted({
+    id: data.id,
+    organizationId: data.organization_id,
+    firstName: data.first_name,
+    lastName: data.last_name,
+    employeeNumber: data.employee_number,
+  });
+}

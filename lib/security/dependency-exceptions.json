@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "dependencyDigest": "0d5c6a0e39f28955925366a66adb69f0d8de198288933705f904b263394e53b7",
+  "exceptions": [
+    {
+      "package": "minimatch",
+      "version": "9.0.9",
+      "advisory": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+      "severity": "moderate",
+      "paths": ["@typescript-eslint/typescript-estree/minimatch"],
+      "reviewedOn": "2026-10-31",
+      "expiresOn": "2026-11-30",
+      "rationale": "Potential denial of service through glob pattern amplification (globparts). The affected minimatch 9.0.9 is installed only through @typescript-eslint/typescript-estree, part of the lint toolchain (typescript-eslint, @typescript-eslint/parser, eslint-config-next), all dev dependencies, and never runs in the deployed application; the only patterns it receives come from the repository configuration. Only minimatch 11.0.1 and later fix it, a major version typescript-estree does not accept. Accepted by the owner on 2026-10-31 for 30 days; an agent may renew it for 30 days after a re-review while every path stays in the lint toolchain (a path into the deployed application needs the owner). Remove it as soon as typescript-eslint accepts a fixed minimatch.",
+      "evidence": [
+        "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+        "bun audit on 2026-11-05: the advisory now covers >=7.0.0 <11.0.1, so minimatch 3.1.5 is no longer affected and its exception was removed.",
+        "npm registry on 2026-10-31: minimatch 11.0.3 is the latest; @typescript-eslint/typescript-estree 8.47.0 requires ^9.0.4.",
+        "bun pm why minimatch@9.0.9 on 2026-11-05: it comes through @typescript-eslint/typescript-estree 8.47.0 (typescript-eslint, @typescript-eslint/parser, eslint-config-next 16.3.6), and every path ends in a dev dependency.",
+        "Re-reviewed on 2026-11-07 for a patched @supabase/ssr 0.7.0 (werk-flow/werkflow-planning#232): bun pm why minimatch@9.0.9 still shows only @typescript-eslint/typescript-estree 8.47.0, every path ending in a dev dependency.",
+        "Re-reviewed on 2026-11-08 for @vercel/functions 3.10.6 (werk-flow/werkflow-planning#288): bun pm why minimatch@9.0.9 still shows only @typescript-eslint/typescript-estree 8.47.0, every path ending in a dev dependency.",
+        "Re-reviewed on 2026-11-09 for the dev dependency fake-indexeddb 6.2.6, which has no dependencies (werk-flow/werkflow-planning#318): bun pm why minimatch@9.0.9 still shows only @typescript-eslint/typescript-estree 8.47.0, every path ending in a dev dependency.",
+        "Re-reviewed on 2026-11-12 for pdf-lib 1.17.1, @pdf-lib/fontkit 1.1.1 and the dev dependency unpdf 1.9.1 (werk-flow/werkflow-planning#377): bun pm why minimatch@9.0.9 still shows only @typescript-eslint/typescript-estree 8.47.0, every path ending in a dev dependency.",
+        "Re-reviewed on 2026-11-14 for saxon-js 2.7.0 (with axios) and the dev dependency xslt3 2.7.0 (werk-flow/werkflow-planning#454): bun pm why minimatch@9.0.9 still shows only @typescript-eslint/typescript-estree 8.47.0, every path ending in a dev dependency.",
+        "Re-reviewed on 2026-11-15 for stripe 23.1.0, which has no dependencies (werk-flow/werkflow-planning#250): bun pm why minimatch@9.0.9 still shows only @typescript-eslint/typescript-estree 8.47.0, every path ending in a dev dependency.",
+        "Re-reviewed on 2026-11-16 for next 16.4.5, which closes GHSA-mfr8-8qww-v76h (werk-flow/werkflow-planning#29): bun pm why minimatch@9.0.9 still shows only @typescript-eslint/typescript-estree 8.47.0, every path ending in a dev dependency."
+      ]
+    },
+    {
+      "package": "picomatch",
+      "version": "4.0.7",
+      "advisory": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+      "severity": "high",
+      "paths": ["picomatch"],
+      "reviewedOn": "2026-11-17",
+      "expiresOn": "2026-12-01",
+      "rationale": "ReDoS through single-branch repeated extglobs. picomatch 4.0.7 and 2.3.2 are installed only through dev tools: knip, tinyglobby (knip; eslint-import-resolver-typescript under eslint-config-next), fdir's optional peer, and micromatch through fast-glob (@typescript-eslint/typescript-estree, @next/eslint-plugin-next). Every path ends in a dev dependency, none runs in the deployed application, and the only patterns they match come from the repository's configuration. The advisory covers <= 4.0.7 with no patched version. Decided by the CI lead on 2026-11-17 without the owner (no personal or customer data is reachable, AGENTS.md \"Decide or ask\"), because the advisory failed every plan; an agent may renew it for 14 days after a re-review while every path stays in a dev tool (a path into the deployed application needs the owner). Remove it as soon as a patched picomatch is released and the tools accept it.",
+      "evidence": [
+        "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+        "https://github.com/advisories/GHSA-fc5q-39xc-vjpf: updated 2026-11-17 15:56:44Z to picomatch <= 4.0.7, no patched version.",
+        "bun run security:dependencies on 2026-11-17: picomatch@4.0.7 (path picomatch) and picomatch@2.3.2 (path micromatch/picomatch) are the only unreviewed findings.",
+        "bun pm why picomatch@4.0.7 on 2026-11-17: knip 6.35.1; tinyglobby 0.2.17 (knip) and 0.2.15 (eslint-import-resolver-typescript 3.10.1, eslint-config-next 16.3.6); optional peer of fdir 6.5.0. Every path ends in a dev dependency.",
+        "bun pm why picomatch@2.3.2 on 2026-11-17: micromatch 4.0.8 through fast-glob 3.3.3 (@typescript-eslint/typescript-estree 8.47.0) and fast-glob 3.3.1 (@next/eslint-plugin-next 16.3.6). Every path ends in a dev dependency."
+      ]
+    },
+    {
+      "package": "picomatch",
+      "version": "2.3.2",
+      "advisory": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+      "severity": "high",
+      "paths": ["micromatch/picomatch"],
+      "reviewedOn": "2026-11-17",
+      "expiresOn": "2026-12-01",
+      "rationale": "ReDoS through single-branch repeated extglobs. picomatch 4.0.7 and 2.3.2 are installed only through dev tools: knip, tinyglobby (knip; eslint-import-resolver-typescript under eslint-config-next), fdir's optional peer, and micromatch through fast-glob (@typescript-eslint/typescript-estree, @next/eslint-plugin-next). Every path ends in a dev dependency, none runs in the deployed application, and the only patterns they match come from the repository's configuration. The advisory covers <= 4.0.7 with no patched version. Decided by the CI lead on 2026-11-17 without the owner (no personal or customer data is reachable, AGENTS.md \"Decide or ask\"), because the advisory failed every plan; an agent may renew it for 14 days after a re-review while every path stays in a dev tool (a path into the deployed application needs the owner). Remove it as soon as a patched picomatch is released and the tools accept it.",
+      "evidence": [
+        "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+        "https://github.com/advisories/GHSA-fc5q-39xc-vjpf: updated 2026-11-17 15:56:44Z to picomatch <= 4.0.7, no patched version.",
+        "bun run security:dependencies on 2026-11-17: picomatch@4.0.7 (path picomatch) and picomatch@2.3.2 (path micromatch/picomatch) are the only unreviewed findings.",
+        "bun pm why picomatch@4.0.7 on 2026-11-17: knip 6.35.1; tinyglobby 0.2.17 (knip) and 0.2.15 (eslint-import-resolver-typescript 3.10.1, eslint-config-next 16.3.6); optional peer of fdir 6.5.0. Every path ends in a dev dependency.",
+        "bun pm why picomatch@2.3.2 on 2026-11-17: micromatch 4.0.8 through fast-glob 3.3.3 (@typescript-eslint/typescript-estree 8.47.0) and fast-glob 3.3.1 (@next/eslint-plugin-next 16.3.6). Every path ends in a dev dependency."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,243 @@
+'use client';
+
+import { DateTimeField } from '@/components/ui/date-time-field';
+import { Field } from '@/components/ui/field';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Constants } from '@/lib/supabase/database.types';
+import {
+  WORK_ARTIFACT_KIND_LABELS,
+  WORK_ARTIFACT_KINDS,
+  type MeasurementLineInput,
+  type WorkArtifactKind,
+  type WorkArtifactVisibility,
+} from '@/lib/work-artifacts/types';
+import type { WorkArtifactFieldState } from './use-work-artifact-editor';
+import type { WorkArtifactContentDraft } from './work-artifact-content';
+import { TextField } from './work-artifact-form-fields';
+import { WorkArtifactChangeWorkFields } from './work-artifact-change-work-fields';
+import {
+  WorkArtifactCustomerFacingFields,
+  WorkArtifactDefectFields,
+  WorkArtifactMeasurementFields,
+  WorkArtifactSiteDiaryFields,
+  WorkArtifactWorkReportFields,
+} from './work-artifact-kind-fields';
+
+type ArtifactFormProps = {
+  kind: WorkArtifactKind;
+  setKind: (value: WorkArtifactKind) => void;
+  lockedKind: boolean;
+  visibility: WorkArtifactVisibility;
+  setVisibility: (value: WorkArtifactVisibility) => void;
+  title: string;
+  setTitle: (value: string) => void;
+  capturedAt: string;
+  setCapturedAt: (value: string) => void;
+  content: WorkArtifactContentDraft;
+  patchContent: (patch: Partial<WorkArtifactContentDraft>) => void;
+  measurementLines: MeasurementLineInput[];
+  setMeasurementLines: (lines: MeasurementLineInput[]) => void;
+  requiresCorrectionReason: boolean;
+  correctionReason: string;
+  correctionReasonError: string | null;
+  setCorrectionReason: (value: string) => void;
+  instructionOptions: Array<{ id: string; label: string }>;
+  fieldState: WorkArtifactFieldState;
+  fieldErrors: Readonly<Record<string, string>>;
+};
+
+export function ArtifactForm({
+  kind,
+  setKind,
+  lockedKind,
+  visibility,
+  setVisibility,
+  title,
+  setTitle,
+  capturedAt,
+  setCapturedAt,
+  content,
+  patchContent,
+  measurementLines,
+  setMeasurementLines,
+  requiresCorrectionReason,
+  correctionReason,
+  correctionReasonError,
+  setCorrectionReason,
+  instructionOptions,
+  fieldState,
+  fieldErrors,
+}: ArtifactFormProps) {
+  return (
+    <div className="space-y-5">
+      <ArtifactKindAndVisibilityFields
+        kind={kind}
+        setKind={setKind}
+        lockedKind={lockedKind}
+        visibility={visibility}
+        setVisibility={setVisibility}
+      />
+      <TextField {...fieldState('title')} label="Titel" value={title} onChange={setTitle} />
+      <Field label="Erfasst am" htmlFor="artifact-captured-date">
+        <DateTimeField
+          value={capturedAt}
+          onChange={setCapturedAt}
+          idPrefix="artifact-captured"
+          dateAriaLabel="Erfassungsdatum"
+        />
+      </Field>
+      <TextField
+        label="Zusammenfassung"
+        value={content.summary}
+        onChange={(value) => patchContent({ summary: value })}
+        textarea
+      />
+      {instructionOptions.length > 0 && (
+        <ArtifactInstructionItemField
+          content={content}
+          patchContent={patchContent}
+          instructionOptions={instructionOptions}
+        />
+      )}
+      <ArtifactKindSpecificFields
+        kind={kind}
+        visibility={visibility}
+        content={content}
+        patchContent={patchContent}
+        measurementLines={measurementLines}
+        setMeasurementLines={setMeasurementLines}
+        fieldState={fieldState}
+        fieldErrors={fieldErrors}
+      />
+      {requiresCorrectionReason && (
+        <TextField
+          id="artifact-correction-reason"
+          label="Grund der neuen Version"
+          value={correctionReason}
+          onChange={setCorrectionReason}
+          error={correctionReasonError}
+          required
+          textarea
+        />
+      )}
+    </div>
+  );
+}
+
+function ArtifactKindAndVisibilityFields({
+  kind,
+  setKind,
+  lockedKind,
+  visibility,
+  setVisibility,
+}: Pick<ArtifactFormProps, 'kind' | 'setKind' | 'lockedKind' | 'visibility' | 'setVisibility'>) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="Art" htmlFor="artifact-kind">
+        <Select
+          value={kind}
+          disabled={lockedKind}
+          onValueChange={(value) => {
+            const nextKind = WORK_ARTIFACT_KINDS.find((candidate) => candidate === value);
+            if (nextKind) setKind(nextKind);
+          }}
+        >
+          <SelectTrigger aria-label="Art des Arbeitsnachweises">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {WORK_ARTIFACT_KINDS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {WORK_ARTIFACT_KIND_LABELS[value]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Sichtbarkeit" htmlFor="artifact-visibility">
+        <Select
+          value={visibility}
+          onValueChange={(value) => {
+            const nextVisibility = Constants.public.Enums.work_artifact_visibility.find(
+              (candidate) => candidate === value,
+            );
+            if (nextVisibility) setVisibility(nextVisibility);
+          }}
+        >
+          <SelectTrigger aria-label="Sichtbarkeit des Arbeitsnachweises">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="internal_only">Nur intern</SelectItem>
+            <SelectItem value="customer_facing">Für Kundendokumentation</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+    </div>
+  );
+}
+
+function ArtifactInstructionItemField({
+  content,
+  patchContent,
+  instructionOptions,
+}: Pick<ArtifactFormProps, 'content' | 'patchContent' | 'instructionOptions'>) {
+  return (
+    <Field label="Zugehörige Aufgabe/Checkliste" htmlFor="artifact-instruction-item">
+      <SearchableSelect
+        ariaLabel="Zugehörige Aufgabe oder Checkliste"
+        options={instructionOptions.map((option) => ({ value: option.id, label: option.label }))}
+        value={content.instructionItemId ?? ''}
+        onChange={(value) => patchContent({ instructionItemId: value || undefined })}
+        allowNone
+        noneLabel="Keine direkte Zuordnung"
+        placeholder="Keine direkte Zuordnung"
+        searchPlaceholder="Eintrag suchen…"
+        emptyMessage="Kein Eintrag gefunden"
+      />
+    </Field>
+  );
+}
+
+function ArtifactKindSpecificFields({
+  kind,
+  visibility,
+  content,
+  patchContent,
+  measurementLines,
+  setMeasurementLines,
+  fieldState,
+  fieldErrors,
+}: Pick<
+  ArtifactFormProps,
+  | 'kind'
+  | 'visibility'
+  | 'content'
+  | 'patchContent'
+  | 'measurementLines'
+  | 'setMeasurementLines'
+  | 'fieldState'
+  | 'fieldErrors'
+>) {
+  const fields = { content, patchContent, fieldState };
+  return (
+    <>
+      {kind === 'site_diary' && <WorkArtifactSiteDiaryFields {...fields} />}
+      {kind === 'work_report' && <WorkArtifactWorkReportFields {...fields} />}
+      {kind === 'measurement' && (
+        <WorkArtifactMeasurementFields
+          {...fields}
+          fieldErrors={fieldErrors}
+          measurementLines={measurementLines}
+          setMeasurementLines={setMeasurementLines}
+        />
+      )}
+      {kind === 'defect' && <WorkArtifactDefectFields {...fields} />}
+      {kind === 'change_work' && <WorkArtifactChangeWorkFields {...fields} />}
+      {visibility === 'customer_facing' && (
+        <WorkArtifactCustomerFacingFields content={content} patchContent={patchContent} />
+      )}
+    </>
+  );
+}

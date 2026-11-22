@@ -1,0 +1,279 @@
+'use client';
+
+import { formatBerlinDateTime as formatDateTime } from '@/lib/utils';
+import { useState, type ComponentProps } from 'react';
+
+import { DetailPageHeader } from '@/components/shared/detail-page-header';
+import { DetailColumns } from '@/components/shared/detail-columns';
+import { PageBody, PageShell } from '@/components/shared/page-shell';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ErrorText } from '@/components/ui/error-text';
+import { ContextualDocumentsSection } from '@/components/dokumente/contextual-documents-section';
+import { RegionLoadError } from '@/components/shared/region-load-error';
+import { useRealtimeRouterRefresh } from '@/hooks/use-realtime-router-refresh';
+import type { RealtimeTable } from '@/lib/realtime/tables';
+import {
+  REQUEST_CATEGORY_LABELS,
+  REQUEST_SOURCE_LABELS,
+  type CallerMatchList,
+  type ClientRequest,
+} from '@/lib/requests/types';
+import type { OrganizationDocument } from '@/lib/documents/types';
+import { RequestHeaderBadges } from './request-badges';
+import { AttachRequestDialog } from './attach-request-dialog';
+import { CloseRequestDialog } from './close-request-dialog';
+import { ConvertRequestDialog } from './convert-request-dialog';
+import { EditRequestDialog } from './edit-request-dialog';
+import { RequestCustomerCard } from './request-customer-card';
+import { RequestFactsCard } from './request-facts-card';
+import type { WorkBillingParties } from '@/lib/billing-parties/types';
+import { RequestHeaderActions } from './request-header-actions';
+import { RequestHistoryCard } from './request-history-card';
+import { RequestMatchFields } from './request-match-fields';
+import { RequestOutcomeNotices } from './request-outcome-notices';
+import { useRequestDetailActions } from './use-request-detail-actions';
+
+export type RequestEventEntry = {
+  id: string;
+  eventType: string;
+  createdAt: string;
+  actorName: string | null;
+};
+
+export type RequestDetailData = {
+  request: ClientRequest;
+  clientName: string | null;
+  siteLabel: string | null;
+  /** The request's work site as one address line, the conversion's default „Ort“. */
+  siteAddress: string | null;
+  contactLabel: string | null;
+  contactPhone: string | null;
+  assigneeName: string | null;
+  /** The promised callback had passed when the page was read. */
+  callbackOverdue: boolean;
+  /** The request's Anlage with the number of its detail page. */
+  equipment: { label: string; equipmentNumber: string } | null;
+  convertedLink: { label: string; href: string | null } | null;
+  /** The existing work the request was attached to. */
+  attachedLink: { label: string; href: string } | null;
+  /** Null when the read failed, so the region shows the failure instead of "none". */
+  documents: OrganizationDocument[] | null;
+  /** Customers the unmatched caller may already be; null when the lookup failed. */
+  callerMatches: CallerMatchList | null;
+  /** Auftraggeber and Rechnungsempfänger; undefined when the read failed, and the card reads them. */
+  billingParties: WorkBillingParties | undefined;
+  /** Null when the read failed, so the region shows the failure instead of "none". */
+  events: RequestEventEntry[] | null;
+  assignees: Array<{ userId: string; name: string }>;
+};
+
+/** Breadcrumbs, title, badges and the header actions of one request. */
+function RequestDetailHeader(props: ComponentProps<typeof RequestHeaderActions>) {
+  const { request, shownStatus } = props;
+  return (
+    <DetailPageHeader
+      breadcrumbs={[{ label: 'Anfragen', href: '/anfragen' }, { label: request.requestNumber || 'Anfrage' }]}
+      title={request.summary}
+      subtitle={`${REQUEST_CATEGORY_LABELS[request.category]} · ${REQUEST_SOURCE_LABELS[request.source]} · Eingegangen am ${formatDateTime(request.receivedAt)}`}
+      badges={<RequestHeaderBadges status={shownStatus} urgency={request.urgency} />}
+      actions={<RequestHeaderActions {...props} />}
+    />
+  );
+}
+
+type RequestDetailSectionsProps = Omit<ComponentProps<typeof RequestCustomerCard>, 'request' | 'data'> & {
+  data: RequestDetailData;
+};
+
+/** Customer and facts side by side, then the documents and the history, each failing on its own. */
+function RequestDetailSections({ data, isEditable, ...customerProps }: RequestDetailSectionsProps) {
+  const { request } = data;
+  return (
+    <>
+      <DetailColumns layout="pair">
+        {/* Customer / caller context */}
+        <RequestCustomerCard request={request} data={data} isEditable={isEditable} {...customerProps} />
+
+        {/* Request facts */}
+        <RequestFactsCard
+          request={request}
+          assigneeName={data.assigneeName}
+          callbackOverdue={data.callbackOverdue}
+          equipment={data.equipment}
+          billingParties={data.billingParties}
+          isEditable={isEditable}
+        />
+      </DetailColumns>
+
+      {data.documents ? (
+        <ContextualDocumentsSection
+          title="Dokumente & Bilder"
+          description="Fotos, Nachrichten oder Unterlagen zur Anfrage. Beim Umwandeln oder Hinzufügen zu bestehender Arbeit werden sie automatisch dort mit verknüpft."
+          documents={data.documents}
+          documentTarget={{ kind: 'request', requestId: request.id }}
+          canUpload={isEditable}
+          canManage
+        />
+      ) : (
+        <RegionLoadError>Dokumente und Bilder konnten nicht geladen werden.</RegionLoadError>
+      )}
+
+      {/* History */}
+      {data.events ? (
+        <RequestHistoryCard events={data.events} />
+      ) : (
+        <RegionLoadError>Der Verlauf der Anfrage konnte nicht geladen werden.</RegionLoadError>
+      )}
+    </>
+  );
+}
+
+/** The one header dialog that is open, if any. */
+type RequestDialog = 'convert' | 'attach' | 'close' | 'edit';
+
+interface RequestDetailDialogsProps {
+  data: RequestDetailData;
+  openDialog: RequestDialog | null;
+  onOpenDialogChange: (dialog: RequestDialog | null) => void;
+  /** Fires after the server confirmed a dialog's change. */
+  onSaved: () => void;
+}
+
+/** The convert, attach, close and edit dialogs the header actions open. */
+function RequestDetailDialogs({ data, openDialog, onOpenDialogChange, onSaved }: RequestDetailDialogsProps) {
+  const openChange = (dialog: RequestDialog) => (open: boolean) => onOpenDialogChange(open ? dialog : null);
+  const { request } = data;
+  return (
+    <>
+      <ConvertRequestDialog
+        request={request}
+        requestClient={
+          request.clientId && data.clientName ? { id: request.clientId, name: data.clientName } : null
+        }
+        requestSiteAddress={data.siteAddress}
+        open={openDialog === 'convert'}
+        onOpenChange={openChange('convert')}
+        onSaved={onSaved}
+      />
+
+      <AttachRequestDialog
+        requestId={request.id}
+        open={openDialog === 'attach'}
+        onOpenChange={openChange('attach')}
+        onSaved={onSaved}
+      />
+
+      <CloseRequestDialog
+        requestId={request.id}
+        open={openDialog === 'close'}
+        onOpenChange={openChange('close')}
+        onSaved={onSaved}
+      />
+
+      <EditRequestDialog
+        request={request}
+        assignees={data.assignees}
+        open={openDialog === 'edit'}
+        onOpenChange={openChange('edit')}
+        onSaved={onSaved}
+      />
+    </>
+  );
+}
+
+/**
+ * Refreshes the page when the request, its documents, its Anlage or, while
+ * the caller is unmatched, the customers and contacts its caller matches
+ * against change.
+ */
+function useRequestLiveUpdates(callerUnmatched: boolean, namesEquipment: boolean): void {
+  const tables: RealtimeTable[] = ['client_requests', 'documents', 'document_links'];
+  if (namesEquipment) tables.push('installed_equipment');
+  if (callerUnmatched) tables.push('clients', 'client_contacts');
+  // One hook, so one burst across these tables refreshes the route once.
+  useRealtimeRouterRefresh({ tables });
+}
+
+export function RequestDetailContent({ data }: { data: RequestDetailData }) {
+  const { request } = data;
+  const actions = useRequestDetailActions(request, (data.callerMatches?.matches.length ?? 0) > 0);
+  const { isPending, shownStatus, markSettling } = actions;
+  const [openDialog, setOpenDialog] = useState<RequestDialog | null>(null);
+
+  const isEditable = request.status === 'offen' || request.status === 'in_klaerung';
+  useRequestLiveUpdates(isEditable && !request.clientId, request.equipmentId !== null);
+
+  return (
+    <PageShell>
+      <RequestDetailHeader
+        request={request}
+        shownStatus={shownStatus}
+        isEditable={isEditable}
+        isPending={isPending}
+        isSettling={actions.isSettling}
+        onConvert={() => setOpenDialog('convert')}
+        onAttach={() => setOpenDialog('attach')}
+        onEdit={() => setOpenDialog('edit')}
+        onStatusToggle={actions.handleStatusToggle}
+        onClose={() => setOpenDialog('close')}
+        onReopen={actions.handleReopen}
+      />
+      {actions.headerError ? (
+        <ErrorText className="mx-4 mt-4 sm:mx-6">{actions.headerError}</ErrorText>
+      ) : null}
+
+      <PageBody maxWidth="content">
+        <div className="space-y-4">
+          <RequestOutcomeNotices
+            request={request}
+            convertedLink={data.convertedLink}
+            attachedLink={data.attachedLink}
+          />
+
+          <RequestDetailSections
+            data={data}
+            isEditable={isEditable}
+            isPending={isPending}
+            promoteArmed={actions.promoteArmed}
+            customerError={actions.customerError}
+            onMatch={() => actions.setMatchOpen(true)}
+            onAssignMatch={actions.handleAssignMatch}
+            onPromote={actions.handlePromote}
+          />
+        </div>
+      </PageBody>
+
+      <RequestDetailDialogs
+        data={data}
+        openDialog={openDialog}
+        onOpenDialogChange={setOpenDialog}
+        onSaved={markSettling}
+      />
+
+      {/* Match an existing customer to an unknown-caller request */}
+      <Dialog open={actions.matchOpen} onOpenChange={actions.handleMatchOpenChange} pending={isPending}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Kunden zuordnen</DialogTitle>
+            <DialogDescription>
+              Die erfassten Anruferdaten bleiben zur Nachvollziehbarkeit an der Anfrage erhalten.
+            </DialogDescription>
+          </DialogHeader>
+          <RequestMatchFields
+            matchClientId={actions.matchClientId}
+            matchSiteId={actions.matchSiteId}
+            matchContactId={actions.matchContactId}
+            matchError={actions.matchError}
+            matchClientError={actions.matchClientError}
+            isPending={isPending}
+            onClientChange={actions.selectMatchClient}
+            onSiteChange={actions.setMatchSiteId}
+            onContactChange={actions.setMatchContactId}
+            onCancel={() => actions.setMatchOpen(false)}
+            onConfirm={actions.handleMatchConfirm}
+          />
+        </DialogContent>
+      </Dialog>
+    </PageShell>
+  );
+}

@@ -1,0 +1,77 @@
+import Link from 'next/link';
+import { Award, Users } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { RegionLoadError } from '@/components/shared/region-load-error';
+import type { PersonnelQualificationSummary } from '@/lib/qualifications/types';
+import { SectionTitle } from '@/components/shared/section-title';
+import { formatGermanDate } from '@/lib/utils';
+
+export type PersonnelQualificationSummaryData = PersonnelQualificationSummary;
+
+export function PersonnelQualificationSummary({ data }: { data: PersonnelQualificationSummaryData | null }) {
+  if (!data) {
+    return (
+      <RegionLoadError title="Teams und Qualifikationen konnten nicht geladen werden">
+        Die übrigen Angaben zur Person bleiben nutzbar. Versuche es in einem Moment erneut.
+      </RegionLoadError>
+    );
+  }
+  return (
+    <Card className="gap-4 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <SectionTitle as="h2">Teams & Qualifikationen</SectionTitle>
+          <p className="text-xs text-muted-foreground">Operative Angaben für die Planung.</p>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/mitarbeiter">Verwalten</Link>
+        </Button>
+      </div>
+      <div className="space-y-2">
+        <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <Users className="size-3.5" />
+          Teams
+        </p>
+        {data.teamNames.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {data.teamNames.map((name) => (
+              <Badge key={name} variant="secondary">
+                {name}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <EmptyState size="compact" title="Keine aktuelle Teamzuordnung." />
+        )}
+      </div>
+      <div className="space-y-2">
+        <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <Award className="size-3.5" />
+          Einträge
+        </p>
+        {data.entries.length > 0 ? (
+          <div className="space-y-2">
+            {data.entries.map(({ definition, record }) => (
+              <div key={record.id} className="rounded-md bg-muted/40 px-3 py-2">
+                <p className="text-sm font-medium">{definition.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatGermanDate(record.validFrom)}
+                  {record.validUntil ? ' – ' + formatGermanDate(record.validUntil) : ''}
+                  {definition.kind === 'certification'
+                    ? ' · ' +
+                      (record.confirmationStatus === 'confirmed' ? 'intern bestätigt' : 'nicht bestätigt')
+                    : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState size="compact" title="Keine Qualifikationen hinterlegt." />
+        )}
+      </div>
+    </Card>
+  );
+}

@@ -1,0 +1,597 @@
+import type { ActionFailure, ActionResult } from '@/lib/action-result';
+import type { ProfileReference } from '@/lib/profile-reference';
+import type { Database } from '@/lib/supabase/database.types';
+import type { AssignmentEvaluation } from '@/lib/qualifications/types';
+import type { PlanningWarningFailure } from '@/lib/planning/conflict-acknowledgement';
+import type { ClientContact, ClientDuplicatesFailure, ClientSite } from '@/lib/clients/types';
+import { constrainedValue } from '@/lib/validation/constrained-value';
+
+// ============================================
+// Database Row / Insert / Update Aliases
+// ============================================
+
+export type ClientRow = Database['public']['Tables']['clients']['Row'];
+
+export type ProjectRow = Database['public']['Tables']['projects']['Row'];
+
+export type JobRow = Database['public']['Tables']['jobs']['Row'];
+
+export type JobAssignmentRow = Database['public']['Tables']['job_assignments']['Row'];
+
+export type JobInstructionItemRow = Database['public']['Tables']['job_instruction_items']['Row'];
+
+// ============================================
+// Enum Types
+// ============================================
+
+export type ClientType = Database['public']['Enums']['client_type'];
+export type JobStatus = Database['public']['Enums']['job_status'];
+export type JobPriority = Database['public']['Enums']['job_priority'];
+export type ProjectStatus = Database['public']['Enums']['project_status'];
+type WorkExecutionState = Database['public']['Enums']['work_execution_state'];
+
+// ============================================
+// Application-Level Types (camelCase)
+// ============================================
+
+export type Client = {
+  id: string;
+  organizationId: string;
+  name: string;
+  clientType: ClientType;
+  customerNumber: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Project = {
+  id: string;
+  organizationId: string;
+  clientId: string | null;
+  name: string;
+  description: string | null;
+  projectNumber: string | null;
+  statusOverride: ProjectStatus | null;
+  executionStateOverride: WorkExecutionState | null;
+  executionVersion: number;
+  executionOverrideReason: string | null;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  siteId: string | null;
+  contactId: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Job = {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  clientId: string | null;
+  jobNumber: string | null;
+  /**
+   * The number the previous system gave the job; searchable, not unique.
+   * Absent when the job has none, so a list of jobs carries no key per row.
+   */
+  sourceNumber?: string;
+  title: string;
+  description: string | null;
+  status: JobStatus;
+  executionState: WorkExecutionState | null;
+  executionVersion: number;
+  priority: JobPriority;
+  plannedDate: string | null;
+  plannedTime: string | null;
+  estimatedDurationMinutes: number | null;
+  plannedWorkingMinutes: number | null;
+  actualCompletionDate: string | null;
+  location: string | null;
+  siteId: string | null;
+  contactId: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type JobAssignment = {
+  id: string;
+  jobId: string;
+  userId: string;
+  assignedBy: string;
+  assignedAt: string;
+};
+
+/** The owner of an instruction list: a job or a project, never both. */
+export type InstructionListOwner =
+  | { jobId: string; projectId?: undefined }
+  | { jobId?: undefined; projectId: string };
+
+export type JobInstructionActor = ProfileReference;
+
+export type JobInstructionItem = {
+  id: string;
+  organizationId: string;
+  jobId: string | null;
+  projectId: string | null;
+  itemKind: 'task' | 'checklist';
+  requirementState: 'required' | 'optional';
+  groupLabel: string | null;
+  notes: string | null;
+  templateApplicationId: string | null;
+  sourceTemplateItemId: string | null;
+  content: string;
+  sortOrder: number;
+  isCompleted: boolean;
+  completionVersion: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  lastStatusChangedBy: string | null;
+  lastStatusChangedAt: string | null;
+};
+
+/** The job's Objekt and contact as the job pages read them; the customer page owns the rest. */
+export type JobSite = Omit<ClientSite, 'sourceNumber'>;
+export type JobContact = Omit<ClientContact, 'siteId' | 'siteRole'>;
+
+export type JobWithDetails = Job & {
+  assignments: JobAssignmentWithProfile[];
+  client: Client | null;
+  project: Pick<Project, 'id' | 'name' | 'projectNumber'> | null;
+  // Loaded by the job detail queries; list builders may omit them.
+  site?: JobSite | null;
+  contact?: JobContact | null;
+  scheduledVisitCount?: number;
+};
+
+export type JobAssignmentWithProfile = JobAssignment & {
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  avatarPath: string | null;
+};
+
+export type ProjectWithDetails = Project & {
+  client: Client | null;
+  jobCount: number;
+  completedJobCount: number;
+  inProgressJobCount: number;
+  parkedJobCount: number;
+};
+
+export type JobInstructionItemWithDetails = JobInstructionItem & {
+  creator: JobInstructionActor | null;
+  lastStatusChangedByProfile: JobInstructionActor | null;
+  evidenceRequirements: Array<{
+    id: string;
+    description: string;
+    documentCategory: string;
+    fulfillment?: {
+      id: string;
+      documentId: string | null;
+      artifactRevisionId: string | null;
+      version: number;
+    } | null;
+  }>;
+  predecessors: Array<{ id: string; content: string }>;
+};
+
+/**
+ * Derived project status based on child jobs.
+ * Used when `statusOverride` is NULL.
+ */
+export type DerivedProjectStatus = {
+  status: ProjectStatus;
+  progress: number;
+  trafficLight: 'green' | 'yellow' | 'red';
+};
+
+// ============================================
+// Calendar Integration Types
+// ============================================
+
+export type CalendarJob = {
+  /** Unique calendar-row key; planning-backed rows use the occurrence ID. */
+  id: string;
+  occurrenceId?: string | undefined;
+  jobId?: string | null | undefined;
+  seriesId?: string | null | undefined;
+  seriesLineageId?: string | null | undefined;
+  entryKind?: 'job_visit' | 'internal' | undefined;
+  internalType?: 'internal_work' | 'meeting' | 'training' | 'other' | null | undefined;
+  timeKind?: 'timed' | 'all_day' | undefined;
+  startAt?: string | null | undefined;
+  endAt?: string | null | undefined;
+  endDateExclusive?: string | null | undefined;
+  isException?: boolean | undefined;
+  version?: number | undefined;
+  executionVersion?: number | undefined;
+  /** Planning occurrence status; skipped/cancelled render muted + read-only. */
+  occurrenceStatus?: 'scheduled' | 'skipped' | 'cancelled' | undefined;
+  assignedEmployeeRecordIds?: string[] | undefined;
+  jobNumber: string | null;
+  title: string;
+  status: JobStatus;
+  /** The job's work state; null on internal entries and legacy jobs. */
+  executionState: WorkExecutionState | null;
+  priority: JobPriority;
+  plannedDate: string | null;
+  plannedTime: string | null;
+  estimatedDurationMinutes: number | null;
+  plannedWorkingMinutes: number | null;
+  location: string | null;
+  clientName: string | null;
+  clientAddress: string | null;
+  projectName: string | null;
+  projectNumber: string | null;
+  assignedUserIds: string[];
+};
+
+export type CalendarEntryDialogMember = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+};
+
+export type CalendarEntryDialogJobOption = {
+  id: string;
+  title: string;
+  jobNumber: string | null;
+  status: string;
+  projectName: string | null;
+};
+
+// ============================================
+// Result Types
+// ============================================
+
+export type CreateClientResult = { success: true; client: Client } | ClientDuplicatesFailure | ActionFailure;
+
+export type UpdateClientResult = ActionResult<{ client: Client }>;
+
+export type DeleteClientResult = ActionResult;
+
+/** An assignment that needs a confirmed override carries the evaluation the dialog shows. */
+export type QualificationWarningResult = ActionFailure<'qualification_warning' | 'stale_evaluation'> & {
+  evaluation: AssignmentEvaluation;
+};
+
+export type CreateJobResult =
+  | { success: true; job: Job }
+  | QualificationWarningResult
+  | PlanningWarningFailure
+  | ActionFailure;
+
+export type UpdateJobResult =
+  | { success: true; job: Job }
+  | QualificationWarningResult
+  | PlanningWarningFailure
+  | ActionFailure;
+
+export type DeleteJobResult = ActionResult;
+
+export type CreateProjectResult = ActionResult<{ project: Project }>;
+
+export type UpdateProjectResult = ActionResult<{ project: Project }>;
+
+export type DeleteProjectResult = ActionResult;
+
+export type UpdateJobAssignmentsResult =
+  | { success: true; assignments: JobAssignment[] }
+  | QualificationWarningResult
+  | PlanningWarningFailure
+  | ActionFailure;
+
+export type GetJobInstructionItemsResult = ActionResult<{ items: JobInstructionItemWithDetails[] }>;
+
+export type CreateJobInstructionItemResult = ActionResult<{ item: JobInstructionItemWithDetails }>;
+
+export type UpdateJobInstructionItemResult = ActionResult<{ item: JobInstructionItemWithDetails }>;
+
+export type DeleteJobInstructionItemResult = ActionResult;
+
+export type ToggleJobInstructionItemCompletionResult = ActionResult<{ item: JobInstructionItemWithDetails }>;
+
+export type ReorderJobInstructionItemsResult = ActionResult;
+
+// ============================================
+// Converter Functions
+// ============================================
+
+export function toClient(row: ClientRow): Client {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    name: row.name,
+    clientType: row.client_type,
+    customerNumber: row.customer_number,
+    email: row.email,
+    phone: row.phone,
+    address: row.address,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function toProject(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    clientId: row.client_id,
+    name: row.name,
+    description: row.description,
+    projectNumber: row.project_number,
+    statusOverride: row.status_override,
+    executionStateOverride: row.execution_state_override,
+    executionVersion: row.execution_version,
+    executionOverrideReason: row.execution_override_reason,
+    plannedStartDate: row.planned_start_date,
+    plannedEndDate: row.planned_end_date,
+    siteId: row.site_id,
+    contactId: row.contact_id,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function normalizeJobPlannedTime(plannedTime: string | null | undefined): string | null {
+  if (!plannedTime) return null;
+
+  const trimmed = plannedTime.trim();
+  if (!trimmed) return null;
+
+  const [hours = '', minutes = ''] = trimmed.split(':');
+  if (!hours || !minutes) {
+    return trimmed;
+  }
+
+  return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+}
+
+export function toJob(row: JobRow): Job {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    clientId: row.client_id,
+    jobNumber: row.job_number,
+    ...(row.source_number ? { sourceNumber: row.source_number } : {}),
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    executionState: row.execution_state,
+    executionVersion: row.execution_version,
+    priority: row.priority,
+    plannedDate: row.planned_date,
+    plannedTime: normalizeJobPlannedTime(row.planned_time),
+    estimatedDurationMinutes: row.estimated_duration_minutes,
+    plannedWorkingMinutes: row.planned_working_minutes,
+    actualCompletionDate: row.actual_completion_date,
+    location: row.location,
+    siteId: row.site_id,
+    contactId: row.contact_id,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getJobDisplayTitle(job: Pick<Job, 'title' | 'description'>): string {
+  const title = job.title.trim();
+  if (title) return title;
+
+  const description = job.description?.trim();
+  return description || '—';
+}
+
+export function getProjectDisplayTitle(project: Pick<Project, 'name' | 'description'>): string {
+  const title = project.name.trim();
+  if (title) return title;
+
+  const description = project.description?.trim();
+  return description || '—';
+}
+
+export function toJobAssignment(row: JobAssignmentRow): JobAssignment {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    userId: row.user_id,
+    assignedBy: row.assigned_by,
+    assignedAt: row.assigned_at,
+  };
+}
+
+/** The values the check constraints of job_instruction_items allow. */
+const INSTRUCTION_ITEM_KINDS: readonly JobInstructionItem['itemKind'][] = ['task', 'checklist'];
+const INSTRUCTION_REQUIREMENT_STATES: readonly JobInstructionItem['requirementState'][] = [
+  'required',
+  'optional',
+];
+
+export function toJobInstructionItem(row: JobInstructionItemRow): JobInstructionItem {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    jobId: row.job_id,
+    projectId: row.project_id,
+    itemKind: constrainedValue(INSTRUCTION_ITEM_KINDS, row.item_kind, 'instruction item_kind'),
+    requirementState: constrainedValue(
+      INSTRUCTION_REQUIREMENT_STATES,
+      row.requirement_state,
+      'instruction requirement_state',
+    ),
+    groupLabel: row.group_label,
+    notes: row.notes,
+    templateApplicationId: row.work_template_application_id,
+    sourceTemplateItemId: row.source_work_template_item_id,
+    content: row.content,
+    sortOrder: row.sort_order,
+    isCompleted: row.is_completed,
+    completionVersion: row.completion_version,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastStatusChangedBy: row.last_status_changed_by,
+    lastStatusChangedAt: row.last_status_changed_at,
+  };
+}
+
+// ============================================
+// Display Labels (German UI)
+// ============================================
+
+export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
+  nicht_bearbeitet: 'Nicht bearbeitet',
+  in_bearbeitung: 'In Bearbeitung',
+  fertig: 'Fertig',
+  geparkt: 'Geparkt',
+};
+
+export const JOB_PRIORITY_LABELS: Record<JobPriority, string> = {
+  niedrig: 'Niedrig',
+  mittel: 'Mittel',
+  hoch: 'Hoch',
+};
+
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  nicht_begonnen: 'Nicht begonnen',
+  in_bearbeitung: 'In Bearbeitung',
+  abgeschlossen: 'Abgeschlossen',
+  geparkt: 'Geparkt',
+};
+
+export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
+  privat: 'Privat',
+  gewerblich: 'Gewerblich',
+};
+
+// ============================================
+// Utility Functions
+// ============================================
+
+/**
+ * Derive a project's status from its child jobs.
+ * Returns `nicht_begonnen` if no jobs, `abgeschlossen` if all done,
+ * `in_bearbeitung` if any are in progress or completed.
+ */
+function deriveProjectStatus(jobs: Pick<Job, 'status'>[]): ProjectStatus {
+  if (jobs.length === 0) return 'nicht_begonnen';
+
+  const allParked = jobs.every((j) => j.status === 'geparkt');
+  if (allParked) return 'geparkt';
+
+  const allDone = jobs.every((j) => j.status === 'fertig');
+  if (allDone) return 'abgeschlossen';
+
+  const anyStarted = jobs.some((j) => j.status === 'in_bearbeitung' || j.status === 'fertig');
+  if (anyStarted) return 'in_bearbeitung';
+
+  return 'nicht_begonnen';
+}
+
+/**
+ * Compute the effective status of a project, respecting the manual override.
+ */
+export function getEffectiveProjectStatus(
+  project: Pick<Project, 'statusOverride'>,
+  jobs: Pick<Job, 'status'>[],
+): ProjectStatus {
+  return project.statusOverride ?? deriveProjectStatus(jobs);
+}
+
+/**
+ * Calculate project progress as a percentage (0-100).
+ */
+export function calculateProjectProgress(jobs: Pick<Job, 'status'>[]): number {
+  if (jobs.length === 0) return 0;
+  const completed = jobs.filter((j) => j.status === 'fertig').length;
+  return Math.round((completed / jobs.length) * 100);
+}
+
+/**
+ * Determine the traffic light color for a project based on job completions vs. planned end date.
+ * Green: all jobs done, OR no planned end date, OR still before planned end date
+ * Yellow: not all done AND on/past planned end date (within 1 week)
+ * Red: not all done AND more than 1 week past planned end date
+ */
+export function calculateTrafficLight(
+  project: Pick<Project, 'plannedStartDate' | 'plannedEndDate'>,
+  jobs: Pick<Job, 'status'>[],
+): 'green' | 'yellow' | 'red' {
+  if (jobs.length === 0) return 'green';
+
+  const allDone = jobs.every((j) => j.status === 'fertig');
+  if (allDone) return 'green';
+  if (!project.plannedEndDate) return 'green';
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const end = new Date(project.plannedEndDate);
+  end.setHours(0, 0, 0, 0);
+
+  if (now.getTime() < end.getTime()) return 'green';
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysOverdue = (now.getTime() - end.getTime()) / msPerDay;
+
+  if (daysOverdue > 7) return 'red';
+  return 'yellow';
+}
+
+/**
+ * Traffic light variant that works with aggregate counts from ProjectWithDetails,
+ * avoiding the need to load the full jobs array for list views.
+ * Green: all done, OR no planned end date, OR still before planned end date
+ * Yellow: not all done AND on/past planned end date (within 1 week)
+ * Red: not all done AND more than 1 week past planned end date
+ */
+export function calculateTrafficLightFromCounts(
+  project: Pick<Project, 'plannedStartDate' | 'plannedEndDate'>,
+  jobCount: number,
+  completedJobCount: number,
+): 'green' | 'yellow' | 'red' {
+  if (jobCount === 0) return 'green';
+
+  const allDone = completedJobCount >= jobCount;
+  if (allDone) return 'green';
+  if (!project.plannedEndDate) return 'green';
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const end = new Date(project.plannedEndDate);
+  end.setHours(0, 0, 0, 0);
+
+  if (now.getTime() < end.getTime()) return 'green';
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysOverdue = (now.getTime() - end.getTime()) / msPerDay;
+
+  if (daysOverdue > 7) return 'red';
+  return 'yellow';
+}
+
+/**
+ * Derive effective project status from aggregate counts (avoids needing the jobs array).
+ */
+export function getEffectiveProjectStatusFromCounts(
+  project: Pick<
+    ProjectWithDetails,
+    'jobCount' | 'completedJobCount' | 'inProgressJobCount' | 'parkedJobCount'
+  >,
+): ProjectStatus {
+  if (project.jobCount === 0) return 'nicht_begonnen';
+  if (project.parkedJobCount === project.jobCount) return 'geparkt';
+  if (project.completedJobCount === project.jobCount) return 'abgeschlossen';
+  if (project.completedJobCount > 0 || project.inProgressJobCount > 0) return 'in_bearbeitung';
+  return 'nicht_begonnen';
+}

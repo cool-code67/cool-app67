@@ -1,0 +1,259 @@
+'use client';
+
+// P1-12: issuing a dispatch. Shows the honest readiness picture (ok/warning/
+// unknown per dimension — unknown is never styled as success) before the
+// manager sends the work instruction. Issuing sends NO customer message.
+
+import { useMemo, useState } from 'react';
+import { AlertTriangle, CircleCheck, CircleHelp } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { SearchableMultiSelect } from '@/components/ui/searchable-select';
+import { useClientRead } from '@/hooks/use-client-read';
+import { usePlanningOptions } from '@/hooks/use-planning-options';
+import { useServerAction } from '@/hooks/use-server-action';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorText } from '@/components/ui/error-text';
+import { SectionError } from '@/components/ui/section-error';
+import { Field } from '@/components/ui/field';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { readInBackground } from '@/lib/data/background-read-client';
+import { issueDispatch } from '@/lib/dispatch/actions';
+import { dispatchErrorMessage, type ReadinessDimension } from '@/lib/dispatch/types';
+import { focusFirstInvalidField } from '@/lib/ui/field-validation';
+
+// A missing recipient shows on the „Empfänger“ field. It is kept in the submit
+// error state, so the calendar dialog adds no hook for it.
+const RECIPIENT_MISSING_MESSAGE = 'Bitte wähle mindestens eine Person als Empfänger aus.';
+
+type DispatchIssueDialogProps = {
+  target: { occurrenceId: string } | { jobId: string };
+  /** Preselection for job-targeted dispatches (user ids of job assignees). */
+  defaultRecipientUserIds?: string[];
+  onClose: () => void;
+  onIssued: () => void;
+};
+
+/** The dialog's readiness read, its recipient state and the send. */
+function useDispatchIssue({ target, defaultRecipientUserIds, onIssued }: DispatchIssueDialogProps) {
+  const occurrenceId = 'occurrenceId' in target ? target.occurrenceId : null;
+  const jobId = 'jobId' in target ? target.jobId : null;
+  const isJobTarget = jobId !== null;
+  const readinessCheck = useClientRead({
+    read: (signal) =>
+      readInBackground(
+        'dispatch-readiness',
+        'jobId' in target ? { jobId: target.jobId } : { occurrenceId: target.occurrenceId },
+        signal,
+      ),
+    deps: [occurrenceId, jobId],
+    failureMessage: (code) => dispatchErrorMessage(code === 'background_read_failed' ? 'load_failed' : code),
+  });
+  const readiness = readinessCheck.data?.readiness ?? null;
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  // Null until the user changes the recipients; before that the resolved defaults apply.
+  const [chosenRecordIds, setSelectedRecordIds] = useState<string[] | null>(null);
+  const employeeSearch = usePlanningOptions(
+    'employees',
+    chosenRecordIds,
+    defaultRecipientUserIds ?? [],
+    isJobTarget,
+  );
+  const selectedRecordIds = employeeSearch.selectedIds;
+  const { run: runIssue, isPending: isSubmitting } = useServerAction(issueDispatch);
+  const [requestId] = useState(() => crypto.randomUUID());
+
+  // Disabled only while readiness loads or the send runs; a missing recipient is a field error.
+  const canSubmit = useMemo(
+    () => readiness !== null && !isSubmitting && !employeeSearch.resolvingDefaults,
+    [readiness, isSubmitting, employeeSearch.resolvingDefaults],
+  );
+  const recipientMissing = submitError === RECIPIENT_MISSING_MESSAGE && selectedRecordIds.length === 0;
+
+  const handleSubmit = async () => {
+    const recipientError = isJobTarget && selectedRecordIds.length === 0 ? RECIPIENT_MISSING_MESSAGE : null;
+    setSubmitError(recipientError);
+    if (focusFirstInvalidField({ 'dispatch-recipients': recipientError ?? undefined })) return;
+    try {
+      const result = await runIssue({
+        occurrenceId,
+        jobId,
+        recipientEmployeeRecordIds: isJobTarget ? selectedRecordIds : null,
+        note: note.trim() || null,
+        requestId,
+      });
+      if (!result.success) {
+        setSubmitError(dispatchErrorMessage(result.error));
+        return;
+      }
+      onIssued();
+    } catch {
+      setSubmitError(dispatchErrorMessage('unexpected_error'));
+    }
+  };
+
+  return {
+    isJobTarget,
+    readinessCheck,
+    readiness,
+    submitError,
+    note,
+    setNote,
+    setSelectedRecordIds,
+    employeeSearch,
+    selectedRecordIds,
+    isSubmitting,
+    canSubmit,
+    recipientMissing,
+    handleSubmit,
+  };
+}
+
+/** The placeholder rows while the readiness check runs. */
+function ReadinessLoading(): React.JSX.Element {
+  return (
+    <div className="space-y-2" role="status" aria-busy="true">
+      <span className="sr-only">Bereitschaft wird geprüft.</span>
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="space-y-2 rounded-md border bg-muted/30 px-3 py-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-64 max-w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One readiness dimension per row: ok, warning or unknown, never unknown styled as success. */
+function ReadinessDimensions({ dimensions }: { dimensions: ReadinessDimension[] }): React.JSX.Element {
+  return (
+    <ul className="space-y-2 text-sm">
+      {dimensions.map((dimension) => (
+        <li
+          key={dimension.key}
+          className="rounded-md border bg-muted/30 px-3 py-2"
+          data-readiness-key={dimension.key}
+          data-readiness-state={dimension.state}
+        >
+          <p className="flex items-center gap-1.5 font-medium">
+            {dimension.state === 'ok' ? (
+              <CircleCheck className="size-4 text-success-text" data-readiness-icon="ok" aria-hidden="true" />
+            ) : dimension.state === 'warning' ? (
+              <AlertTriangle
+                className="size-4 text-warning-text"
+                data-readiness-icon="warning"
+                aria-hidden="true"
+              />
+            ) : (
+              <CircleHelp
+                className="size-4 text-muted-foreground"
+                data-readiness-icon="unknown"
+                aria-hidden="true"
+              />
+            )}
+            {dimension.label}
+            {dimension.state === 'unknown' && (
+              <span className="text-xs font-normal text-muted-foreground">(nicht bewertet)</span>
+            )}
+          </p>
+          {dimension.details.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+              {dimension.details.map((detail, index) => (
+                <li key={index}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function DispatchIssueDialog(props: DispatchIssueDialogProps) {
+  const { onClose } = props;
+  const {
+    isJobTarget,
+    readinessCheck,
+    readiness,
+    submitError,
+    note,
+    setNote,
+    setSelectedRecordIds,
+    employeeSearch,
+    selectedRecordIds,
+    isSubmitting,
+    canSubmit,
+    recipientMissing,
+    handleSubmit,
+  } = useDispatchIssue(props);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()} pending={isSubmitting}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Einsatz senden</DialogTitle>
+          <DialogDescription>
+            Die zugewiesenen Personen sehen den Einsatz und bestätigen ihn. Es wird keine Nachricht an Kunden
+            versendet.
+          </DialogDescription>
+        </DialogHeader>
+
+        {readinessCheck.failure ? (
+          <SectionError failure={readinessCheck.failure} />
+        ) : !readiness ? (
+          <ReadinessLoading />
+        ) : (
+          <>
+            <ReadinessDimensions dimensions={readiness.dimensions} />
+
+            {isJobTarget && (
+              <Field
+                label="Empfänger"
+                htmlFor="dispatch-recipients"
+                error={recipientMissing ? submitError : employeeSearch.select.loadFailure?.message}
+              >
+                <SearchableMultiSelect
+                  {...employeeSearch.select}
+                  selectedIds={selectedRecordIds}
+                  onSelectionChange={setSelectedRecordIds}
+                  placeholder="Empfänger auswählen"
+                  searchPlaceholder="Mitarbeiter suchen …"
+                  emptyMessage="Keine Personen verfügbar"
+                />
+              </Field>
+            )}
+
+            <Field label="Hinweis (optional)" htmlFor="dispatch-note">
+              <Textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="z. B. Schlüssel beim Hausmeister abholen"
+                maxLength={2000}
+              />
+            </Field>
+          </>
+        )}
+
+        <ErrorText>{recipientMissing ? null : submitError}</ErrorText>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Abbrechen
+          </Button>
+          <Button pending={isSubmitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+            Einsatz senden
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

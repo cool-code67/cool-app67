@@ -1,0 +1,59 @@
+import { INVENTORY_ITEM_COLUMNS } from '@/components/inventar/inventory-table-columns';
+import { PageBody, PageShell } from '@/components/shared/page-shell';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonList, SkeletonTable } from '@/components/ui/skeleton-table';
+import { cn } from '@/lib/utils';
+
+// Mirrors `InventoryContent`: page header with three actions, five summary
+// tiles, the tab strip with filters, then the item list. The tiles
+// follow their compact one-line form below `sm`. Item rows do nothing
+// on click, so neither the table nor the card skeletons are interactive.
+export function InventarPageSkeleton(): React.JSX.Element {
+  return (
+    <PageShell>
+      <header className="shrink-0 border-b bg-background px-4 pt-3 sm:px-6 sm:pt-4">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-3 sm:pb-4">
+          <div className="min-w-0 flex-1">
+            <Skeleton className="h-7 w-32 sm:h-8" />
+            <Skeleton className="mt-1.5 h-4 w-64 max-w-full" />
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+        </div>
+      </header>
+
+      <PageBody>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className={cn(
+                'flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 sm:block sm:py-3',
+                index === 0 && 'col-span-2 lg:col-span-1',
+              )}
+            >
+              <Skeleton className="h-4 w-20 max-w-full sm:w-28" />
+              <Skeleton className="h-5 w-6 sm:mt-2 sm:h-6 sm:w-20" />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <Skeleton className="h-9 w-80 max-w-full" />
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            <Skeleton className="h-9 md:w-64" />
+            <Skeleton className="h-9 md:w-44" />
+            <Skeleton className="h-9 md:w-40" />
+            <Skeleton className="h-9 md:w-44" />
+          </div>
+        </div>
+
+        <SkeletonList count={6} className="mt-4 md:hidden" />
+        <SkeletonTable columns={INVENTORY_ITEM_COLUMNS} rows={9} className="mt-4 hidden bg-card md:block" />
+      </PageBody>
+    </PageShell>
+  );
+}
